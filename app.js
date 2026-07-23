@@ -998,12 +998,12 @@ async function initPurchase() {
   clearSelectedMember();
   document.getElementById('purchase-member-search').value = '';
   document.getElementById('purchase-member-list').innerHTML = '';
-  document.getElementById('rubber-type').value = 'sheet';
+  document.getElementById('rubber-type').value = 'cup';
 
   if (!cachedSettings) await loadSettings();
 
   document.getElementById('cart-weight').value = cachedSettings?.default_cart_weight || '';
-  document.getElementById('price-per-kg').value = cachedSettings?.price_sheet || '';
+  document.getElementById('price-per-kg').value = cachedSettings?.price_cup || cachedSettings?.price_sheet || '';
 
   // Start with one trip
   trips = [{ grossWeight: 0 }];
@@ -1208,18 +1208,17 @@ async function saveTransaction() {
   hideLoading();
 }
 
-// ========== RECEIPT ==========
-function showReceipt(tx) {
-  const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+// ========== RECEIPT (DUAL COPY ON SINGLE PAGE) ==========
+function buildReceiptCopyHTML(tx, plantName, copyTitle, copyBadgeText) {
   const tripsList = tx.trips || [];
 
   let tripsHtml = '';
   if (tripsList.length > 0) {
     tripsHtml = `
-      <div style="border-top:1px dashed #ccc;margin:8px 0;"></div>
-      <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px;">รายละเอียดเที่ยวชั่ง (${tripsList.length} เที่ยว):</div>
+      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
+      <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px;">รายละเอียดเที่ยวชั่ง (${tripsList.length} เที่ยว):</div>
       ${tripsList.map(t => `
-        <div class="receipt-row" style="font-size:0.85rem;">
+        <div class="receipt-row" style="font-size:0.8rem;">
           <span>เที่ยวที่ ${t.trip}</span>
           <span>${formatNumber(t.gross_weight)} - ${formatNumber(t.cart_weight)} = <strong>${formatNumber(t.net_weight)}</strong> กก.</span>
         </div>
@@ -1244,34 +1243,52 @@ function showReceipt(tx) {
     </div>
   `;
 
+  return `
+    <div class="receipt-single-copy">
+      <div class="receipt-header" style="margin-bottom:10px;">
+        <h3 style="font-size:1.15rem;">🌿 ${plantName}</h3>
+        <p style="font-size:0.9rem;font-weight:600;">${copyTitle}</p>
+        <span class="receipt-copy-badge">${copyBadgeText}</span>
+        <p style="font-size:0.75rem;margin-top:4px;color:#64748b;">${formatDateTime(tx.date)}</p>
+      </div>
+      <div class="receipt-row"><span>รหัสสมาชิก:</span><span><strong>${tx.member_code}</strong></span></div>
+      <div class="receipt-row"><span>ชื่อสมาชิก:</span><span>${tx.member_name}</span></div>
+      ${tx.member_account_no ? `<div class="receipt-row"><span>เลขบัญชี:</span><span>${tx.member_account_no}</span></div>` : ''}
+      <div class="receipt-row"><span>ประเภทยาง:</span><span>${RUBBER_TYPES[tx.rubber_type] || 'ยางก้อนถ้วย'}</span></div>
+      ${tripsHtml}
+      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
+      <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
+      ${deductionHtml}
+      <div class="receipt-row"><span>ราคาต่อ กก.:</span><span>${formatNumber(tx.price_per_kg)} บาท</span></div>
+      <div class="receipt-row total" style="padding:6px 0;">
+        <span>💰 ยอดเงินรวม:</span>
+        <span style="font-size:1.2rem;">${formatNumber(tx.total_price)} บาท</span>
+      </div>
+      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
+      <div class="receipt-row" style="font-size:0.8rem;">
+        <span>ผู้จัดทำ:</span>
+        <span><strong>${tx.created_by_name || 'ผู้ดูแลระบบ'}</strong></span>
+      </div>
+      <div class="receipt-footer" style="margin-top:8px;">
+        <p style="font-size:0.8rem;">ขอบคุณที่ใช้บริการ</p>
+        <p style="font-size:0.65rem;margin-top:2px;color:#94a3b8;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
+      </div>
+    </div>
+  `;
+}
+
+function showReceipt(tx) {
+  const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+
+  const copy1 = buildReceiptCopyHTML(tx, plantName, 'ใบเสร็จรับซื้อยางพารา', 'ฉบับสำหรับสมาชิก');
+  const copy2 = buildReceiptCopyHTML(tx, plantName, 'ใบเสร็จรับซื้อยางพารา', 'สำเนาสำหรับลานยาง');
+
+  const cutLine = `<div class="receipt-cut-line">✂️ ------------------ รอยตัดสำหรับแยกเอกสาร ------------------ ✂️</div>`;
+
   document.getElementById('receipt-content').innerHTML = `
-    <div class="receipt-header">
-      <h3>🌿 ${plantName}</h3>
-      <p>ใบเสร็จรับซื้อยางพารา</p>
-      <p style="font-size:0.8rem;margin-top:4px;">${formatDateTime(tx.date)}</p>
-    </div>
-    <div class="receipt-row"><span>รหัสสมาชิก:</span><span>${tx.member_code}</span></div>
-    <div class="receipt-row"><span>ชื่อสมาชิก:</span><span>${tx.member_name}</span></div>
-    ${tx.member_account_no ? `<div class="receipt-row"><span>เลขบัญชี:</span><span>${tx.member_account_no}</span></div>` : ''}
-    <div class="receipt-row"><span>ประเภทยาง:</span><span>${RUBBER_TYPES[tx.rubber_type]}</span></div>
-    ${tripsHtml}
-    <div style="border-top:1px dashed #ccc;margin:8px 0;"></div>
-    <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
-    ${deductionHtml}
-    <div class="receipt-row"><span>ราคาต่อ กก.:</span><span>${formatNumber(tx.price_per_kg)} บาท</span></div>
-    <div class="receipt-row total">
-      <span>💰 ยอดเงินรวม:</span>
-      <span>${formatNumber(tx.total_price)} บาท</span>
-    </div>
-    <div style="border-top:1px dashed #ccc;margin:8px 0;"></div>
-    <div class="receipt-row" style="font-size:0.85rem;">
-      <span>ผู้จัดทำ:</span>
-      <span><strong>${tx.created_by_name || 'ผู้ดูแลระบบ'}</strong></span>
-    </div>
-    <div class="receipt-footer">
-      <p>ขอบคุณที่ใช้บริการ</p>
-      <p style="font-size:0.7rem;margin-top:4px;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
-    </div>
+    ${copy1}
+    ${cutLine}
+    ${copy2}
   `;
 
   document.getElementById('receipt-modal').classList.add('show');

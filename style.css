@@ -1462,8 +1462,39 @@ select.form-input option {
   margin-top: 40px;
 }
 
+/* ===== DUAL RECEIPT STYLES ===== */
+.receipt-cut-line {
+  text-align: center;
+  margin: 18px 0;
+  padding: 8px 0;
+  border-top: 2px dashed #94a3b8;
+  border-bottom: 2px dashed #94a3b8;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
+.receipt-copy-badge {
+  display: inline-block;
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
 /* ===== PRINT STYLES ===== */
 @media print {
+  @page {
+    margin: 8mm;
+    size: portrait;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -1481,9 +1512,18 @@ select.form-input option {
     top: 0;
     left: 0;
     width: 100%;
-    padding: 20px;
+    padding: 10px;
     background: white !important;
     color: black !important;
+    box-shadow: none !important;
+  }
+
+  .receipt-content {
+    padding: 0 !important;
+  }
+
+  .receipt-row {
+    padding: 2px 0 !important;
   }
 
   .modal-header, .modal-footer, .modal-close {
