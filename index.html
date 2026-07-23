@@ -267,12 +267,9 @@
             <div class="glass-card" style="margin-bottom: 20px;">
               <h3 style="margin-bottom: 16px; font-size: 1rem;">⚖️ ข้อมูลยาง</h3>
               <div class="form-group">
-                <label class="form-label" for="rubber-type">ประเภทยาง</label>
-                <select id="rubber-type" class="form-input" onchange="onRubberTypeChange()">
-                  <option value="cup" selected>ยางก้อนถ้วย</option>
-                  <option value="sheet">ยางแผ่นดิบ</option>
-                  <option value="latex">น้ำยางสด</option>
-                </select>
+                <label class="form-label">ประเภทยาง</label>
+                <input type="text" class="form-input" value="ยางก้อนถ้วย" readonly disabled style="opacity: 0.9; font-weight: 600; color: var(--gold);">
+                <input type="hidden" id="rubber-type" value="cup">
               </div>
               <div class="form-group">
                 <label class="form-label" for="cart-weight">น้ำหนักรถเข็น (กก.) — หักทุกเที่ยว</label>
@@ -560,20 +557,10 @@
 
           <!-- Prices -->
           <div class="glass-card">
-            <div class="settings-section-title">💰 ราคายางต่อ กก.</div>
-            <div class="settings-row">
-              <div class="form-group">
-                <label class="form-label" for="setting-price-sheet">ยางแผ่นดิบ (บาท)</label>
-                <input type="number" id="setting-price-sheet" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-price-cup">ยางก้อนถ้วย (บาท)</label>
-                <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-price-latex">น้ำยางสด (บาท)</label>
-                <input type="number" id="setting-price-latex" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
+            <div class="settings-section-title">💰 ราคายางก้อนถ้วย (บาท/กก.)</div>
+            <div class="form-group">
+              <label class="form-label" for="setting-price-cup">ราคายางก้อนถ้วยต่อ กก. (บาท)</label>
+              <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
             </div>
           </div>
 

@@ -1208,8 +1208,8 @@ async function saveTransaction() {
   hideLoading();
 }
 
-// ========== RECEIPT (DUAL COPY ON SINGLE PAGE) ==========
-function buildReceiptCopyHTML(tx, plantName, copyTitle, copyBadgeText) {
+// ========== RECEIPT (100% IDENTICAL DUAL COPIES ON SINGLE PAGE) ==========
+function buildReceiptCopyHTML(tx, plantName) {
   const tripsList = tx.trips || [];
 
   let tripsHtml = '';
@@ -1247,14 +1247,13 @@ function buildReceiptCopyHTML(tx, plantName, copyTitle, copyBadgeText) {
     <div class="receipt-single-copy">
       <div class="receipt-header" style="margin-bottom:10px;">
         <h3 style="font-size:1.15rem;">🌿 ${plantName}</h3>
-        <p style="font-size:0.9rem;font-weight:600;">${copyTitle}</p>
-        <span class="receipt-copy-badge">${copyBadgeText}</span>
+        <p style="font-size:0.9rem;font-weight:600;">ใบเสร็จรับซื้อยางพารา</p>
         <p style="font-size:0.75rem;margin-top:4px;color:#64748b;">${formatDateTime(tx.date)}</p>
       </div>
       <div class="receipt-row"><span>รหัสสมาชิก:</span><span><strong>${tx.member_code}</strong></span></div>
       <div class="receipt-row"><span>ชื่อสมาชิก:</span><span>${tx.member_name}</span></div>
       ${tx.member_account_no ? `<div class="receipt-row"><span>เลขบัญชี:</span><span>${tx.member_account_no}</span></div>` : ''}
-      <div class="receipt-row"><span>ประเภทยาง:</span><span>${RUBBER_TYPES[tx.rubber_type] || 'ยางก้อนถ้วย'}</span></div>
+      <div class="receipt-row"><span>ประเภทยาง:</span><span>ยางก้อนถ้วย</span></div>
       ${tripsHtml}
       <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
       <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
@@ -1280,10 +1279,10 @@ function buildReceiptCopyHTML(tx, plantName, copyTitle, copyBadgeText) {
 function showReceipt(tx) {
   const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
 
-  const copy1 = buildReceiptCopyHTML(tx, plantName, 'ใบเสร็จรับซื้อยางพารา', 'ฉบับสำหรับสมาชิก');
-  const copy2 = buildReceiptCopyHTML(tx, plantName, 'ใบเสร็จรับซื้อยางพารา', 'สำเนาสำหรับลานยาง');
+  const copy1 = buildReceiptCopyHTML(tx, plantName);
+  const copy2 = buildReceiptCopyHTML(tx, plantName);
 
-  const cutLine = `<div class="receipt-cut-line">✂️ ------------------ รอยตัดสำหรับแยกเอกสาร ------------------ ✂️</div>`;
+  const cutLine = `<div class="receipt-cut-line">--------------------------------------------------</div>`;
 
   document.getElementById('receipt-content').innerHTML = `
     ${copy1}
@@ -1661,19 +1660,18 @@ async function renderSettings() {
   const s = cachedSettings;
 
   document.getElementById('setting-plantation-name').value = s?.plantation_name || '';
-  document.getElementById('setting-price-sheet').value = s?.price_sheet || '';
   document.getElementById('setting-price-cup').value = s?.price_cup || '';
-  document.getElementById('setting-price-latex').value = s?.price_latex || '';
   document.getElementById('setting-cart-weight').value = s?.default_cart_weight || '';
   document.getElementById('setting-deduction-percent').value = s?.deduction_percent || '';
 }
 
 async function saveSettings() {
+  const priceCup = parseFloat(document.getElementById('setting-price-cup').value) || 0;
   const updateData = {
     plantation_name: document.getElementById('setting-plantation-name').value.trim() || 'ลานยางพาราชุมชน',
-    price_sheet: parseFloat(document.getElementById('setting-price-sheet').value) || 0,
-    price_cup: parseFloat(document.getElementById('setting-price-cup').value) || 0,
-    price_latex: parseFloat(document.getElementById('setting-price-latex').value) || 0,
+    price_cup: priceCup,
+    price_sheet: priceCup,
+    price_latex: priceCup,
     default_cart_weight: parseFloat(document.getElementById('setting-cart-weight').value) || 0,
     deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0
   };

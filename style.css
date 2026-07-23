@@ -1465,16 +1465,12 @@ select.form-input option {
 /* ===== DUAL RECEIPT STYLES ===== */
 .receipt-cut-line {
   text-align: center;
-  margin: 18px 0;
-  padding: 8px 0;
+  margin: 16px 0;
+  padding: 4px 0;
   border-top: 2px dashed #94a3b8;
-  border-bottom: 2px dashed #94a3b8;
-  color: #475569;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  background: #f8fafc;
-  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
 }
 
 .receipt-copy-badge {
