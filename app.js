@@ -580,6 +580,14 @@ async function showRoundReport(roundId) {
   hideLoading();
 }
 
+function closeRoundReportModal() {
+  document.getElementById('round-report-modal').classList.remove('show');
+}
+
+function printRoundReport() {
+  window.print();
+}
+
 function confirmDeleteRound(roundId) {
   const modal = document.getElementById('confirm-modal');
   document.getElementById('confirm-message').innerHTML = `
