@@ -77,7 +77,7 @@
           <span class="nav-icon">⚖️</span> รับซื้อยาง
         </a>
         <a class="sidebar-link" onclick="navigateTo('rounds')" id="nav-rounds">
-          <span class="nav-icon">🔄</span> รอบการรับซื้อ
+          <span class="nav-icon">🔄</span> รอบส่งมอบยาง
         </a>
         <a class="sidebar-link" onclick="navigateTo('history')" id="nav-history">
           <span class="nav-icon">📋</span> ประวัติธุรกรรม
@@ -120,7 +120,7 @@
         <div class="banner-info">
           <span class="pulse-dot"></span>
           <div>
-            <span class="banner-title">รอบการรับซื้อปัจจุบัน:</span>
+            <span class="banner-title">รอบส่งมอบยางปัจจุบัน:</span>
             <strong id="banner-round-title">กำลังตรวจสอบ...</strong>
           </div>
         </div>
@@ -133,7 +133,7 @@
       <div class="section active" id="section-dashboard">
         <div class="section-header">
           <h2>📊 แดชบอร์ด</h2>
-          <p id="dashboard-subtitle">ภาพรวมของรอบการรับซื้อปัจจุบัน</p>
+          <p id="dashboard-subtitle">ภาพรวมของรอบส่งมอบยางปัจจุบัน</p>
         </div>
 
         <div class="stats-grid">
@@ -240,7 +240,7 @@
       <div class="section" id="section-purchase">
         <div class="section-header">
           <h2>⚖️ รับซื้อยาง</h2>
-          <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรมลงในรอบการรับซื้อปัจจุบัน</p>
+          <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรมลงในรอบส่งมอบยางปัจจุบัน</p>
         </div>
 
         <div class="purchase-grid">
@@ -336,8 +336,8 @@
       <div class="section" id="section-rounds">
         <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
           <div>
-            <h2>🔄 รอบการรับซื้อยาง</h2>
-            <p>จัดการรอบรับซื้อ ปิดรอบการรับซื้อ และพิมพ์เอกสารสรุปรอบย้อนหลัง</p>
+            <h2>🔄 รอบส่งมอบยาง</h2>
+            <p>จัดการรอบส่งมอบ ปิดรอบส่งมอบยาง และพิมพ์เอกสารสรุปรอบย้อนหลัง</p>
           </div>
           <button class="btn btn-primary" onclick="openStartRoundModal()">
             ▶️ เริ่มรอบใหม่
@@ -352,7 +352,7 @@
         </div>
 
         <div class="glass-card">
-          <h3 style="margin-bottom: 16px; font-size: 1rem;">📜 ประวัติรอบการรับซื้อทั้งหมด</h3>
+          <h3 style="margin-bottom: 16px; font-size: 1rem;">📜 ประวัติรอบส่งมอบยางทั้งหมด</h3>
           <div class="table-container">
             <table class="data-table">
               <thead>
@@ -371,7 +371,7 @@
           </div>
           <div class="empty-state" id="rounds-empty" style="display:none;">
             <div class="empty-icon">📂</div>
-            <p>ยังไม่มีประวัติรอบการรับซื้อ กดปุ่ม "เริ่มรอบใหม่" เพื่อเริ่มต้น</p>
+            <p>ยังไม่มีประวัติรอบส่งมอบยาง กดปุ่ม "เริ่มรอบใหม่" เพื่อเริ่มต้น</p>
           </div>
         </div>
       </div>
@@ -385,9 +385,9 @@
 
         <div class="filter-bar">
           <div class="form-group" style="min-width: 200px;">
-            <label class="form-label">เลือกรอบการรับซื้อ</label>
+            <label class="form-label">เลือกรอบส่งมอบยาง</label>
             <select id="history-round-filter" class="form-input" onchange="filterHistory()">
-              <option value="">ทุกรอบการรับซื้อ</option>
+              <option value="">ทุกรอบส่งมอบยาง</option>
             </select>
           </div>
           <div class="form-group">
@@ -628,7 +628,7 @@
   <div class="modal-overlay" id="start-round-modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>▶️ เริ่มรอบการรับซื้อใหม่</h3>
+        <h3>▶️ เริ่มรอบส่งมอบยางใหม่</h3>
         <button class="modal-close" onclick="closeStartRoundModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -636,7 +636,7 @@
           การเริ่มรอบใหม่จะจัดกลุ่มธุรกรรมรับซื้อยางหลังจากนี้ไว้ในรอบเดียวกันโดยอัตโนมัติ
         </p>
         <div class="form-group">
-          <label class="form-label" for="round-title-input">ชื่อรอบการรับซื้อ</label>
+          <label class="form-label" for="round-title-input">ชื่อรอบส่งมอบยาง</label>
           <input type="text" id="round-title-input" class="form-input" placeholder="เช่น รอบ 1 - ก.ค. 2569">
         </div>
       </div>
@@ -721,7 +721,7 @@
   <div class="modal-overlay" id="round-report-modal">
     <div class="modal-content" style="max-width: 750px;">
       <div class="modal-header">
-        <h3>📊 เอกสารสรุปรอบการรับซื้อ</h3>
+        <h3>📊 เอกสารสรุปรอบส่งมอบยาง</h3>
         <button class="modal-close" onclick="closeRoundReportModal()">✕</button>
       </div>
       <div class="modal-body">

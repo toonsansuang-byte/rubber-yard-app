@@ -504,7 +504,7 @@ async function showRoundReport(roundId) {
     reportContent.innerHTML = `
       <div class="round-report-header">
         <h2>🌿 ${plantationName}</h2>
-        <p>เอกสารสรุปผลการรับซื้อยางพาราประจำรอบ</p>
+        <p>เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ</p>
         <h3 style="margin-top:6px; color:#0f172a;">${round.title}</h3>
       </div>
 
@@ -563,7 +563,7 @@ async function showRoundReport(roundId) {
         <div class="sign-box">
           ลงชื่อ...................................................<br>
           (${round.closed_by_name || currentUser.display_name})<br>
-          ผู้สรุปรอบการรับซื้อ
+          ผู้สรุปรอบส่งมอบยาง
         </div>
         <div class="sign-box">
           ลงชื่อ...................................................<br>
@@ -592,7 +592,7 @@ function confirmDeleteRound(roundId) {
   const modal = document.getElementById('confirm-modal');
   document.getElementById('confirm-message').innerHTML = `
     <span class="confirm-icon">🗑️</span>
-    ต้องการ <strong>ลบประวัติรอบการรับซื้อ</strong> นี้ใช่หรือไม่?<br>
+    ต้องการ <strong>ลบประวัติรอบส่งมอบยาง</strong> นี้ใช่หรือไม่?<br>
     <span style="font-size:0.85rem;color:var(--danger);">⚠️ การลบรอบจะทำการลบรายการรับซื้อทั้งหมดที่อยู่ในรอบนี้ออกจากระบบด้วย</span>
   `;
   document.getElementById('confirm-action-btn').onclick = () => deleteRound(roundId);
