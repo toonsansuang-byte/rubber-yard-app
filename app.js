@@ -2053,6 +2053,19 @@ async function seedInitialMembers() {
   }
 }
 
+async function forceSeedMembers() {
+  showLoading();
+  try {
+    const { data, error } = await sb.from('members').upsert(SEED_MEMBERS, { onConflict: 'code' }).select();
+    if (error) throw error;
+    showToast('นำเข้าสมาชิกทั้ง 158 คนเรียบร้อยแล้ว!');
+    await renderMembers();
+  } catch (err) {
+    showToast('นำเข้าไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
 // ========== INITIALIZATION ==========
 async function init() {
   try {
