@@ -60,6 +60,15 @@ function checkAuth() {
   return false;
 }
 
+// ========== PASSWORD HASHING (WEB CRYPTO SHA-256) ==========
+async function hashPassword(text) {
+  if (!text) return '';
+  const msgUint8 = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
@@ -74,17 +83,23 @@ async function handleLogin() {
   showLoading();
   try {
     let loggedUser = null;
+    const hashedInput = await hashPassword(password);
 
-    // 1. Try Query app_users table first
+    // 1. Query app_users table (matches hashed password or migrates legacy plain text)
     try {
-      const { data: user, error } = await sb.from('app_users')
+      const { data: users, error } = await sb.from('app_users')
         .select('*')
-        .eq('username', username)
-        .eq('password', password)
-        .maybeSingle();
+        .eq('username', username);
 
-      if (!error && user) {
-        loggedUser = user;
+      if (!error && users && users.length > 0) {
+        const user = users.find(u => u.password === hashedInput || u.password === password);
+        if (user) {
+          loggedUser = user;
+          // Auto upgrade legacy plain text password to SHA-256 hash in Supabase
+          if (user.password === password) {
+            await sb.from('app_users').update({ password: hashedInput }).eq('id', user.id);
+          }
+        }
       }
     } catch (e) {
       console.warn('app_users table check skipped or not created yet:', e);
@@ -94,12 +109,12 @@ async function handleLogin() {
     if (!loggedUser) {
       const { data: setArr } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1);
       const setData = setArr && setArr[0];
-      if (setData && username === setData.admin_username && password === setData.admin_password) {
-        // Try to insert admin into app_users if table exists
+      if (setData && username === setData.admin_username && (password === setData.admin_password || hashedInput === setData.admin_password)) {
+        // Try to insert admin into app_users with hashed password
         try {
           const { data: newUser } = await sb.from('app_users').insert({
             username: setData.admin_username,
-            password: setData.admin_password,
+            password: hashedInput,
             display_name: 'ผู้ดูแลระบบ',
             role: 'admin'
           }).select().maybeSingle();
@@ -1515,21 +1530,24 @@ async function changeMyPassword() {
 
   showLoading();
   try {
+    const hashedOld = await hashPassword(oldPass);
+    const hashedNew = await hashPassword(newPass);
+
     // Verify old password
     const { data: userCheck } = await sb.from('app_users')
       .select('password')
       .eq('id', currentUser.id)
       .single();
 
-    if (!userCheck || userCheck.password !== oldPass) {
+    if (!userCheck || (userCheck.password !== hashedOld && userCheck.password !== oldPass)) {
       showToast('รหัสผ่านเดิมไม่ถูกต้อง', 'error');
       hideLoading();
       return;
     }
 
-    // Update password
+    // Update password with SHA-256 hash
     const { error } = await sb.from('app_users').update({
-      password: newPass
+      password: hashedNew
     }).eq('id', currentUser.id);
 
     if (error) throw error;
@@ -1606,7 +1624,8 @@ async function openUserModal(id = null) {
     usernameInput.value = u.username;
     usernameInput.disabled = true;
     nameInput.value = u.display_name;
-    passInput.value = u.password;
+    passInput.value = ''; // Leave password blank unless updating
+    passInput.placeholder = 'กรอกรหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)';
     roleInput.value = u.role;
   } else {
     titleEl.textContent = 'เพิ่มผู้ใช้งานใหม่';
@@ -1615,6 +1634,7 @@ async function openUserModal(id = null) {
     usernameInput.disabled = false;
     nameInput.value = '';
     passInput.value = '';
+    passInput.placeholder = 'กรอกรหัสผ่าน';
     roleInput.value = 'user';
   }
 
@@ -1635,20 +1655,23 @@ async function saveUser() {
 
   if (!username) { showToast('กรุณากรอกชื่อผู้ใช้ (Username)', 'error'); return; }
   if (!display_name) { showToast('กรุณากรอกชื่อที่แสดง', 'error'); return; }
-  if (!password) { showToast('กรุณากรอกรหัสผ่าน', 'error'); return; }
+  if (!hiddenId && !password) { showToast('กรุณากรอกรหัสผ่าน', 'error'); return; }
 
   showLoading();
   try {
     if (hiddenId) {
-      const { error } = await sb.from('app_users').update({
-        display_name, password, role
-      }).eq('id', hiddenId);
+      const updatePayload = { display_name, role };
+      if (password) {
+        updatePayload.password = await hashPassword(password);
+      }
+      const { error } = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
       if (error) throw error;
 
       showToast('แก้ไขผู้ใช้งานสำเร็จ!');
     } else {
+      const hashedPass = await hashPassword(password);
       const { error } = await sb.from('app_users').insert({
-        username, display_name, password, role
+        username, display_name, password: hashedPass, role
       });
       if (error) throw error;
 
