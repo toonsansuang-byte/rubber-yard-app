@@ -1196,7 +1196,7 @@ async function saveTransaction() {
 
   showLoading();
   try {
-    const { data, error } = await sb.from('transactions').insert({
+    const payload = {
       member_code: selectedMember.code,
       member_name: selectedMember.name,
       member_account_no: selectedMember.account_no || '',
@@ -1215,9 +1215,25 @@ async function saveTransaction() {
       round_id: currentRound ? currentRound.id : null,
       created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
       date: new Date().toISOString()
-    }).select().single();
+    };
+
+    let { data, error } = await sb.from('transactions').insert(payload).select().single();
+
+    // Fallback if auction_price or yard_fee columns don't exist yet in Supabase schema
+    if (error && error.message.includes('column')) {
+      delete payload.auction_price;
+      delete payload.yard_fee;
+      const res = await sb.from('transactions').insert(payload).select().single();
+      data = res.data;
+      error = res.error;
+    }
 
     if (error) throw error;
+
+    if (data && data.auction_price === undefined) {
+      data.auction_price = auctionPrice;
+      data.yard_fee = yardFee;
+    }
 
     showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
     showReceipt(data);
@@ -1683,24 +1699,36 @@ async function renderSettings() {
 
   document.getElementById('setting-plantation-name').value = s?.plantation_name || '';
   document.getElementById('setting-price-cup').value = s?.price_cup || '';
+  const yardFeeEl = document.getElementById('setting-yard-fee');
+  if (yardFeeEl) yardFeeEl.value = s?.yard_fee !== undefined ? s.yard_fee : '0.50';
   document.getElementById('setting-cart-weight').value = s?.default_cart_weight || '';
   document.getElementById('setting-deduction-percent').value = s?.deduction_percent || '';
 }
 
 async function saveSettings() {
   const priceCup = parseFloat(document.getElementById('setting-price-cup').value) || 0;
+  const yardFeeVal = parseFloat(document.getElementById('setting-yard-fee')?.value) ?? 0.50;
+
   const updateData = {
     plantation_name: document.getElementById('setting-plantation-name').value.trim() || 'ลานยางพาราชุมชน',
     price_cup: priceCup,
     price_sheet: priceCup,
     price_latex: priceCup,
+    yard_fee: yardFeeVal,
     default_cart_weight: parseFloat(document.getElementById('setting-cart-weight').value) || 0,
     deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0
   };
 
   showLoading();
   try {
-    const { error } = await sb.from('settings').update(updateData).eq('id', 1);
+    let { error } = await sb.from('settings').update(updateData).eq('id', 1);
+
+    if (error && error.message.includes('column')) {
+      delete updateData.yard_fee;
+      const res = await sb.from('settings').update(updateData).eq('id', 1);
+      error = res.error;
+    }
+
     if (error) throw error;
 
     await loadSettings();
