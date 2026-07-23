@@ -1118,7 +1118,15 @@ function onRubberTypeChange() {
 
 function calculatePrice() {
   const cartWeight = parseFloat(document.getElementById('cart-weight').value) || 0;
-  const pricePerKg = parseFloat(document.getElementById('price-per-kg').value) || 0;
+  const auctionPrice = parseFloat(document.getElementById('price-per-kg').value) || 0;
+  const yardFee = cachedSettings && cachedSettings.yard_fee !== undefined ? parseFloat(cachedSettings.yard_fee) : 0.50;
+  const netPricePerKg = Math.max(0, auctionPrice - yardFee);
+
+  const netHint = document.getElementById('net-price-hint');
+  if (netHint) {
+    netHint.innerHTML = `ราคาหลังหักค่าจัดการลาน: <strong>${formatNumber(netPricePerKg)}</strong> บาท/กก. (หักค่าจัดการ -${formatNumber(yardFee)} บาท)`;
+  }
+
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
   let totalNet = 0;
@@ -1144,14 +1152,14 @@ function calculatePrice() {
 
   const deductionAmount = totalNet * deductionPercent / 100;
   const finalWeight = totalNet - deductionAmount;
-  const totalPrice = finalWeight * pricePerKg;
+  const totalPrice = finalWeight * netPricePerKg;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
   document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
   document.getElementById('calc-deduction-pct').textContent = deductionPercent;
   document.getElementById('calc-deduction-amount').textContent = `- ${formatNumber(deductionAmount)} กก.`;
   document.getElementById('calc-final-weight').textContent = `${formatNumber(finalWeight)} กก.`;
-  document.getElementById('calc-price-per-kg').textContent = `${formatNumber(pricePerKg)} บาท`;
+  document.getElementById('calc-price-per-kg').textContent = `${formatNumber(netPricePerKg)} บาท (${formatNumber(auctionPrice)} - ${formatNumber(yardFee)})`;
   document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
 
   const deductRow = document.getElementById('calc-deduction-row');
@@ -1162,13 +1170,15 @@ async function saveTransaction() {
   if (!selectedMember) { showToast('กรุณาเลือกสมาชิก', 'error'); return; }
 
   const cartWeight = parseFloat(document.getElementById('cart-weight').value) || 0;
-  const pricePerKg = parseFloat(document.getElementById('price-per-kg').value) || 0;
+  const auctionPrice = parseFloat(document.getElementById('price-per-kg').value) || 0;
+  const yardFee = cachedSettings && cachedSettings.yard_fee !== undefined ? parseFloat(cachedSettings.yard_fee) : 0.50;
+  const netPricePerKg = Math.max(0, auctionPrice - yardFee);
   const rubberType = document.getElementById('rubber-type').value;
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
   const hasWeight = trips.some(t => t.grossWeight > 0);
   if (!hasWeight) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
-  if (pricePerKg <= 0) { showToast('กรุณากรอกราคาต่อ กก.', 'error'); return; }
+  if (auctionPrice <= 0) { showToast('กรุณากรอกราคาประมูลต่อ กก.', 'error'); return; }
 
   const tripDetails = trips.filter(t => t.grossWeight > 0).map((t, i) => ({
     trip: i + 1,
@@ -1182,7 +1192,7 @@ async function saveTransaction() {
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
   const deductionAmount = totalNet * deductionPercent / 100;
   const finalWeight = totalNet - deductionAmount;
-  const totalPrice = finalWeight * pricePerKg;
+  const totalPrice = finalWeight * netPricePerKg;
 
   showLoading();
   try {
@@ -1196,7 +1206,9 @@ async function saveTransaction() {
       net_weight: totalNet,
       deduction_percent: deductionPercent,
       final_weight: finalWeight,
-      price_per_kg: pricePerKg,
+      auction_price: auctionPrice,
+      yard_fee: yardFee,
+      price_per_kg: netPricePerKg,
       total_price: totalPrice,
       trips: tripDetails,
       trip_count: tripDetails.length,
@@ -1266,7 +1278,9 @@ function buildReceiptCopyHTML(tx, plantName) {
       <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
       <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
       ${deductionHtml}
-      <div class="receipt-row"><span>ราคาต่อ กก.:</span><span>${formatNumber(tx.price_per_kg)} บาท</span></div>
+      <div class="receipt-row"><span>ราคาประมูล:</span><span>${formatNumber(tx.auction_price !== undefined ? tx.auction_price : (Number(tx.price_per_kg) + (tx.yard_fee !== undefined ? Number(tx.yard_fee) : 0.50)))} บาท/กก.</span></div>
+      <div class="receipt-row" style="color:#ef4444;"><span>หักค่าจัดการลาน:</span><span>-${formatNumber(tx.yard_fee !== undefined ? tx.yard_fee : 0.50)} บาท/กก.</span></div>
+      <div class="receipt-row"><span>ราคาสุทธิต่อ กก.:</span><span><strong>${formatNumber(tx.price_per_kg)} บาท/กก.</strong></span></div>
       <div class="receipt-row total" style="padding:6px 0;">
         <span>💰 ยอดเงินรวม:</span>
         <span style="font-size:1.2rem;">${formatNumber(tx.total_price)} บาท</span>

@@ -276,8 +276,11 @@
                 <input type="number" id="cart-weight" class="form-input" placeholder="0.00" step="0.01" min="0" oninput="calculatePrice()">
               </div>
               <div class="form-group">
-                <label class="form-label" for="price-per-kg">ราคาต่อ กก. (บาท)</label>
+                <label class="form-label" for="price-per-kg">ราคาประมูล ต่อ กก. (บาท)</label>
                 <input type="number" id="price-per-kg" class="form-input" placeholder="0.00" step="0.01" min="0" oninput="calculatePrice()">
+                <div id="net-price-hint" style="font-size: 0.85rem; color: var(--gold); margin-top: 6px; font-weight: 500;">
+                  ราคาหลังหักค่าจัดการลาน: 0.00 บาท/กก. (หัก -0.50 บาท)
+                </div>
               </div>
             </div>
 
@@ -557,10 +560,16 @@
 
           <!-- Prices -->
           <div class="glass-card">
-            <div class="settings-section-title">💰 ราคายางก้อนถ้วย (บาท/กก.)</div>
-            <div class="form-group">
-              <label class="form-label" for="setting-price-cup">ราคายางก้อนถ้วยต่อ กก. (บาท)</label>
-              <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
+            <div class="settings-section-title">💰 ราคายางก้อนถ้วย & ค่าจัดการลาน</div>
+            <div class="settings-row">
+              <div class="form-group">
+                <label class="form-label" for="setting-price-cup">ราคาประมูลเริ่มต้น (บาท/กก.)</label>
+                <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="setting-yard-fee">ค่าจัดการลาน (บาท/กก.)</label>
+                <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
+              </div>
             </div>
           </div>
 
