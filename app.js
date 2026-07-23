@@ -442,6 +442,9 @@ async function renderRounds() {
             ${r.status === 'open' 
               ? `<button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${r.id}')">🔒 ปิดรอบ</button>` 
               : `<button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')">🖨️ พิมพ์เอกสาร</button>`}
+            ${currentUser?.role === 'admin' 
+              ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteRound('${r.id}')" title="ลบรอบนี้" style="margin-left:4px;">🗑️</button>` 
+              : ''}
           </td>
         </tr>
       `).join('');
@@ -577,12 +580,116 @@ async function showRoundReport(roundId) {
   hideLoading();
 }
 
-function closeRoundReportModal() {
-  document.getElementById('round-report-modal').classList.remove('show');
+function confirmDeleteRound(roundId) {
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-message').innerHTML = `
+    <span class="confirm-icon">🗑️</span>
+    ต้องการ <strong>ลบประวัติรอบการรับซื้อ</strong> นี้ใช่หรือไม่?<br>
+    <span style="font-size:0.85rem;color:var(--danger);">⚠️ การลบรอบจะทำการลบรายการรับซื้อทั้งหมดที่อยู่ในรอบนี้ออกจากระบบด้วย</span>
+  `;
+  document.getElementById('confirm-action-btn').onclick = () => deleteRound(roundId);
+  modal.classList.add('show');
 }
 
-function printRoundReport() {
-  window.print();
+async function deleteRound(roundId) {
+  showLoading();
+  try {
+    // 1. Delete all transactions belonging to this round
+    await sb.from('transactions').delete().eq('round_id', roundId);
+
+    // 2. Delete the round record itself
+    const { error } = await sb.from('purchase_rounds').delete().eq('id', roundId);
+    if (error) throw error;
+
+    closeConfirmModal();
+    showToast('ลบรอบการรับซื้อและรายการทั้งหมดในรอบเรียบร้อยแล้ว!');
+
+    if (currentRound && currentRound.id === roundId) {
+      currentRound = null;
+      updateRoundBanner();
+    }
+
+    await loadCurrentRound();
+    if (currentSection === 'rounds') renderRounds();
+    if (currentSection === 'dashboard') renderDashboard();
+    if (currentSection === 'history') filterHistory();
+  } catch (err) {
+    showToast('ลบรอบไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function showMemberSalesHistory(memberCode) {
+  showLoading();
+  try {
+    // 1. Fetch member details
+    const { data: member } = await sb.from('members').select('*').eq('code', memberCode).single();
+    if (!member) throw new Error('ไม่พบข้อมูลสมาชิก');
+
+    // 2. Fetch member's transactions
+    const { data: txList } = await sb.from('transactions')
+      .select('*')
+      .eq('member_code', memberCode)
+      .order('date', { ascending: false });
+
+    const transactions = txList || [];
+
+    // 3. Fetch purchase_rounds for title mapping
+    const { data: rounds } = await sb.from('purchase_rounds').select('id, title');
+    const roundTitleMap = {};
+    (rounds || []).forEach(r => { roundTitleMap[r.id] = r.title; });
+
+    // Calculate stats
+    const distinctRounds = new Set(transactions.map(t => t.round_id).filter(Boolean)).size;
+    const txCount = transactions.length;
+    const totalWeight = transactions.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const totalAmount = transactions.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    // Set UI
+    document.getElementById('m-history-avatar').textContent = member.name.charAt(0);
+    document.getElementById('m-history-name').textContent = member.name;
+    document.getElementById('m-history-code-account').textContent = `รหัสสมาชิก: ${member.code} | เลขที่บัญชี: ${member.account_no || '-'}`;
+
+    document.getElementById('m-stat-rounds-count').innerHTML = `${distinctRounds} <span class="unit">รอบ</span>`;
+    document.getElementById('m-stat-tx-count').innerHTML = `${txCount} <span class="unit">ครั้ง</span>`;
+    document.getElementById('m-stat-total-weight').innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
+    document.getElementById('m-stat-total-amount').innerHTML = `${formatNumber(totalAmount)} <span class="unit">บาท</span>`;
+
+    const tbody = document.getElementById('m-history-table-body');
+    const emptyState = document.getElementById('m-history-empty');
+
+    if (transactions.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      tbody.closest('.table-container').style.display = 'none';
+    } else {
+      emptyState.style.display = 'none';
+      tbody.closest('.table-container').style.display = 'block';
+      tbody.innerHTML = transactions.map(t => `
+        <tr>
+          <td>${formatDateTime(t.date)}</td>
+          <td><span class="badge badge-green">${roundTitleMap[t.round_id] || 'นอกรอบ'}</span></td>
+          <td>${getRubberTypeBadge(t.rubber_type)}</td>
+          <td>${t.trip_count || 1}</td>
+          <td>${formatNumber(t.final_weight || t.net_weight)} กก.</td>
+          <td style="font-weight:600; color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
+          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('member-sales-modal').classList.add('show');
+  } catch (err) {
+    showToast('ไม่สามารถโหลดประวัติสมาชิกได้: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closeMemberSalesModal() {
+  document.getElementById('member-sales-modal').classList.remove('show');
 }
 
 // ========== NAVIGATION ==========
@@ -752,6 +859,11 @@ async function renderMembers(filter = '') {
           <td>${m.name}</td>
           <td>${m.phone || '-'}</td>
           <td>${m.account_no || '-'}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="showMemberSalesHistory('${m.code}')">
+              📊 ประวัติขาย
+            </button>
+          </td>
           <td>${formatDate(m.created_at)}</td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="openMemberModal('${m.id}')" title="แก้ไข">✏️</button>
@@ -1758,6 +1870,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     closeMemberModal();
+    closeMemberSalesModal();
     closeImportMemberModal();
     closeUserModal();
     closeStartRoundModal();
