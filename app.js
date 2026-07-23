@@ -1,6 +1,6 @@
 /* ============================================
    COMMUNITY RUBBER PLANTATION WEB APP
-   Application Logic — Supabase + Multi-Trip
+   Application Logic — Supabase + Multi-Trip + Multi-User + Rounds
    ============================================ */
 
 // ========== SUPABASE CONFIG ==========
@@ -11,9 +11,11 @@ let sb; // Supabase client — initialized in init()
 
 // ========== GLOBAL STATE ==========
 let currentSection = 'dashboard';
+let currentUser = null;    // { id, username, display_name, role }
+let currentRound = null;   // Active open round object or null
 let selectedMember = null;
-let trips = [];           // [{grossWeight: 0}]
-let cachedSettings = null; // cached settings from Supabase
+let trips = [];            // [{grossWeight: 0}]
+let cachedSettings = null; // Cached settings from Supabase
 
 const RUBBER_TYPES = {
   sheet: 'ยางแผ่นดิบ',
@@ -43,9 +45,19 @@ function showToast(message, type = 'success') {
   }, 3500);
 }
 
-// ========== AUTH ==========
+// ========== AUTH & USER SESSION ==========
 function checkAuth() {
-  return sessionStorage.getItem('rb_session') === 'logged_in';
+  const isLogged = sessionStorage.getItem('rb_session') === 'logged_in';
+  const storedUser = sessionStorage.getItem('rb_user');
+  if (isLogged && storedUser) {
+    try {
+      currentUser = JSON.parse(storedUser);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 async function handleLogin() {
@@ -61,20 +73,57 @@ async function handleLogin() {
 
   showLoading();
   try {
-    const { data, error } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1).single();
-    if (error) throw error;
+    // 1. Query app_users table first
+    const { data: user, error } = await sb.from('app_users')
+      .select('*')
+      .eq('username', username)
+      .eq('password', password)
+      .maybeSingle();
 
-    if (data && username === data.admin_username && password === data.admin_password) {
+    if (error && error.code !== 'PGRST116') throw error;
+
+    let loggedUser = user;
+
+    // 2. Fallback: Check legacy settings admin credentials if app_users is empty
+    if (!loggedUser) {
+      const { data: setArr } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1);
+      const setData = setArr && setArr[0];
+      if (setData && username === setData.admin_username && password === setData.admin_password) {
+        // Try to insert admin into app_users
+        const { data: newUser } = await sb.from('app_users').insert({
+          username: setData.admin_username,
+          password: setData.admin_password,
+          display_name: 'ผู้ดูแลระบบ',
+          role: 'admin'
+        }).select().maybeSingle();
+
+        loggedUser = newUser || {
+          id: 'admin-fallback',
+          username: setData.admin_username,
+          display_name: 'ผู้ดูแลระบบ',
+          role: 'admin'
+        };
+      }
+    }
+
+    if (loggedUser) {
+      currentUser = {
+        id: loggedUser.id,
+        username: loggedUser.username,
+        display_name: loggedUser.display_name,
+        role: loggedUser.role
+      };
       sessionStorage.setItem('rb_session', 'logged_in');
+      sessionStorage.setItem('rb_user', JSON.stringify(currentUser));
       errorEl.classList.remove('show');
       await showApp();
-      showToast('เข้าสู่ระบบสำเร็จ!');
+      showToast(`ยินดีต้อนรับ คุณ${currentUser.display_name}!`);
     } else {
       errorEl.textContent = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
       errorEl.classList.add('show');
     }
   } catch (err) {
-    errorEl.textContent = 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้: ' + (err.message || err);
+    errorEl.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + (err.message || err);
     errorEl.classList.add('show');
   }
   hideLoading();
@@ -82,6 +131,8 @@ async function handleLogin() {
 
 function handleLogout() {
   sessionStorage.removeItem('rb_session');
+  sessionStorage.removeItem('rb_user');
+  currentUser = null;
   document.getElementById('app').classList.remove('active');
   document.getElementById('login-page').style.display = 'flex';
   document.getElementById('login-username').value = '';
@@ -92,8 +143,33 @@ function handleLogout() {
 async function showApp() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('app').classList.add('active');
+  updateUserSidebarUI();
   await loadSettings();
+  await loadCurrentRound();
   navigateTo('dashboard');
+}
+
+function updateUserSidebarUI() {
+  if (!currentUser) return;
+
+  const avatarEl = document.getElementById('sidebar-user-avatar');
+  const nameEl = document.getElementById('sidebar-user-name');
+  const roleEl = document.getElementById('sidebar-user-role');
+  const navUsersLink = document.getElementById('nav-users');
+
+  if (avatarEl) avatarEl.textContent = (currentUser.display_name || '?').charAt(0).toUpperCase();
+  if (nameEl) nameEl.textContent = currentUser.display_name || currentUser.username;
+  
+  const isAdmin = currentUser.role === 'admin';
+  if (roleEl) {
+    roleEl.textContent = isAdmin ? 'แอดมิน (Admin)' : 'พนักงาน (User)';
+    roleEl.className = isAdmin ? 'badge badge-admin' : 'badge badge-user';
+  }
+
+  // Only Admin can see and access User Management menu
+  if (navUsersLink) {
+    navUsersLink.style.display = isAdmin ? 'flex' : 'none';
+  }
 }
 
 async function loadSettings() {
@@ -120,8 +196,392 @@ function updatePlantationName() {
   document.getElementById('login-plantation-name').textContent = name;
 }
 
+// ========== PURCHASE ROUNDS MANAGEMENT ==========
+async function loadCurrentRound() {
+  try {
+    const { data } = await sb.from('purchase_rounds')
+      .select('*')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0) {
+      currentRound = data[0];
+    } else {
+      currentRound = null;
+    }
+    updateRoundBanner();
+  } catch (err) {
+    console.error('Error loading round:', err);
+    currentRound = null;
+    updateRoundBanner();
+  }
+}
+
+function updateRoundBanner() {
+  const titleEl = document.getElementById('banner-round-title');
+  const actionsEl = document.getElementById('banner-round-actions');
+  const subtitleEl = document.getElementById('dashboard-subtitle');
+
+  if (currentRound) {
+    titleEl.textContent = `${currentRound.title} (เริ่มเมื่อ ${formatDateTime(currentRound.start_date)})`;
+    actionsEl.innerHTML = `
+      <button class="btn btn-secondary btn-sm" onclick="navigateTo('rounds')">🔍 ดูรายละเอียดรอบ</button>
+      <button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${currentRound.id}')">🔒 ปิดรอบนี้</button>
+    `;
+    if (subtitleEl) subtitleEl.textContent = `ภาพรวมของ ${currentRound.title}`;
+  } else {
+    titleEl.textContent = 'ยังไม่มีรอบการรับซื้อเปิดอยู่';
+    actionsEl.innerHTML = `
+      <button class="btn btn-gold btn-sm" onclick="openStartRoundModal()">▶️ เริ่มรอบใหม่</button>
+    `;
+    if (subtitleEl) subtitleEl.textContent = 'ยังไม่มีรอบการรับซื้อที่เปิดใช้งาน';
+  }
+}
+
+function openStartRoundModal() {
+  const modal = document.getElementById('start-round-modal');
+  const titleInput = document.getElementById('round-title-input');
+  
+  // Default round name suggestion
+  const today = new Date();
+  const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+  const monthStr = monthNames[today.getMonth()];
+  const yearStr = today.getFullYear() + 543;
+  titleInput.value = `รอบที่ 1 - ${monthStr} ${yearStr}`;
+  
+  modal.classList.add('show');
+  titleInput.focus();
+}
+
+function closeStartRoundModal() {
+  document.getElementById('start-round-modal').classList.remove('show');
+}
+
+async function saveStartNewRound() {
+  const title = document.getElementById('round-title-input').value.trim();
+  if (!title) {
+    showToast('กรุณากรอกชื่อรอบการรับซื้อ', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    // If there is an active round, close it first
+    if (currentRound) {
+      await sb.from('purchase_rounds').update({
+        status: 'closed',
+        end_date: new Date().toISOString(),
+        closed_at: new Date().toISOString(),
+        closed_by_name: currentUser.display_name
+      }).eq('id', currentRound.id);
+    }
+
+    // Insert new open round
+    const { data, error } = await sb.from('purchase_rounds').insert({
+      title: title,
+      status: 'open',
+      start_date: new Date().toISOString()
+    }).select().single();
+
+    if (error) throw error;
+
+    currentRound = data;
+    showToast(`เริ่มรอบใหม่ "${title}" สำเร็จ!`);
+    closeStartRoundModal();
+    updateRoundBanner();
+
+    if (currentSection === 'rounds') renderRounds();
+    if (currentSection === 'dashboard') renderDashboard();
+  } catch (err) {
+    showToast('ไม่สามารถเริ่มรอบใหม่ได้: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function confirmCloseRound(roundId) {
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-message').innerHTML = `
+    <span class="confirm-icon">🔒</span>
+    คุณต้องการ <strong>ปิดรอบการรับซื้อ</strong> นี้ใช่หรือไม่?<br>
+    <small style="color:var(--text-muted);">เมื่อปิดรอบแล้ว ธุรกรรมใหม่หลังจากนี้จะต้องสร้างในรอบถัดไป</small>
+  `;
+  document.getElementById('confirm-action-btn').onclick = () => closeRound(roundId);
+  modal.classList.add('show');
+}
+
+async function closeRound(roundId) {
+  showLoading();
+  try {
+    const { error } = await sb.from('purchase_rounds').update({
+      status: 'closed',
+      end_date: new Date().toISOString(),
+      closed_at: new Date().toISOString(),
+      closed_by_name: currentUser.display_name
+    }).eq('id', roundId);
+
+    if (error) throw error;
+
+    closeConfirmModal();
+    showToast('ปิดรอบการรับซื้อสำเร็จ!');
+    await loadCurrentRound();
+
+    if (currentSection === 'rounds') renderRounds();
+    if (currentSection === 'dashboard') renderDashboard();
+  } catch (err) {
+    showToast('ปิดรอบไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function renderRounds() {
+  showLoading();
+  try {
+    // Render active round detail card
+    const activeDetailEl = document.getElementById('active-round-detail');
+    if (currentRound) {
+      // Query summary for active round
+      const { data: roundTx } = await sb.from('transactions')
+        .select('net_weight, final_weight, total_price, member_code')
+        .eq('round_id', currentRound.id);
+
+      const txArr = roundTx || [];
+      const totalCount = txArr.length;
+      const uniqueMembers = new Set(txArr.map(t => t.member_code)).size;
+      const totalWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+      const totalAmount = txArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+      activeDetailEl.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div>
+            <h4 style="font-size:1.2rem; font-weight:700; color:var(--text-accent);">${currentRound.title}</h4>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:4px;">
+              เริ่มวันที่: ${formatDateTime(currentRound.start_date)}
+            </p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="showRoundReport('${currentRound.id}')">📊 ดูเอกสารสรุปรอบนี้</button>
+            <button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${currentRound.id}')">🔒 ปิดรอบนี้</button>
+          </div>
+        </div>
+        <div class="stats-grid" style="margin-top:16px; margin-bottom:0;">
+          <div class="glass-card stat-card" style="padding:12px 16px;">
+            <div class="card-title">สมาชิกที่ขาย</div>
+            <div class="card-value" style="font-size:1.3rem;">${uniqueMembers} <span class="unit">คน</span></div>
+          </div>
+          <div class="glass-card stat-card" style="padding:12px 16px;">
+            <div class="card-title">รายการรับซื้อ</div>
+            <div class="card-value" style="font-size:1.3rem;">${totalCount} <span class="unit">รายการ</span></div>
+          </div>
+          <div class="glass-card stat-card" style="padding:12px 16px;">
+            <div class="card-title">น้ำหนักรวม</div>
+            <div class="card-value" style="font-size:1.3rem;">${formatNumber(totalWeight)} <span class="unit">กก.</span></div>
+          </div>
+          <div class="glass-card stat-card" style="padding:12px 16px;">
+            <div class="card-title">ยอดเงินรวม</div>
+            <div class="card-value" style="font-size:1.3rem; color:var(--gold);">${formatNumber(totalAmount)} <span class="unit">บาท</span></div>
+          </div>
+        </div>
+      `;
+    } else {
+      activeDetailEl.innerHTML = `
+        <div class="empty-state" style="padding:20px;">
+          <div class="empty-icon">⏸️</div>
+          <p>ยังไม่มีรอบการรับซื้อที่เปิดอยู่ กดปุ่ม "เริ่มรอบใหม่" เพื่อเปิดรอบ</p>
+        </div>
+      `;
+    }
+
+    // Render rounds table
+    const { data: rounds, error } = await sb.from('purchase_rounds')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const tbody = document.getElementById('rounds-table-body');
+    const emptyState = document.getElementById('rounds-empty');
+    const list = rounds || [];
+
+    if (list.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      tbody.closest('.table-container').style.display = 'none';
+    } else {
+      emptyState.style.display = 'none';
+      tbody.closest('.table-container').style.display = 'block';
+
+      tbody.innerHTML = list.map(r => `
+        <tr>
+          <td><strong>${r.title}</strong></td>
+          <td>
+            ${r.status === 'open' 
+              ? '<span class="badge badge-green">▶️ เปิดรับซื้ออยู่</span>' 
+              : '<span class="badge" style="background:rgba(148,163,184,0.2);color:#cbd5e1;">🔒 ปิดรอบแล้ว</span>'}
+          </td>
+          <td>${formatDateTime(r.start_date)}</td>
+          <td>${r.end_date ? formatDateTime(r.end_date) : '-'}</td>
+          <td>${r.closed_by_name || '-'}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')">
+              📄 สรุปรอบ
+            </button>
+          </td>
+          <td>
+            ${r.status === 'open' 
+              ? `<button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${r.id}')">🔒 ปิดรอบ</button>` 
+              : `<button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')">🖨️ พิมพ์เอกสาร</button>`}
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    showToast('โหลดข้อมูลรอบไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function showRoundReport(roundId) {
+  showLoading();
+  try {
+    const { data: round } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+    if (!round) throw new Error('ไม่พบข้อมูลรอบการรับซื้อ');
+
+    // Fetch all transactions in this round
+    const { data: txList } = await sb.from('transactions')
+      .select('*')
+      .eq('round_id', roundId)
+      .order('date');
+
+    const transactions = txList || [];
+    const plantationName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+
+    // Group transactions by member
+    const memberSummary = {};
+    let grandTotalWeight = 0;
+    let grandTotalAmount = 0;
+
+    transactions.forEach(t => {
+      const code = t.member_code;
+      const weight = Number(t.final_weight || t.net_weight || 0);
+      const amount = Number(t.total_price || 0);
+
+      if (!memberSummary[code]) {
+        memberSummary[code] = {
+          code: code,
+          name: t.member_name,
+          account_no: t.member_account_no || '-',
+          txCount: 0,
+          totalWeight: 0,
+          totalAmount: 0
+        };
+      }
+      memberSummary[code].txCount += 1;
+      memberSummary[code].totalWeight += weight;
+      memberSummary[code].totalAmount += amount;
+
+      grandTotalWeight += weight;
+      grandTotalAmount += amount;
+    });
+
+    const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
+
+    const reportContent = document.getElementById('round-report-content');
+    reportContent.innerHTML = `
+      <div class="round-report-header">
+        <h2>🌿 ${plantationName}</h2>
+        <p>เอกสารสรุปผลการรับซื้อยางพาราประจำรอบ</p>
+        <h3 style="margin-top:6px; color:#0f172a;">${round.title}</h3>
+      </div>
+
+      <div class="report-meta-grid">
+        <div class="report-meta-item">
+          <div class="meta-label">วันที่เริ่มรอบ</div>
+          <div class="meta-val">${formatDateTime(round.start_date)}</div>
+        </div>
+        <div class="report-meta-item">
+          <div class="meta-label">วันที่ปิดรอบ</div>
+          <div class="meta-val">${round.end_date ? formatDateTime(round.end_date) : 'กำลังเปิดรับซื้อ'}</div>
+        </div>
+        <div class="report-meta-item">
+          <div class="meta-label">จำนวนสมาชิกที่ขาย</div>
+          <div class="meta-val">${memberRows.length} คน</div>
+        </div>
+        <div class="report-meta-item">
+          <div class="meta-label">จำนวนรายการรวม</div>
+          <div class="meta-val">${transactions.length} รายการ</div>
+        </div>
+      </div>
+
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>รหัส</th>
+            <th>ชื่อ-นามสกุลสมาชิก</th>
+            <th>เลขที่บัญชี</th>
+            <th>จำนวนครั้ง</th>
+            <th style="text-align:right;">น้ำหนักสุทธิรวม (กก.)</th>
+            <th style="text-align:right;">ยอดเงินรวม (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${memberRows.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#64748b;">ไม่มีข้อมูลธุรกรรมในรอบนี้</td></tr>' : 
+            memberRows.map(m => `
+              <tr>
+                <td><strong>${m.code}</strong></td>
+                <td>${m.name}</td>
+                <td>${m.account_no}</td>
+                <td>${m.txCount} ครั้ง</td>
+                <td style="text-align:right;">${formatNumber(m.totalWeight)}</td>
+                <td style="text-align:right; font-weight:600;">${formatNumber(m.totalAmount)}</td>
+              </tr>
+            `).join('')
+          }
+          <tr class="total-row">
+            <td colspan="4" style="text-align:right;">ยอดรวมสุทธิทั้งรอบ:</td>
+            <td style="text-align:right;">${formatNumber(grandTotalWeight)} กก.</td>
+            <td style="text-align:right; color:#059669;">${formatNumber(grandTotalAmount)} บาท</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="report-footer-sign">
+        <div class="sign-box">
+          ลงชื่อ...................................................<br>
+          (${round.closed_by_name || currentUser.display_name})<br>
+          ผู้สรุปรอบการรับซื้อ
+        </div>
+        <div class="sign-box">
+          ลงชื่อ...................................................<br>
+          (...................................................)<br>
+          ประธาน / ผู้ตรวจสอบ
+        </div>
+      </div>
+    `;
+
+    document.getElementById('round-report-modal').classList.add('show');
+  } catch (err) {
+    showToast('ไม่สามารถสร้างเอกสารสรุปรอบได้: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closeRoundReportModal() {
+  document.getElementById('round-report-modal').classList.remove('show');
+}
+
+function printRoundReport() {
+  window.print();
+}
+
 // ========== NAVIGATION ==========
 function navigateTo(section) {
+  // Check admin security for users section
+  if (section === 'users' && currentUser?.role !== 'admin') {
+    showToast('เฉพาะแอดมินเท่านั้นที่สามารถเข้าถึงหน้านี้ได้', 'error');
+    return;
+  }
+
   currentSection = section;
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   const target = document.getElementById(`section-${section}`);
@@ -138,7 +598,10 @@ function navigateTo(section) {
     case 'dashboard': renderDashboard(); break;
     case 'members': renderMembers(); break;
     case 'purchase': initPurchase(); break;
+    case 'rounds': renderRounds(); break;
     case 'history': renderHistory(); break;
+    case 'profile': renderProfile(); break;
+    case 'users': renderUsers(); break;
     case 'settings': renderSettings(); break;
   }
 }
@@ -154,16 +617,19 @@ function formatNumber(num) {
 }
 
 function formatDate(dateStr) {
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
   return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function formatTime(dateStr) {
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
   return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateTime(dateStr) {
+  if (!dateStr) return '-';
   return formatDate(dateStr) + ' ' + formatTime(dateStr);
 }
 
@@ -176,57 +642,59 @@ function getRubberTypeBadge(type) {
 async function renderDashboard() {
   showLoading();
   try {
+    await loadCurrentRound();
+
+    let todayTx = [];
+    let monthTx = [];
+    let recentTx = [];
+
     const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
 
-    // Fetch today's transactions
-    const { data: todayTx } = await sb.from('transactions')
-      .select('net_weight, total_price, final_weight')
-      .gte('date', startOfDay);
+    if (currentRound) {
+      // Fetch active round transactions
+      const { data: rTx } = await sb.from('transactions')
+        .select('*')
+        .eq('round_id', currentRound.id)
+        .order('date', { ascending: false });
 
-    // Fetch this month's transactions
-    const { data: monthTx } = await sb.from('transactions')
+      todayTx = rTx || [];
+      recentTx = (rTx || []).slice(0, 10);
+    }
+
+    // Fetch this month's total payout
+    const { data: mTx } = await sb.from('transactions')
       .select('total_price')
       .gte('date', startOfMonth);
+    monthTx = mTx || [];
 
     // Fetch member count
     const { count: memberCount } = await sb.from('members')
       .select('*', { count: 'exact', head: true });
 
-    // Fetch recent 10 transactions
-    const { data: recentTx } = await sb.from('transactions')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(10);
+    const roundCount = todayTx.length;
+    const roundWeight = todayTx.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const roundAmount = todayTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
+    const monthAmount = monthTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
 
-    const todayArr = todayTx || [];
-    const monthArr = monthTx || [];
-
-    const todayCount = todayArr.length;
-    const todayWeight = todayArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-    const todayAmount = todayArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
-    const monthAmount = monthArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
-
-    document.getElementById('stat-today-count').innerHTML = `${todayCount} <span class="unit">รายการ</span>`;
-    document.getElementById('stat-today-weight').innerHTML = `${formatNumber(todayWeight)} <span class="unit">กก.</span>`;
-    document.getElementById('stat-today-amount').innerHTML = `${formatNumber(todayAmount)} <span class="unit">บาท</span>`;
+    document.getElementById('stat-round-count').innerHTML = `${roundCount} <span class="unit">รายการ</span>`;
+    document.getElementById('stat-round-weight').innerHTML = `${formatNumber(roundWeight)} <span class="unit">กก.</span>`;
+    document.getElementById('stat-round-amount').innerHTML = `${formatNumber(roundAmount)} <span class="unit">บาท</span>`;
     document.getElementById('stat-month-amount').innerHTML = `${formatNumber(monthAmount)} <span class="unit">บาท</span>`;
     document.getElementById('stat-total-members').innerHTML = `${memberCount || 0} <span class="unit">คน</span>`;
 
     // Recent transactions table
     const tbody = document.getElementById('recent-transactions');
     const emptyState = document.getElementById('recent-empty');
-    const recent = recentTx || [];
 
-    if (recent.length === 0) {
+    if (recentTx.length === 0) {
       tbody.innerHTML = '';
       emptyState.style.display = 'block';
       tbody.closest('.table-container').style.display = 'none';
     } else {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = recent.map(t => `
+      tbody.innerHTML = recentTx.map(t => `
         <tr>
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${t.member_code}</span></td>
@@ -235,6 +703,7 @@ async function renderDashboard() {
           <td>${t.trip_count || 1}</td>
           <td>${formatNumber(t.final_weight || t.net_weight)} กก.</td>
           <td style="font-weight:600; color: var(--gold);">${formatNumber(t.total_price)} ฿</td>
+          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
         </tr>
       `).join('');
     }
@@ -401,8 +870,8 @@ function closeConfirmModal() {
 }
 
 // ========== PURCHASE — MULTI-TRIP ==========
-
 async function initPurchase() {
+  await loadCurrentRound();
   clearSelectedMember();
   document.getElementById('purchase-member-search').value = '';
   document.getElementById('purchase-member-list').innerHTML = '';
@@ -423,7 +892,6 @@ function addTrip() {
   trips.push({ grossWeight: 0 });
   renderTrips();
   calculatePrice();
-  // Focus on the new input
   setTimeout(() => {
     const inputs = document.querySelectorAll('.trip-gross-input');
     if (inputs.length > 0) inputs[inputs.length - 1].focus();
@@ -431,7 +899,7 @@ function addTrip() {
 }
 
 function removeTrip(index) {
-  if (trips.length <= 1) return; // keep at least 1
+  if (trips.length <= 1) return;
   trips.splice(index, 1);
   renderTrips();
   calculatePrice();
@@ -530,7 +998,6 @@ function calculatePrice() {
     trip.netWeight = net;
     totalNet += net;
 
-    // Update individual trip net display
     const netEl = document.getElementById(`trip-net-${i}`);
     if (netEl) netEl.textContent = `สุทธิ: ${formatNumber(net)} กก.`;
 
@@ -548,7 +1015,6 @@ function calculatePrice() {
   const finalWeight = totalNet - deductionAmount;
   const totalPrice = finalWeight * pricePerKg;
 
-  // Render calculation details
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
   document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
   document.getElementById('calc-deduction-pct').textContent = deductionPercent;
@@ -557,7 +1023,6 @@ function calculatePrice() {
   document.getElementById('calc-price-per-kg').textContent = `${formatNumber(pricePerKg)} บาท`;
   document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
 
-  // Show/hide deduction row
   const deductRow = document.getElementById('calc-deduction-row');
   if (deductRow) deductRow.style.display = deductionPercent > 0 ? 'flex' : 'none';
 }
@@ -570,12 +1035,10 @@ async function saveTransaction() {
   const rubberType = document.getElementById('rubber-type').value;
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
-  // Validate at least one trip has weight
   const hasWeight = trips.some(t => t.grossWeight > 0);
   if (!hasWeight) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
   if (pricePerKg <= 0) { showToast('กรุณากรอกราคาต่อ กก.', 'error'); return; }
 
-  // Build trip details
   const tripDetails = trips.filter(t => t.grossWeight > 0).map((t, i) => ({
     trip: i + 1,
     gross_weight: t.grossWeight,
@@ -606,6 +1069,8 @@ async function saveTransaction() {
       total_price: totalPrice,
       trips: tripDetails,
       trip_count: tripDetails.length,
+      round_id: currentRound ? currentRound.id : null,
+      created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
       date: new Date().toISOString()
     }).select().single();
 
@@ -675,6 +1140,11 @@ function showReceipt(tx) {
       <span>💰 ยอดเงินรวม:</span>
       <span>${formatNumber(tx.total_price)} บาท</span>
     </div>
+    <div style="border-top:1px dashed #ccc;margin:8px 0;"></div>
+    <div class="receipt-row" style="font-size:0.85rem;">
+      <span>ผู้จัดทำ:</span>
+      <span><strong>${tx.created_by_name || 'ผู้ดูแลระบบ'}</strong></span>
+    </div>
     <div class="receipt-footer">
       <p>ขอบคุณที่ใช้บริการ</p>
       <p style="font-size:0.7rem;margin-top:4px;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
@@ -690,13 +1160,19 @@ function closeReceiptModal() {
 
 // ========== HISTORY ==========
 async function renderHistory() {
-  // Populate member filter dropdown
+  // Populate round filter & member filter
   try {
+    const { data: rounds } = await sb.from('purchase_rounds').select('id, title, status').order('created_at', { ascending: false });
+    const roundFilter = document.getElementById('history-round-filter');
+    const currentRoundVal = roundFilter.value;
+    roundFilter.innerHTML = '<option value="">ทุกรอบการรับซื้อ</option>' +
+      (rounds || []).map(r => `<option value="${r.id}" ${r.id === currentRoundVal ? 'selected' : ''}>${r.title} (${r.status === 'open' ? 'กำลังเปิด' : 'ปิดแล้ว'})</option>`).join('');
+
     const { data: members } = await sb.from('members').select('code, name').order('code');
     const memberFilter = document.getElementById('history-member-filter');
-    const currentVal = memberFilter.value;
-    memberFilter.innerHTML = '<option value="">ทั้งหมด</option>' +
-      (members || []).map(m => `<option value="${m.code}" ${m.code === currentVal ? 'selected' : ''}>${m.code} - ${m.name}</option>`).join('');
+    const currentMemberVal = memberFilter.value;
+    memberFilter.innerHTML = '<option value="">สมาชิกทั้งหมด</option>' +
+      (members || []).map(m => `<option value="${m.code}" ${m.code === currentMemberVal ? 'selected' : ''}>${m.code} - ${m.name}</option>`).join('');
   } catch (err) { /* ignore */ }
 
   await filterHistory();
@@ -707,10 +1183,12 @@ async function filterHistory() {
   try {
     let query = sb.from('transactions').select('*').order('date', { ascending: false });
 
+    const roundId = document.getElementById('history-round-filter').value;
     const dateFrom = document.getElementById('history-date-from').value;
     const dateTo = document.getElementById('history-date-to').value;
     const memberCode = document.getElementById('history-member-filter').value;
 
+    if (roundId) query = query.eq('round_id', roundId);
     if (dateFrom) query = query.gte('date', dateFrom + 'T00:00:00');
     if (dateTo) query = query.lte('date', dateTo + 'T23:59:59');
     if (memberCode) query = query.eq('member_code', memberCode);
@@ -720,7 +1198,6 @@ async function filterHistory() {
 
     const filtered = data || [];
 
-    // Summary
     const totalCount = filtered.length;
     const totalWeight = filtered.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
     const totalAmount = filtered.reduce((s, t) => s + Number(t.total_price || 0), 0);
@@ -729,7 +1206,6 @@ async function filterHistory() {
     document.getElementById('summary-weight').innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
     document.getElementById('summary-amount').innerHTML = `${formatNumber(totalAmount)} <span class="unit">บาท</span>`;
 
-    // Table
     const tbody = document.getElementById('history-table-body');
     const emptyState = document.getElementById('history-empty');
 
@@ -751,6 +1227,7 @@ async function filterHistory() {
           <td style="font-weight:600;color:var(--text-accent);">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
           <td>${formatNumber(t.price_per_kg)}</td>
           <td style="font-weight:600;color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
+          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
@@ -765,6 +1242,7 @@ async function filterHistory() {
 }
 
 function clearHistoryFilter() {
+  document.getElementById('history-round-filter').value = '';
   document.getElementById('history-date-from').value = '';
   document.getElementById('history-date-to').value = '';
   document.getElementById('history-member-filter').value = '';
@@ -805,6 +1283,238 @@ async function deleteTransaction(id) {
   hideLoading();
 }
 
+// ========== PROFILE MANAGEMENT ==========
+function renderProfile() {
+  if (!currentUser) return;
+  document.getElementById('profile-username').value = currentUser.username;
+  document.getElementById('profile-role').value = currentUser.role === 'admin' ? 'แอดมิน (Admin)' : 'ผู้ใช้งานทั่วไป (User)';
+  document.getElementById('profile-display-name').value = currentUser.display_name || '';
+
+  document.getElementById('profile-old-password').value = '';
+  document.getElementById('profile-new-password').value = '';
+  document.getElementById('profile-confirm-password').value = '';
+}
+
+async function saveProfileName() {
+  const newName = document.getElementById('profile-display-name').value.trim();
+  if (!newName) {
+    showToast('กรุณากรอกชื่อที่แสดง', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const { error } = await sb.from('app_users').update({
+      display_name: newName
+    }).eq('id', currentUser.id);
+
+    if (error) throw error;
+
+    currentUser.display_name = newName;
+    sessionStorage.setItem('rb_user', JSON.stringify(currentUser));
+    updateUserSidebarUI();
+
+    showToast('อัปเดตชื่อที่แสดงสำเร็จ!');
+  } catch (err) {
+    showToast('ไม่สามารถอัปเดตโปรไฟล์ได้: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function changeMyPassword() {
+  const oldPass = document.getElementById('profile-old-password').value;
+  const newPass = document.getElementById('profile-new-password').value;
+  const confirmPass = document.getElementById('profile-confirm-password').value;
+
+  if (!oldPass || !newPass || !confirmPass) {
+    showToast('กรุณากรอกข้อมูลรหัสผ่านให้ครบทุกช่อง', 'error');
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    showToast('รหัสผ่านใหม่กับยืนยันรหัสผ่านไม่ตรงกัน', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    // Verify old password
+    const { data: userCheck } = await sb.from('app_users')
+      .select('password')
+      .eq('id', currentUser.id)
+      .single();
+
+    if (!userCheck || userCheck.password !== oldPass) {
+      showToast('รหัสผ่านเดิมไม่ถูกต้อง', 'error');
+      hideLoading();
+      return;
+    }
+
+    // Update password
+    const { error } = await sb.from('app_users').update({
+      password: newPass
+    }).eq('id', currentUser.id);
+
+    if (error) throw error;
+
+    showToast('เปลี่ยนรหัสผ่านส่วนตัวสำเร็จ!');
+    document.getElementById('profile-old-password').value = '';
+    document.getElementById('profile-new-password').value = '';
+    document.getElementById('profile-confirm-password').value = '';
+  } catch (err) {
+    showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// ========== USER MANAGEMENT (ADMIN ONLY) ==========
+async function renderUsers() {
+  if (currentUser?.role !== 'admin') return;
+
+  showLoading();
+  try {
+    const { data: users, error } = await sb.from('app_users').select('*').order('created_at');
+    if (error) throw error;
+
+    const list = users || [];
+    const tbody = document.getElementById('users-table-body');
+    const emptyState = document.getElementById('users-empty');
+
+    if (list.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      tbody.closest('.table-container').style.display = 'none';
+    } else {
+      emptyState.style.display = 'none';
+      tbody.closest('.table-container').style.display = 'block';
+      tbody.innerHTML = list.map(u => `
+        <tr>
+          <td><strong>${u.username}</strong></td>
+          <td>${u.display_name}</td>
+          <td>
+            ${u.role === 'admin' 
+              ? '<span class="badge badge-admin">แอดมิน (Admin)</span>' 
+              : '<span class="badge badge-user">พนักงาน (User)</span>'}
+          </td>
+          <td>${formatDate(u.created_at)}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openUserModal('${u.id}')" title="แก้ไข">✏️</button>
+            ${u.id !== currentUser.id 
+              ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteUser('${u.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>` 
+              : ''}
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    showToast('โหลดรายชื่อผู้ใช้ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function openUserModal(id = null) {
+  const modal = document.getElementById('user-modal');
+  const titleEl = document.getElementById('user-modal-title');
+  const usernameInput = document.getElementById('user-username');
+  const nameInput = document.getElementById('user-display-name');
+  const passInput = document.getElementById('user-password');
+  const roleInput = document.getElementById('user-role');
+  const hiddenId = document.getElementById('user-id-hidden');
+
+  if (id) {
+    const { data: u } = await sb.from('app_users').select('*').eq('id', id).single();
+    if (!u) return;
+    titleEl.textContent = 'แก้ไขข้อมูลผู้ใช้งาน';
+    hiddenId.value = u.id;
+    usernameInput.value = u.username;
+    usernameInput.disabled = true;
+    nameInput.value = u.display_name;
+    passInput.value = u.password;
+    roleInput.value = u.role;
+  } else {
+    titleEl.textContent = 'เพิ่มผู้ใช้งานใหม่';
+    hiddenId.value = '';
+    usernameInput.value = '';
+    usernameInput.disabled = false;
+    nameInput.value = '';
+    passInput.value = '';
+    roleInput.value = 'user';
+  }
+
+  modal.classList.add('show');
+  usernameInput.focus();
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal').classList.remove('show');
+}
+
+async function saveUser() {
+  const hiddenId = document.getElementById('user-id-hidden').value;
+  const username = document.getElementById('user-username').value.trim();
+  const display_name = document.getElementById('user-display-name').value.trim();
+  const password = document.getElementById('user-password').value;
+  const role = document.getElementById('user-role').value;
+
+  if (!username) { showToast('กรุณากรอกชื่อผู้ใช้ (Username)', 'error'); return; }
+  if (!display_name) { showToast('กรุณากรอกชื่อที่แสดง', 'error'); return; }
+  if (!password) { showToast('กรุณากรอกรหัสผ่าน', 'error'); return; }
+
+  showLoading();
+  try {
+    if (hiddenId) {
+      const { error } = await sb.from('app_users').update({
+        display_name, password, role
+      }).eq('id', hiddenId);
+      if (error) throw error;
+
+      showToast('แก้ไขผู้ใช้งานสำเร็จ!');
+    } else {
+      const { error } = await sb.from('app_users').insert({
+        username, display_name, password, role
+      });
+      if (error) throw error;
+
+      showToast('เพิ่มผู้ใช้งานใหม่สำเร็จ!');
+    }
+    closeUserModal();
+    await renderUsers();
+  } catch (err) {
+    showToast('บันทึกผู้ใช้ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function confirmDeleteUser(id) {
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-message').innerHTML = `
+    <span class="confirm-icon">⚠️</span>
+    ต้องการลบบัญชีผู้ใช้งานนี้ใช่หรือไม่?
+  `;
+  document.getElementById('confirm-action-btn').onclick = () => deleteUser(id);
+  modal.classList.add('show');
+}
+
+async function deleteUser(id) {
+  if (id === currentUser.id) {
+    showToast('ไม่สามารถลบบัญชีของตัวเองได้', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const { error } = await sb.from('app_users').delete().eq('id', id);
+    if (error) throw error;
+
+    closeConfirmModal();
+    await renderUsers();
+    showToast('ลบผู้ใช้งานสำเร็จ!');
+  } catch (err) {
+    showToast('ลบผู้ใช้ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
 // ========== SETTINGS ==========
 async function renderSettings() {
   if (!cachedSettings) await loadSettings();
@@ -816,10 +1526,6 @@ async function renderSettings() {
   document.getElementById('setting-price-latex').value = s?.price_latex || '';
   document.getElementById('setting-cart-weight').value = s?.default_cart_weight || '';
   document.getElementById('setting-deduction-percent').value = s?.deduction_percent || '';
-
-  document.getElementById('setting-old-password').value = '';
-  document.getElementById('setting-new-password').value = '';
-  document.getElementById('setting-confirm-password').value = '';
 }
 
 async function saveSettings() {
@@ -832,29 +1538,13 @@ async function saveSettings() {
     deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0
   };
 
-  // Handle password change
-  const oldPass = document.getElementById('setting-old-password').value;
-  const newPass = document.getElementById('setting-new-password').value;
-  const confirmPass = document.getElementById('setting-confirm-password').value;
-
-  if (oldPass || newPass || confirmPass) {
-    if (oldPass !== cachedSettings?.admin_password) {
-      showToast('รหัสผ่านเดิมไม่ถูกต้อง', 'error');
-      return;
-    }
-    if (!newPass) { showToast('กรุณากรอกรหัสผ่านใหม่', 'error'); return; }
-    if (newPass !== confirmPass) { showToast('รหัสผ่านใหม่ไม่ตรงกัน', 'error'); return; }
-    updateData.admin_password = newPass;
-  }
-
   showLoading();
   try {
     const { error } = await sb.from('settings').update(updateData).eq('id', 1);
     if (error) throw error;
 
-    // Refresh cache
     await loadSettings();
-    showToast('บันทึกการตั้งค่าสำเร็จ!');
+    showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
     renderSettings();
   } catch (err) {
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
@@ -869,14 +1559,16 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     closeMemberModal();
+    closeUserModal();
+    closeStartRoundModal();
     closeConfirmModal();
     closeReceiptModal();
+    closeRoundReportModal();
   }
 });
 
 // ========== INITIALIZATION ==========
 async function init() {
-  // Initialize Supabase client
   try {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch (err) {
@@ -892,7 +1584,6 @@ async function init() {
   } else {
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app').classList.remove('active');
-    // Try to load settings for plantation name on login page
     try { await loadSettings(); } catch (e) { /* ignore */ }
   }
 }

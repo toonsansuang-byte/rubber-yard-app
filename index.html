@@ -73,23 +73,39 @@
         <a class="sidebar-link active" onclick="navigateTo('dashboard')" id="nav-dashboard">
           <span class="nav-icon">📊</span> แดชบอร์ด
         </a>
-        <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
-          <span class="nav-icon">👥</span> สมาชิก
-        </a>
         <a class="sidebar-link" onclick="navigateTo('purchase')" id="nav-purchase">
           <span class="nav-icon">⚖️</span> รับซื้อยาง
+        </a>
+        <a class="sidebar-link" onclick="navigateTo('rounds')" id="nav-rounds">
+          <span class="nav-icon">🔄</span> รอบการรับซื้อ
         </a>
         <a class="sidebar-link" onclick="navigateTo('history')" id="nav-history">
           <span class="nav-icon">📋</span> ประวัติธุรกรรม
         </a>
+        <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
+          <span class="nav-icon">👥</span> สมาชิก
+        </a>
 
-        <div class="nav-label" style="margin-top: 12px;">ระบบ</div>
+        <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
+        <a class="sidebar-link" onclick="navigateTo('profile')" id="nav-profile">
+          <span class="nav-icon">🔑</span> โปรไฟล์ส่วนตัว
+        </a>
+        <a class="sidebar-link" onclick="navigateTo('users')" id="nav-users" style="display: none;">
+          <span class="nav-icon">🛡️</span> จัดการผู้ใช้งาน
+        </a>
         <a class="sidebar-link" onclick="navigateTo('settings')" id="nav-settings">
-          <span class="nav-icon">⚙️</span> ตั้งค่า
+          <span class="nav-icon">⚙️</span> ตั้งค่าลานยาง
         </a>
       </div>
 
       <div class="sidebar-footer">
+        <div class="user-profile-badge mb-2">
+          <div class="user-avatar" id="sidebar-user-avatar">?</div>
+          <div class="user-info-text">
+            <div class="user-name" id="sidebar-user-name">ผู้ใช้</div>
+            <div class="user-role-badge" id="sidebar-user-role">พนักงาน</div>
+          </div>
+        </div>
         <a class="sidebar-link logout" onclick="handleLogout()" id="logout-btn">
           <span class="nav-icon">🚪</span> ออกจากระบบ
         </a>
@@ -99,28 +115,42 @@
     <!-- Main Content -->
     <main id="main-content">
 
+      <!-- Active Round Global Status Banner -->
+      <div class="active-round-banner glass-card" id="active-round-banner">
+        <div class="banner-info">
+          <span class="pulse-dot"></span>
+          <div>
+            <span class="banner-title">รอบการรับซื้อปัจจุบัน:</span>
+            <strong id="banner-round-title">กำลังตรวจสอบ...</strong>
+          </div>
+        </div>
+        <div class="banner-actions" id="banner-round-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openStartRoundModal()">▶️ เริ่มรอบใหม่</button>
+        </div>
+      </div>
+
       <!-- ===== DASHBOARD ===== -->
       <div class="section active" id="section-dashboard">
         <div class="section-header">
           <h2>📊 แดชบอร์ด</h2>
-          <p>ภาพรวมของลานยางวันนี้</p>
+          <p id="dashboard-subtitle">ภาพรวมของรอบการรับซื้อปัจจุบัน</p>
         </div>
 
         <div class="stats-grid">
           <div class="glass-card stat-card">
             <div class="stat-icon">📦</div>
-            <div class="card-title">ธุรกรรมวันนี้</div>
-            <div class="card-value" id="stat-today-count">0 <span class="unit">รายการ</span></div>
+            <div class="card-title">ธุรกรรมในรอบนี้</div>
+            <div class="card-value" id="stat-round-count">0 <span class="unit">รายการ</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">⚖️</div>
-            <div class="card-title">น้ำหนักรวมวันนี้</div>
-            <div class="card-value" id="stat-today-weight">0 <span class="unit">กก.</span></div>
+            <div class="card-title">น้ำหนักรวมในรอบนี้</div>
+            <div class="card-value" id="stat-round-weight">0 <span class="unit">กก.</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💰</div>
-            <div class="card-title">ยอดเงินวันนี้</div>
-            <div class="card-value" id="stat-today-amount">0 <span class="unit">บาท</span></div>
+            <div class="card-title">ยอดเงินรวมในรอบนี้</div>
+            <div class="card-value" id="stat-round-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">📅</div>
@@ -135,7 +165,7 @@
         </div>
 
         <div class="glass-card">
-          <h3 style="margin-bottom: 16px; font-size: 1rem;">📋 ธุรกรรมล่าสุด</h3>
+          <h3 style="margin-bottom: 16px; font-size: 1rem;">📋 ธุรกรรมล่าสุดในรอบนี้</h3>
           <div class="table-container">
             <table class="data-table">
               <thead>
@@ -147,6 +177,7 @@
                   <th>เที่ยว</th>
                   <th>สุทธิรวม</th>
                   <th>ยอดเงิน</th>
+                  <th>ผู้บันทึก</th>
                 </tr>
               </thead>
               <tbody id="recent-transactions"></tbody>
@@ -154,7 +185,7 @@
           </div>
           <div class="empty-state" id="recent-empty" style="display:none;">
             <div class="empty-icon">📭</div>
-            <p>ยังไม่มีธุรกรรมวันนี้</p>
+            <p>ยังไม่มีธุรกรรมในรอบปัจจุบัน</p>
           </div>
         </div>
       </div>
@@ -202,7 +233,7 @@
       <div class="section" id="section-purchase">
         <div class="section-header">
           <h2>⚖️ รับซื้อยาง</h2>
-          <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรม</p>
+          <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรมลงในรอบการรับซื้อปัจจุบัน</p>
         </div>
 
         <div class="purchase-grid">
@@ -297,14 +328,64 @@
         </div>
       </div>
 
+      <!-- ===== ROUTINE / PURCHASE ROUNDS ===== -->
+      <div class="section" id="section-rounds">
+        <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <h2>🔄 รอบการรับซื้อยาง</h2>
+            <p>จัดการรอบรับซื้อ ปิดรอบการรับซื้อ และพิมพ์เอกสารสรุปรอบย้อนหลัง</p>
+          </div>
+          <button class="btn btn-primary" onclick="openStartRoundModal()">
+            ▶️ เริ่มรอบใหม่
+          </button>
+        </div>
+
+        <div class="glass-card" style="margin-bottom: 24px;">
+          <h3 style="margin-bottom: 16px; font-size: 1rem; color: var(--gold);">⚡ รอบที่กำลังเปิดใช้งานอยู่ (Active Round)</h3>
+          <div id="active-round-detail">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <h3 style="margin-bottom: 16px; font-size: 1rem;">📜 ประวัติรอบการรับซื้อทั้งหมด</h3>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ชื่อรอบ</th>
+                  <th>สถานะ</th>
+                  <th>วันที่เริ่ม</th>
+                  <th>วันที่ปิดรอบ</th>
+                  <th>ผู้ปิดรอบ</th>
+                  <th>สถิติสรุป</th>
+                  <th>เอกสารสรุป</th>
+                </tr>
+              </thead>
+              <tbody id="rounds-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="rounds-empty" style="display:none;">
+            <div class="empty-icon">📂</div>
+            <p>ยังไม่มีประวัติรอบการรับซื้อ กดปุ่ม "เริ่มรอบใหม่" เพื่อเริ่มต้น</p>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== HISTORY ===== -->
       <div class="section" id="section-history">
         <div class="section-header">
           <h2>📋 ประวัติธุรกรรม</h2>
-          <p>ดูรายการธุรกรรมทั้งหมดและกรองข้อมูล</p>
+          <p>ดูรายการธุรกรรมทั้งหมดและกรองข้อมูลตามรอบหรือวันที่</p>
         </div>
 
         <div class="filter-bar">
+          <div class="form-group" style="min-width: 200px;">
+            <label class="form-label">เลือกรอบการรับซื้อ</label>
+            <select id="history-round-filter" class="form-input" onchange="filterHistory()">
+              <option value="">ทุกรอบการรับซื้อ</option>
+            </select>
+          </div>
           <div class="form-group">
             <label class="form-label">วันที่เริ่ม</label>
             <input type="date" id="history-date-from" class="form-input" onchange="filterHistory()">
@@ -316,7 +397,7 @@
           <div class="form-group" style="min-width: 180px;">
             <label class="form-label">สมาชิก</label>
             <select id="history-member-filter" class="form-input" onchange="filterHistory()">
-              <option value="">ทั้งหมด</option>
+              <option value="">สมาชิกทั้งหมด</option>
             </select>
           </div>
           <button class="btn btn-secondary" onclick="clearHistoryFilter()" style="align-self: flex-end;">
@@ -346,13 +427,14 @@
                 <tr>
                   <th>วันที่</th>
                   <th>รหัส</th>
-                  <th>ชื่อ</th>
+                  <th>ชื่อสมาชิก</th>
                   <th>ประเภท</th>
                   <th>เที่ยว</th>
                   <th>สุทธิรวม</th>
                   <th>หลังหัก%</th>
                   <th>ราคา/กก.</th>
                   <th>ยอดเงิน</th>
+                  <th>ผู้บันทึก</th>
                   <th>จัดการ</th>
                 </tr>
               </thead>
@@ -366,11 +448,97 @@
         </div>
       </div>
 
+      <!-- ===== PROFILE ===== -->
+      <div class="section" id="section-profile">
+        <div class="section-header">
+          <h2>🔑 โปรไฟล์ส่วนตัว</h2>
+          <p>จัดการข้อมูลส่วนตัวและเปลี่ยนรหัสผ่านของคุณ</p>
+        </div>
+
+        <div class="settings-grid">
+          <!-- Profile Display Name -->
+          <div class="glass-card">
+            <div class="settings-section-title">👤 ข้อมูลผู้ใช้</div>
+            <div class="form-group">
+              <label class="form-label">ชื่อผู้ใช้ (Username)</label>
+              <input type="text" id="profile-username" class="form-input" disabled style="opacity: 0.7;">
+            </div>
+            <div class="form-group">
+              <label class="form-label">สถานะ / สิทธิ์</label>
+              <input type="text" id="profile-role" class="form-input" disabled style="opacity: 0.7;">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="profile-display-name">ชื่อที่แสดง (Display Name)</label>
+              <input type="text" id="profile-display-name" class="form-input" placeholder="กรอกชื่อที่แสดงบนใบเสร็จ/ระบบ">
+              <small style="color: var(--text-muted); display: block; margin-top: 4px;">ชื่อนี้จะปรากฏเป็น "ผู้จัดทำ" ในใบเสร็จรับเงินเมื่อคุณบันทึกธุรกรรม</small>
+            </div>
+            <button class="btn btn-primary" onclick="saveProfileName()" style="margin-top: 8px;">
+              💾 บันทึกชื่อที่แสดง
+            </button>
+          </div>
+
+          <!-- Password Change -->
+          <div class="glass-card">
+            <div class="settings-section-title">🔐 เปลี่ยนรหัสผ่านส่วนตัว</div>
+            <div class="form-group">
+              <label class="form-label" for="profile-old-password">รหัสผ่านเดิม</label>
+              <input type="password" id="profile-old-password" class="form-input" placeholder="กรอกรหัสผ่านเดิม">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="profile-new-password">รหัสผ่านใหม่</label>
+              <input type="password" id="profile-new-password" class="form-input" placeholder="กรอกรหัสผ่านใหม่">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="profile-confirm-password">ยืนยันรหัสผ่านใหม่</label>
+              <input type="password" id="profile-confirm-password" class="form-input" placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
+            </div>
+            <button class="btn btn-gold" onclick="changeMyPassword()" style="margin-top: 8px;">
+              🔑 เปลี่ยนรหัสผ่าน
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== USER MANAGEMENT (ADMIN ONLY) ===== -->
+      <div class="section" id="section-users">
+        <div class="section-header">
+          <h2>🛡️ จัดการผู้ใช้งานระบบ</h2>
+          <p>เพิ่ม แก้ไข กำหนดรหัสผ่าน และสิทธิ์การใช้งานของแอดมินและพนักงาน (เฉพาะแอดมินเท่านั้น)</p>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary" onclick="openUserModal()">
+            ➕ เพิ่มผู้ใช้งานใหม่
+          </button>
+        </div>
+
+        <div class="glass-card">
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ชื่อผู้ใช้</th>
+                  <th>ชื่อที่แสดง</th>
+                  <th>สิทธิ์</th>
+                  <th>วันที่สร้าง</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="users-empty" style="display:none;">
+            <div class="empty-icon">🛡️</div>
+            <p>ไม่พบข้อมูลผู้ใช้งาน</p>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== SETTINGS ===== -->
       <div class="section" id="section-settings">
         <div class="section-header">
-          <h2>⚙️ ตั้งค่า</h2>
-          <p>ตั้งค่าราคายาง ข้อมูลลานยาง และรหัสผ่าน</p>
+          <h2>⚙️ ตั้งค่าลานยาง</h2>
+          <p>ตั้งค่าราคายาง ข้อมูลลานยาง และน้ำหนักรถเข็นเริ่มต้น</p>
         </div>
 
         <div class="settings-grid">
@@ -417,23 +585,6 @@
             </div>
           </div>
 
-          <!-- Password -->
-          <div class="glass-card">
-            <div class="settings-section-title">🔐 เปลี่ยนรหัสผ่าน</div>
-            <div class="form-group">
-              <label class="form-label" for="setting-old-password">รหัสผ่านเดิม</label>
-              <input type="password" id="setting-old-password" class="form-input" placeholder="กรอกรหัสผ่านเดิม">
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="setting-new-password">รหัสผ่านใหม่</label>
-              <input type="password" id="setting-new-password" class="form-input" placeholder="กรอกรหัสผ่านใหม่">
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="setting-confirm-password">ยืนยันรหัสผ่านใหม่</label>
-              <input type="password" id="setting-confirm-password" class="form-input" placeholder="กรอกรหัสผ่านใหม่อีกครั้ง">
-            </div>
-          </div>
-
           <button class="btn btn-primary" onclick="saveSettings()" style="justify-self: start; padding: 14px 40px;">
             💾 บันทึกการตั้งค่า
           </button>
@@ -441,6 +592,65 @@
       </div>
 
     </main>
+  </div>
+
+  <!-- ===== USER MODAL (ADMIN ONLY) ===== -->
+  <div class="modal-overlay" id="user-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="user-modal-title">เพิ่มผู้ใช้งานใหม่</h3>
+        <button class="modal-close" onclick="closeUserModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="user-id-hidden">
+        <div class="form-group">
+          <label class="form-label" for="user-username">ชื่อผู้ใช้ (Username สำหรับล็อกอิน)</label>
+          <input type="text" id="user-username" class="form-input" placeholder="เช่น staff01, admin2">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="user-display-name">ชื่อที่แสดง (Display Name)</label>
+          <input type="text" id="user-display-name" class="form-input" placeholder="เช่น นายสมชาย ใจดี">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="user-password">รหัสผ่านเริ่มต้น</label>
+          <input type="password" id="user-password" class="form-input" placeholder="กรอกรหัสผ่าน">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="user-role">ระดับสิทธิ์ (Role)</label>
+          <select id="user-role" class="form-input">
+            <option value="user">ผู้ใช้งานทั่วไป (พนักงาน)</option>
+            <option value="admin">แอดมิน (Admin - จัดการผู้ใช้ได้)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeUserModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveUser()">💾 บันทึกผู้ใช้</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== START NEW ROUND MODAL ===== -->
+  <div class="modal-overlay" id="start-round-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>▶️ เริ่มรอบการรับซื้อใหม่</h3>
+        <button class="modal-close" onclick="closeStartRoundModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 16px;">
+          การเริ่มรอบใหม่จะจัดกลุ่มธุรกรรมรับซื้อยางหลังจากนี้ไว้ในรอบเดียวกันโดยอัตโนมัติ
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="round-title-input">ชื่อรอบการรับซื้อ</label>
+          <input type="text" id="round-title-input" class="form-input" placeholder="เช่น รอบ 1 - ก.ค. 2569">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeStartRoundModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveStartNewRound()">▶️ เริ่มรอบใหม่</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===== MEMBER MODAL ===== -->
@@ -509,6 +719,25 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeReceiptModal()">ปิด</button>
         <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ROUND SUMMARY REPORT MODAL ===== -->
+  <div class="modal-overlay" id="round-report-modal">
+    <div class="modal-content" style="max-width: 750px;">
+      <div class="modal-header">
+        <h3>📊 เอกสารสรุปรอบการรับซื้อ</h3>
+        <button class="modal-close" onclick="closeRoundReportModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="round-report-printable" id="round-report-content">
+          <!-- Rendered dynamically for printing/previewing -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
+        <button class="btn btn-primary" onclick="printRoundReport()">🖨️ พิมพ์ / ดาวน์โหลดเอกสาร</button>
       </div>
     </div>
   </div>
