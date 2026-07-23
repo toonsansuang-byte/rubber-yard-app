@@ -201,6 +201,9 @@
           <div class="search-box">
             <input type="text" id="member-search" placeholder="ค้นหาจากรหัสหรือชื่อ..." oninput="searchMembers(this.value)">
           </div>
+          <button class="btn btn-secondary" onclick="openImportMemberModal()" id="btn-import-members">
+            📥 นำเข้าจากไฟล์ (Excel/CSV)
+          </button>
           <button class="btn btn-primary" onclick="openMemberModal()">
             ➕ เพิ่มสมาชิก
           </button>
@@ -742,6 +745,67 @@
     </div>
   </div>
 
+  <!-- ===== IMPORT MEMBER MODAL ===== -->
+  <div class="modal-overlay" id="import-member-modal">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3>📥 นำเข้าข้อมูลสมาชิกจากไฟล์ (Excel / CSV)</h3>
+        <button class="modal-close" onclick="closeImportMemberModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="file-dropzone mb-3" id="file-dropzone" onclick="document.getElementById('member-file-input').click()">
+          <div class="dropzone-icon">📄</div>
+          <h4>คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่</h4>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">รองรับไฟล์ .xlsx, .xls และ .csv</p>
+          <input type="file" id="member-file-input" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleMemberFileSelect(event)">
+        </div>
+
+        <div style="background: rgba(16, 185, 129, 0.05); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.85rem; margin-bottom: 16px;">
+          <strong>ℹ️ คอลัมน์ที่รองรับในไฟล์:</strong>
+          <span style="color: var(--text-secondary); display: block; margin-top: 4px;">
+            1. <strong>รหัสสมาชิก</strong> (เช่น ก00001, ก00024 จะถูกแปลงเป็น 001, 024 อัตโนมัติ)<br>
+            2. <strong>ชื่อ-นามสกุล</strong> (จำเป็นต้องมี)<br>
+            3. <strong>เลขที่บัญชี</strong> (ไม่บังคับ)
+          </span>
+        </div>
+
+        <div id="import-preview-section" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="font-size: 0.95rem; font-weight: 600;">🔍 ตัวอย่างข้อมูลที่จะนำเข้า (<span id="import-count-total">0</span> รายการ)</h4>
+            <div style="display: flex; gap: 8px; font-size: 0.8rem;">
+              <span class="badge badge-green" id="import-badge-valid">🟢 พร้อมนำเข้า: 0</span>
+              <span class="badge badge-danger" id="import-badge-invalid">🔴 มีปัญหา: 0</span>
+            </div>
+          </div>
+
+          <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>สถานะ</th>
+                  <th>รหัสเดิมในไฟล์</th>
+                  <th>รหัสหลังแปลง (3 หลัก)</th>
+                  <th>ชื่อ-นามสกุล</th>
+                  <th>เลขที่บัญชี</th>
+                  <th>หมายเหตุ</th>
+                </tr>
+              </thead>
+              <tbody id="import-preview-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportMemberModal()">ยกเลิก</button>
+        <button class="btn btn-primary" id="confirm-import-btn" disabled onclick="confirmImportMembers()">
+          💾 ยืนยันนำเข้าข้อมูล
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS (XLSX) Client for Excel/CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>

@@ -73,36 +73,47 @@ async function handleLogin() {
 
   showLoading();
   try {
-    // 1. Query app_users table first
-    const { data: user, error } = await sb.from('app_users')
-      .select('*')
-      .eq('username', username)
-      .eq('password', password)
-      .maybeSingle();
+    let loggedUser = null;
 
-    if (error && error.code !== 'PGRST116') throw error;
+    // 1. Try Query app_users table first
+    try {
+      const { data: user, error } = await sb.from('app_users')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .maybeSingle();
 
-    let loggedUser = user;
+      if (!error && user) {
+        loggedUser = user;
+      }
+    } catch (e) {
+      console.warn('app_users table check skipped or not created yet:', e);
+    }
 
-    // 2. Fallback: Check legacy settings admin credentials if app_users is empty
+    // 2. Fallback: Check settings table if app_users query didn't find user or table missing
     if (!loggedUser) {
       const { data: setArr } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1);
       const setData = setArr && setArr[0];
       if (setData && username === setData.admin_username && password === setData.admin_password) {
-        // Try to insert admin into app_users
-        const { data: newUser } = await sb.from('app_users').insert({
-          username: setData.admin_username,
-          password: setData.admin_password,
-          display_name: 'ผู้ดูแลระบบ',
-          role: 'admin'
-        }).select().maybeSingle();
+        // Try to insert admin into app_users if table exists
+        try {
+          const { data: newUser } = await sb.from('app_users').insert({
+            username: setData.admin_username,
+            password: setData.admin_password,
+            display_name: 'ผู้ดูแลระบบ',
+            role: 'admin'
+          }).select().maybeSingle();
+          if (newUser) loggedUser = newUser;
+        } catch { /* ignore */ }
 
-        loggedUser = newUser || {
-          id: 'admin-fallback',
-          username: setData.admin_username,
-          display_name: 'ผู้ดูแลระบบ',
-          role: 'admin'
-        };
+        if (!loggedUser) {
+          loggedUser = {
+            id: 'admin-fallback',
+            username: setData.admin_username,
+            display_name: 'ผู้ดูแลระบบ',
+            role: 'admin'
+          };
+        }
       }
     }
 
@@ -1552,6 +1563,194 @@ async function saveSettings() {
   hideLoading();
 }
 
+// ========== MEMBER IMPORT (EXCEL / CSV) ==========
+let parsedImportData = [];
+
+function transformMemberCode(raw) {
+  if (raw === undefined || raw === null) return '';
+  let str = String(raw).trim();
+  if (!str) return '';
+
+  const match = str.match(/(\d+)\s*$/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num)) {
+      return String(num).padStart(3, '0');
+    }
+  }
+  return str.padStart(3, '0');
+}
+
+function openImportMemberModal() {
+  if (currentUser?.role !== 'admin') {
+    showToast('เฉพาะแอดมินเท่านั้นที่สามารถนำเข้าสมาชิกได้', 'error');
+    return;
+  }
+
+  parsedImportData = [];
+  document.getElementById('member-file-input').value = '';
+  document.getElementById('import-preview-section').style.display = 'none';
+  document.getElementById('confirm-import-btn').disabled = true;
+
+  document.getElementById('import-member-modal').classList.add('show');
+}
+
+function closeImportMemberModal() {
+  document.getElementById('import-member-modal').classList.remove('show');
+}
+
+async function handleMemberFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  showLoading();
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+
+    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+    if (!rawRows || rawRows.length === 0) {
+      showToast('ไฟล์ไม่มีข้อมูล หรือรูปแบบไม่ถูกต้อง', 'error');
+      hideLoading();
+      return;
+    }
+
+    // Fetch existing member codes from Supabase
+    const { data: existingMembers } = await sb.from('members').select('code');
+    const existingCodes = new Set((existingMembers || []).map(m => m.code));
+    const codesInFile = new Set();
+
+    parsedImportData = [];
+
+    rawRows.forEach((row, idx) => {
+      // Find columns dynamically
+      const rawCode = String(
+        row['รหัสสมาชิก'] || row['รหัส'] || row['code'] || row['member_code'] || row['Code'] || row['CODE'] || ''
+      ).trim();
+
+      const name = String(
+        row['ชื่อ-นามสกุล'] || row['ชื่อนามสกุล'] || row['ชื่อ'] || row['name'] || row['full_name'] || row['Name'] || ''
+      ).trim();
+
+      const phone = String(
+        row['เบอร์โทร'] || row['เบอร์โทรศัพท์'] || row['phone'] || row['Tel'] || ''
+      ).trim();
+
+      const accountNo = String(
+        row['เลขที่บัญชี'] || row['เลขบัญชี'] || row['account'] || row['account_no'] || row['Account'] || ''
+      ).trim();
+
+      const transformedCode = transformMemberCode(rawCode);
+
+      let isValid = true;
+      let errorReason = '';
+
+      if (!transformedCode) {
+        isValid = false;
+        errorReason = 'ไม่มีรหัสสมาชิก';
+      } else if (!name) {
+        isValid = false;
+        errorReason = 'ไม่มีชื่อ-นามสกุล';
+      } else if (existingCodes.has(transformedCode)) {
+        isValid = false;
+        errorReason = `รหัส ${transformedCode} ซ้ำกับในระบบ`;
+      } else if (codesInFile.has(transformedCode)) {
+        isValid = false;
+        errorReason = `รหัส ${transformedCode} ซ้ำในไฟล์`;
+      } else {
+        codesInFile.add(transformedCode);
+      }
+
+      parsedImportData.push({
+        rowNum: idx + 1,
+        rawCode,
+        transformedCode,
+        name,
+        phone,
+        accountNo,
+        isValid,
+        errorReason
+      });
+    });
+
+    renderImportPreview();
+  } catch (err) {
+    showToast('อ่านไฟล์ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function renderImportPreview() {
+  const container = document.getElementById('import-preview-section');
+  const tbody = document.getElementById('import-preview-table-body');
+  const countTotalEl = document.getElementById('import-count-total');
+  const badgeValidEl = document.getElementById('import-badge-valid');
+  const badgeInvalidEl = document.getElementById('import-badge-invalid');
+  const confirmBtn = document.getElementById('confirm-import-btn');
+
+  const validRows = parsedImportData.filter(r => r.isValid);
+  const invalidRows = parsedImportData.filter(r => !r.isValid);
+
+  countTotalEl.textContent = parsedImportData.length;
+  badgeValidEl.textContent = `🟢 พร้อมนำเข้า: ${validRows.length}`;
+  badgeInvalidEl.textContent = `🔴 มีปัญหา: ${invalidRows.length}`;
+
+  confirmBtn.disabled = validRows.length === 0;
+  confirmBtn.innerHTML = `💾 ยืนยันนำเข้าข้อมูล (${validRows.length} รายการ)`;
+
+  tbody.innerHTML = parsedImportData.map(r => `
+    <tr>
+      <td>
+        ${r.isValid 
+          ? '<span class="badge badge-green">🟢 พร้อม</span>' 
+          : '<span class="badge badge-danger">🔴 มีปัญหา</span>'}
+      </td>
+      <td>${r.rawCode || '-'}</td>
+      <td><strong>${r.transformedCode || '-'}</strong></td>
+      <td>${r.name || '<span style="color:var(--danger);">[ไม่มีชื่อ]</span>'}</td>
+      <td>${r.accountNo || '-'}</td>
+      <td>${r.isValid ? '<span style="color:var(--success);">ผ่าน</span>' : `<span style="color:var(--danger);">${r.errorReason}</span>`}</td>
+    </tr>
+  `).join('');
+
+  container.style.display = 'block';
+}
+
+async function confirmImportMembers() {
+  const validRows = parsedImportData.filter(r => r.isValid);
+  if (validRows.length === 0) {
+    showToast('ไม่มีรายการที่พร้อมนำเข้า', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const insertPayload = validRows.map(r => ({
+      code: r.transformedCode,
+      name: r.name,
+      phone: r.phone || '',
+      account_no: r.accountNo || '',
+      created_at: new Date().toISOString()
+    }));
+
+    const { data, error } = await sb.from('members').insert(insertPayload).select();
+    if (error) throw error;
+
+    const successCount = data ? data.length : validRows.length;
+    const failCount = parsedImportData.length - successCount;
+
+    showToast(`นำเข้าสำเร็จ ${successCount} รายการ! ${failCount > 0 ? `(ล้มเหลว/ข้าม ${failCount} รายการ)` : ''}`);
+    closeImportMemberModal();
+    await renderMembers();
+  } catch (err) {
+    showToast('นำเข้าไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
 // ========== KEYBOARD SHORTCUTS ==========
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && document.getElementById('login-page').style.display !== 'none') {
@@ -1559,6 +1758,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     closeMemberModal();
+    closeImportMemberModal();
     closeUserModal();
     closeStartRoundModal();
     closeConfirmModal();

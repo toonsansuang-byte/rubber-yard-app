@@ -1229,6 +1229,40 @@ select.form-input option {
   text-align: right;
 }
 
+/* ===== FILE DROPZONE ===== */
+.file-dropzone {
+  border: 2px dashed var(--border-hover);
+  border-radius: var(--radius-lg);
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.file-dropzone:hover, .file-dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  transform: translateY(-2px);
+}
+
+.dropzone-icon {
+  font-size: 2.5rem;
+  margin-bottom: 8px;
+}
+
+.badge-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
 /* ===== USER PROFILE BADGE IN SIDEBAR ===== */
 .user-profile-badge {
   display: flex;
