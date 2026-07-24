@@ -1067,31 +1067,31 @@ function renderTrips() {
   const cartWeight = parseFloat(document.getElementById('cart-weight')?.value) || 0;
 
   container.innerHTML = trips.map((trip, i) => {
-    const isWarning = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
-    const rawNet = trip.grossWeight - cartWeight;
+    const isDirectRubber = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
+    const net = isDirectRubber ? trip.grossWeight : Math.max(0, trip.grossWeight - cartWeight);
 
     return `
-      <div class="trip-item ${isWarning ? 'trip-item-warning' : ''}">
+      <div class="trip-item ${isDirectRubber ? 'trip-item-direct' : ''}">
         <div class="trip-header">
           <span class="trip-number">🚛 เที่ยวที่ ${i + 1}</span>
           ${trips.length > 1 ? `<button class="btn btn-danger btn-icon btn-sm" onclick="removeTrip(${i})" title="ลบเที่ยวนี้">✕</button>` : ''}
         </div>
         <div class="trip-inputs">
           <div style="flex:1;">
-            <input type="number" class="form-input trip-gross-input ${isWarning ? 'input-warning' : ''}" data-index="${i}"
+            <input type="number" class="form-input trip-gross-input" data-index="${i}"
                    placeholder="น้ำหนักชั่งได้ (กก.)" step="0.01" min="0"
                    value="${trip.grossWeight || ''}"
                    oninput="onTripInput(${i}, this.value)">
           </div>
-          <div class="trip-net ${isWarning ? 'warning-net' : ''}" id="trip-net-${i}">
-            ${isWarning 
-              ? `⚠️ สุทธิ: ${formatNumber(rawNet)} กก.` 
-              : `สุทธิ: ${formatNumber(Math.max(0, rawNet))} กก.`}
+          <div class="trip-net ${isDirectRubber ? 'direct-net' : ''}" id="trip-net-${i}">
+            ${isDirectRubber 
+              ? `💡 สุทธิ: ${formatNumber(net)} กก. (ชั่งเฉพาะยาง)` 
+              : `สุทธิ: ${formatNumber(net)} กก.`}
           </div>
         </div>
-        ${isWarning ? `
-          <div class="trip-warning-box">
-            ⚠️ <strong>คำเตือน:</strong> น้ำหนักที่กรอก (${formatNumber(trip.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.)
+        ${isDirectRubber ? `
+          <div class="trip-info-box" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-top: 10px;">
+            💡 <strong>ชั่งเฉพาะยาง / เศษยาง:</strong> น้ำหนักชั่ง (${formatNumber(trip.grossWeight)} กก.) น้อยกว่ารถเข็น (${formatNumber(cartWeight)} กก.) ระบบจึงคิดสุทธิ <strong>${formatNumber(net)} กก.</strong> โดยไม่หักรถเข็น
           </div>
         ` : ''}
       </div>
@@ -1101,15 +1101,7 @@ function renderTrips() {
 
 function onTripInput(index, value) {
   trips[index].grossWeight = parseFloat(value) || 0;
-  renderTrips();
   calculatePrice();
-  // Restore focus to the edited input box
-  const inputs = document.querySelectorAll('.trip-gross-input');
-  if (inputs[index]) {
-    inputs[index].focus();
-    const len = inputs[index].value.length;
-    inputs[index].setSelectionRange(len, len);
-  }
 }
 
 async function searchPurchaseMember(query) {
@@ -1184,42 +1176,39 @@ function calculatePrice() {
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
   let totalNet = 0;
-  let hasWeightWarning = false;
   const detailHtml = [];
 
   trips.forEach((trip, i) => {
-    const rawNet = trip.grossWeight - cartWeight;
-    trip.netWeight = rawNet;
-    totalNet += rawNet;
-
-    const isWarning = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
-    if (isWarning) hasWeightWarning = true;
-
     if (trip.grossWeight > 0) {
+      const isDirectRubber = trip.grossWeight <= cartWeight;
+      const net = isDirectRubber ? trip.grossWeight : Math.max(0, trip.grossWeight - cartWeight);
+      trip.netWeight = net;
+      totalNet += net;
+
+      const netEl = document.getElementById(`trip-net-${i}`);
+      if (netEl) {
+        netEl.textContent = isDirectRubber 
+          ? `💡 สุทธิ: ${formatNumber(net)} กก. (ชั่งเฉพาะยาง)` 
+          : `สุทธิ: ${formatNumber(net)} กก.`;
+      }
+
       detailHtml.push(`
-        <div class="calc-row" style="font-size:0.85rem; ${isWarning ? 'color:#f87171;font-weight:600;' : ''}">
-          <span class="label">เที่ยวที่ ${i + 1}: ${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)} ${isWarning ? '⚠️ (ชั่งน้อยกว่ารถเข็น)' : ''}</span>
-          <span class="value">${formatNumber(rawNet)} กก.</span>
+        <div class="calc-row" style="font-size:0.85rem;">
+          <span class="label">เที่ยวที่ ${i + 1}: ${isDirectRubber ? `${formatNumber(trip.grossWeight)} กก. (ชั่งเฉพาะยาง ไม่หักรถเข็น)` : `${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)}`}</span>
+          <span class="value">${formatNumber(net)} กก.</span>
         </div>
       `);
     }
   });
 
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = totalNet - deductionAmount;
+  const finalWeight = Math.max(0, totalNet - deductionAmount);
   const totalPrice = finalWeight * netPricePerKg;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
-  
-  if (hasWeightWarning || totalNet <= 0) {
-    document.getElementById('calc-total-net').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(totalNet)} กก.</span>`;
-    document.getElementById('calc-final-weight').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(finalWeight)} กก.</span>`;
-    document.getElementById('calc-total-price').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(totalPrice)} บาท</span>`;
-  } else {
-    document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
-    document.getElementById('calc-final-weight').textContent = `${formatNumber(finalWeight)} กก.`;
-    document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
-  }
+  document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
+  document.getElementById('calc-final-weight').textContent = `${formatNumber(finalWeight)} กก.`;
+  document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
 
   document.getElementById('calc-deduction-pct').textContent = deductionPercent;
   document.getElementById('calc-deduction-amount').textContent = `- ${formatNumber(deductionAmount)} กก.`;
@@ -1243,36 +1232,36 @@ async function saveTransaction(confirmedOverride = false) {
   if (activeTrips.length === 0) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
   if (auctionPrice <= 0) { showToast('กรุณากรอกราคาประมูลต่อ กก.', 'error'); return; }
 
-  // Check warnings for small weight or invalid price
+  // Check warning for auction price
   const warnings = [];
-  activeTrips.forEach((t, i) => {
-    if (t.grossWeight <= cartWeight) {
-      warnings.push(`<strong>เที่ยวที่ ${i + 1}:</strong> น้ำหนักชั่งได้ (${formatNumber(t.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.) ทำให้น้ำหนักสุทธิเป็น <strong>${formatNumber(t.grossWeight - cartWeight)} กก.</strong>`);
-    }
-  });
-
   if (auctionPrice > 0 && auctionPrice <= yardFee) {
     warnings.push(`<strong>ราคาประมูล:</strong> ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าจัดการลาน (${formatNumber(yardFee)} บาท)`);
   }
 
-  // If warnings exist and operator hasn't explicitly confirmed override yet, show warning modal!
   if (warnings.length > 0 && !confirmedOverride) {
     openWeightWarningModal(warnings, () => saveTransaction(true));
     return;
   }
 
-  const tripDetails = activeTrips.map((t, i) => ({
-    trip: i + 1,
-    gross_weight: t.grossWeight,
-    cart_weight: cartWeight,
-    net_weight: t.grossWeight - cartWeight
-  }));
+  const tripDetails = activeTrips.map((t, i) => {
+    const isDirectRubber = t.grossWeight <= cartWeight;
+    const appliedCart = isDirectRubber ? 0 : cartWeight;
+    const net = isDirectRubber ? t.grossWeight : Math.max(0, t.grossWeight - cartWeight);
+
+    return {
+      trip: i + 1,
+      gross_weight: t.grossWeight,
+      cart_weight: appliedCart,
+      net_weight: net,
+      is_direct_rubber: isDirectRubber
+    };
+  });
 
   const totalGross = tripDetails.reduce((s, t) => s + t.gross_weight, 0);
-  const totalCart = cartWeight * tripDetails.length;
+  const totalCart = tripDetails.reduce((s, t) => s + t.cart_weight, 0);
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = totalNet - deductionAmount;
+  const finalWeight = Math.max(0, totalNet - deductionAmount);
   const totalPrice = finalWeight * netPricePerKg;
 
   showLoading();
@@ -1300,7 +1289,6 @@ async function saveTransaction(confirmedOverride = false) {
 
     let { data, error } = await sb.from('transactions').insert(payload).select().single();
 
-    // Fallback if auction_price or yard_fee columns don't exist yet in Supabase schema
     if (error && error.message.includes('column')) {
       delete payload.auction_price;
       delete payload.yard_fee;
