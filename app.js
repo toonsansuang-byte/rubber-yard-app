@@ -1091,7 +1091,7 @@ function renderTrips() {
         </div>
         ${isWarning ? `
           <div class="trip-warning-box">
-            ⚠️ <strong>คำเตือน:</strong> น้ำหนักชั่ง (${formatNumber(trip.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.)
+            ⚠️ <strong>คำเตือน:</strong> น้ำหนักที่กรอก (${formatNumber(trip.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.)
           </div>
         ` : ''}
       </div>
@@ -1101,7 +1101,15 @@ function renderTrips() {
 
 function onTripInput(index, value) {
   trips[index].grossWeight = parseFloat(value) || 0;
+  renderTrips();
   calculatePrice();
+  // Restore focus to the edited input box
+  const inputs = document.querySelectorAll('.trip-gross-input');
+  if (inputs[index]) {
+    inputs[index].focus();
+    const len = inputs[index].value.length;
+    inputs[index].setSelectionRange(len, len);
+  }
 }
 
 async function searchPurchaseMember(query) {
@@ -1176,28 +1184,21 @@ function calculatePrice() {
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
   let totalNet = 0;
+  let hasWeightWarning = false;
   const detailHtml = [];
 
   trips.forEach((trip, i) => {
     const rawNet = trip.grossWeight - cartWeight;
-    const net = Math.max(0, rawNet);
-    trip.netWeight = net;
-    totalNet += net;
+    trip.netWeight = rawNet;
+    totalNet += rawNet;
 
     const isWarning = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
-    const netEl = document.getElementById(`trip-net-${i}`);
-    if (netEl) {
-      if (isWarning) {
-        netEl.innerHTML = `<span style="color:#f87171;font-weight:700;">⚠️ สุทธิ: ${formatNumber(rawNet)} กก.</span>`;
-      } else {
-        netEl.textContent = `สุทธิ: ${formatNumber(net)} กก.`;
-      }
-    }
+    if (isWarning) hasWeightWarning = true;
 
     if (trip.grossWeight > 0) {
       detailHtml.push(`
         <div class="calc-row" style="font-size:0.85rem; ${isWarning ? 'color:#f87171;font-weight:600;' : ''}">
-          <span class="label">เที่ยวที่ ${i + 1}: ${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)} ${isWarning ? '⚠️ (น้อยกว่ารถเข็น)' : ''}</span>
+          <span class="label">เที่ยวที่ ${i + 1}: ${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)} ${isWarning ? '⚠️ (ชั่งน้อยกว่ารถเข็น)' : ''}</span>
           <span class="value">${formatNumber(rawNet)} กก.</span>
         </div>
       `);
@@ -1205,16 +1206,24 @@ function calculatePrice() {
   });
 
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = Math.max(0, totalNet - deductionAmount);
+  const finalWeight = totalNet - deductionAmount;
   const totalPrice = finalWeight * netPricePerKg;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
-  document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
+  
+  if (hasWeightWarning || totalNet <= 0) {
+    document.getElementById('calc-total-net').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(totalNet)} กก.</span>`;
+    document.getElementById('calc-final-weight').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(finalWeight)} กก.</span>`;
+    document.getElementById('calc-total-price').innerHTML = `<span style="color:#f87171;">⚠️ ${formatNumber(totalPrice)} บาท</span>`;
+  } else {
+    document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
+    document.getElementById('calc-final-weight').textContent = `${formatNumber(finalWeight)} กก.`;
+    document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
+  }
+
   document.getElementById('calc-deduction-pct').textContent = deductionPercent;
   document.getElementById('calc-deduction-amount').textContent = `- ${formatNumber(deductionAmount)} กก.`;
-  document.getElementById('calc-final-weight').textContent = `${formatNumber(finalWeight)} กก.`;
   document.getElementById('calc-price-per-kg').textContent = `${formatNumber(netPricePerKg)} บาท (${formatNumber(auctionPrice)} - ${formatNumber(yardFee)})`;
-  document.getElementById('calc-total-price').textContent = `${formatNumber(totalPrice)} บาท`;
 
   const deductRow = document.getElementById('calc-deduction-row');
   if (deductRow) deductRow.style.display = deductionPercent > 0 ? 'flex' : 'none';
@@ -1256,14 +1265,14 @@ async function saveTransaction(confirmedOverride = false) {
     trip: i + 1,
     gross_weight: t.grossWeight,
     cart_weight: cartWeight,
-    net_weight: Math.max(0, t.grossWeight - cartWeight)
+    net_weight: t.grossWeight - cartWeight
   }));
 
   const totalGross = tripDetails.reduce((s, t) => s + t.gross_weight, 0);
   const totalCart = cartWeight * tripDetails.length;
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = Math.max(0, totalNet - deductionAmount);
+  const finalWeight = totalNet - deductionAmount;
   const totalPrice = finalWeight * netPricePerKg;
 
   showLoading();
