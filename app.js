@@ -1064,23 +1064,39 @@ function removeTrip(index) {
 
 function renderTrips() {
   const container = document.getElementById('trips-container');
-  container.innerHTML = trips.map((trip, i) => `
-    <div class="trip-item">
-      <div class="trip-header">
-        <span class="trip-number">🚛 เที่ยวที่ ${i + 1}</span>
-        ${trips.length > 1 ? `<button class="btn btn-danger btn-icon btn-sm" onclick="removeTrip(${i})" title="ลบเที่ยวนี้">✕</button>` : ''}
-      </div>
-      <div class="trip-inputs">
-        <div style="flex:1;">
-          <input type="number" class="form-input trip-gross-input" data-index="${i}"
-                 placeholder="น้ำหนักชั่งได้ (กก.)" step="0.01" min="0"
-                 value="${trip.grossWeight || ''}"
-                 oninput="onTripInput(${i}, this.value)">
+  const cartWeight = parseFloat(document.getElementById('cart-weight')?.value) || 0;
+
+  container.innerHTML = trips.map((trip, i) => {
+    const isWarning = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
+    const rawNet = trip.grossWeight - cartWeight;
+
+    return `
+      <div class="trip-item ${isWarning ? 'trip-item-warning' : ''}">
+        <div class="trip-header">
+          <span class="trip-number">🚛 เที่ยวที่ ${i + 1}</span>
+          ${trips.length > 1 ? `<button class="btn btn-danger btn-icon btn-sm" onclick="removeTrip(${i})" title="ลบเที่ยวนี้">✕</button>` : ''}
         </div>
-        <div class="trip-net" id="trip-net-${i}">สุทธิ: 0.00 กก.</div>
+        <div class="trip-inputs">
+          <div style="flex:1;">
+            <input type="number" class="form-input trip-gross-input ${isWarning ? 'input-warning' : ''}" data-index="${i}"
+                   placeholder="น้ำหนักชั่งได้ (กก.)" step="0.01" min="0"
+                   value="${trip.grossWeight || ''}"
+                   oninput="onTripInput(${i}, this.value)">
+          </div>
+          <div class="trip-net ${isWarning ? 'warning-net' : ''}" id="trip-net-${i}">
+            ${isWarning 
+              ? `⚠️ สุทธิ: ${formatNumber(rawNet)} กก.` 
+              : `สุทธิ: ${formatNumber(Math.max(0, rawNet))} กก.`}
+          </div>
+        </div>
+        ${isWarning ? `
+          <div class="trip-warning-box">
+            ⚠️ <strong>คำเตือน:</strong> น้ำหนักชั่ง (${formatNumber(trip.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.)
+          </div>
+        ` : ''}
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function onTripInput(index, value) {
@@ -1150,7 +1166,11 @@ function calculatePrice() {
 
   const netHint = document.getElementById('net-price-hint');
   if (netHint) {
-    netHint.innerHTML = `ราคาหลังหักค่าจัดการลาน: <strong>${formatNumber(netPricePerKg)}</strong> บาท/กก. (หักค่าจัดการ -${formatNumber(yardFee)} บาท)`;
+    if (auctionPrice > 0 && auctionPrice <= yardFee) {
+      netHint.innerHTML = `<span style="color:#f87171;font-weight:700;">⚠️ คำเตือน: ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าจัดการลาน (${formatNumber(yardFee)} บาท)!</span>`;
+    } else {
+      netHint.innerHTML = `ราคาหลังหักค่าจัดการลาน: <strong>${formatNumber(netPricePerKg)}</strong> บาท/กก. (หักค่าจัดการ -${formatNumber(yardFee)} บาท)`;
+    }
   }
 
   const deductionPercent = cachedSettings?.deduction_percent || 0;
@@ -1159,25 +1179,33 @@ function calculatePrice() {
   const detailHtml = [];
 
   trips.forEach((trip, i) => {
-    const net = Math.max(0, trip.grossWeight - cartWeight);
+    const rawNet = trip.grossWeight - cartWeight;
+    const net = Math.max(0, rawNet);
     trip.netWeight = net;
     totalNet += net;
 
+    const isWarning = trip.grossWeight > 0 && trip.grossWeight <= cartWeight;
     const netEl = document.getElementById(`trip-net-${i}`);
-    if (netEl) netEl.textContent = `สุทธิ: ${formatNumber(net)} กก.`;
+    if (netEl) {
+      if (isWarning) {
+        netEl.innerHTML = `<span style="color:#f87171;font-weight:700;">⚠️ สุทธิ: ${formatNumber(rawNet)} กก.</span>`;
+      } else {
+        netEl.textContent = `สุทธิ: ${formatNumber(net)} กก.`;
+      }
+    }
 
     if (trip.grossWeight > 0) {
       detailHtml.push(`
-        <div class="calc-row" style="font-size:0.85rem;">
-          <span class="label">เที่ยวที่ ${i + 1}: ${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)}</span>
-          <span class="value">${formatNumber(net)} กก.</span>
+        <div class="calc-row" style="font-size:0.85rem; ${isWarning ? 'color:#f87171;font-weight:600;' : ''}">
+          <span class="label">เที่ยวที่ ${i + 1}: ${formatNumber(trip.grossWeight)} - ${formatNumber(cartWeight)} ${isWarning ? '⚠️ (น้อยกว่ารถเข็น)' : ''}</span>
+          <span class="value">${formatNumber(rawNet)} กก.</span>
         </div>
       `);
     }
   });
 
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = totalNet - deductionAmount;
+  const finalWeight = Math.max(0, totalNet - deductionAmount);
   const totalPrice = finalWeight * netPricePerKg;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
@@ -1192,7 +1220,7 @@ function calculatePrice() {
   if (deductRow) deductRow.style.display = deductionPercent > 0 ? 'flex' : 'none';
 }
 
-async function saveTransaction() {
+async function saveTransaction(confirmedOverride = false) {
   if (!selectedMember) { showToast('กรุณาเลือกสมาชิก', 'error'); return; }
 
   const cartWeight = parseFloat(document.getElementById('cart-weight').value) || 0;
@@ -1202,11 +1230,29 @@ async function saveTransaction() {
   const rubberType = document.getElementById('rubber-type').value;
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
-  const hasWeight = trips.some(t => t.grossWeight > 0);
-  if (!hasWeight) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
+  const activeTrips = trips.filter(t => t.grossWeight > 0);
+  if (activeTrips.length === 0) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
   if (auctionPrice <= 0) { showToast('กรุณากรอกราคาประมูลต่อ กก.', 'error'); return; }
 
-  const tripDetails = trips.filter(t => t.grossWeight > 0).map((t, i) => ({
+  // Check warnings for small weight or invalid price
+  const warnings = [];
+  activeTrips.forEach((t, i) => {
+    if (t.grossWeight <= cartWeight) {
+      warnings.push(`<strong>เที่ยวที่ ${i + 1}:</strong> น้ำหนักชั่งได้ (${formatNumber(t.grossWeight)} กก.) น้อยกว่าหรือเท่ากับน้ำหนักรถเข็น (${formatNumber(cartWeight)} กก.) ทำให้น้ำหนักสุทธิเป็น <strong>${formatNumber(t.grossWeight - cartWeight)} กก.</strong>`);
+    }
+  });
+
+  if (auctionPrice > 0 && auctionPrice <= yardFee) {
+    warnings.push(`<strong>ราคาประมูล:</strong> ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าจัดการลาน (${formatNumber(yardFee)} บาท)`);
+  }
+
+  // If warnings exist and operator hasn't explicitly confirmed override yet, show warning modal!
+  if (warnings.length > 0 && !confirmedOverride) {
+    openWeightWarningModal(warnings, () => saveTransaction(true));
+    return;
+  }
+
+  const tripDetails = activeTrips.map((t, i) => ({
     trip: i + 1,
     gross_weight: t.grossWeight,
     cart_weight: cartWeight,
@@ -1217,7 +1263,7 @@ async function saveTransaction() {
   const totalCart = cartWeight * tripDetails.length;
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
   const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = totalNet - deductionAmount;
+  const finalWeight = Math.max(0, totalNet - deductionAmount);
   const totalPrice = finalWeight * netPricePerKg;
 
   showLoading();
@@ -1268,6 +1314,30 @@ async function saveTransaction() {
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
+}
+
+function openWeightWarningModal(warnings, onConfirm) {
+  const modal = document.getElementById('weight-warning-modal');
+  const listEl = document.getElementById('weight-warning-list');
+  const confirmBtn = document.getElementById('weight-warning-confirm-btn');
+
+  if (listEl) {
+    listEl.innerHTML = warnings.map(w => `<div style="margin-bottom:8px;">⚠️ ${w}</div>`).join('');
+  }
+
+  if (confirmBtn) {
+    confirmBtn.onclick = () => {
+      closeWeightWarningModal();
+      onConfirm();
+    };
+  }
+
+  if (modal) modal.classList.add('show');
+}
+
+function closeWeightWarningModal() {
+  const modal = document.getElementById('weight-warning-modal');
+  if (modal) modal.classList.remove('show');
 }
 
 // ========== RECEIPT (100% IDENTICAL DUAL COPIES ON SINGLE PAGE) ==========
