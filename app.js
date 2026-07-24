@@ -615,17 +615,22 @@ function confirmDeleteRound(roundId) {
 }
 
 async function deleteRound(roundId) {
+  if (!roundId) return;
   showLoading();
   try {
     // 1. Delete all transactions belonging to this round
     await sb.from('transactions').delete().eq('round_id', roundId);
 
     // 2. Delete the round record itself
-    const { error } = await sb.from('purchase_rounds').delete().eq('id', roundId);
+    const { data, error } = await sb.from('purchase_rounds').delete().eq('id', roundId).select();
     if (error) throw error;
 
+    if (!data || data.length === 0) {
+      throw new Error('ไม่สามารถลบรอบได้ ข้อมูลไม่ถูกลบออกจากฐานข้อมูล (กรุณาเช็ค RLS Policy)');
+    }
+
     closeConfirmModal();
-    showToast('ลบรอบการรับซื้อและรายการทั้งหมดในรอบเรียบร้อยแล้ว!');
+    showToast('ลบรอบส่งมอบยางและรายการทั้งหมดในรอบเรียบร้อยแล้ว!');
 
     if (currentRound && currentRound.id === roundId) {
       currentRound = null;
@@ -998,13 +1003,19 @@ function confirmDeleteMember(id) {
 }
 
 async function deleteMember(id) {
+  if (!id) return;
   showLoading();
   try {
-    const { error } = await sb.from('members').delete().eq('id', id);
+    const { data, error } = await sb.from('members').delete().eq('id', id).select();
     if (error) throw error;
+
+    if (!data || data.length === 0) {
+      throw new Error('ไม่สามารถลบสมาชิกได้ ข้อมูลไม่ถูกลบออกจากฐานข้อมูล (กรุณาเช็ค RLS Policy)');
+    }
+
     closeConfirmModal();
     await renderMembers();
-    showToast('ลบสมาชิกสำเร็จ!');
+    showToast('ลบสมาชิกเรียบร้อยแล้ว!');
   } catch (err) {
     showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
   }
@@ -1462,10 +1473,16 @@ function confirmDeleteTransaction(id) {
 }
 
 async function deleteTransaction(id) {
+  if (!id) return;
   showLoading();
   try {
-    const { error } = await sb.from('transactions').delete().eq('id', id);
+    const { data, error } = await sb.from('transactions').delete().eq('id', id).select();
     if (error) throw error;
+
+    if (!data || data.length === 0) {
+      throw new Error('ไม่สามารถลบธุรกรรมได้ ข้อมูลไม่ถูกลบออกจากฐานข้อมูล (กรุณาเช็ค RLS Policy)');
+    }
+
     closeConfirmModal();
     await filterHistory();
     showToast('ลบธุรกรรมสำเร็จ!');
@@ -1696,19 +1713,24 @@ function confirmDeleteUser(id) {
 }
 
 async function deleteUser(id) {
-  if (id === currentUser.id) {
+  if (!id) return;
+  if (currentUser && id === currentUser.id) {
     showToast('ไม่สามารถลบบัญชีของตัวเองได้', 'error');
     return;
   }
 
   showLoading();
   try {
-    const { error } = await sb.from('app_users').delete().eq('id', id);
+    const { data, error } = await sb.from('app_users').delete().eq('id', id).select();
     if (error) throw error;
+
+    if (!data || data.length === 0) {
+      throw new Error('ไม่สามารถลบผู้ใช้งานได้ ข้อมูลไม่ถูกลบออกจากฐานข้อมูล (กรุณาเช็ค RLS Policy)');
+    }
 
     closeConfirmModal();
     await renderUsers();
-    showToast('ลบผู้ใช้งานสำเร็จ!');
+    showToast('ลบผู้ใช้งานออกจากระบบเรียบร้อยแล้ว!');
   } catch (err) {
     showToast('ลบผู้ใช้ไม่สำเร็จ: ' + err.message, 'error');
   }
