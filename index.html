@@ -82,6 +82,10 @@
         <a class="sidebar-link" onclick="navigateTo('history')" id="nav-history">
           <span class="nav-icon">📋</span> ประวัติธุรกรรม
         </a>
+        <a class="sidebar-link" onclick="navigateTo('pending')" id="nav-pending">
+          <span class="nav-icon">⏳</span> รายการรอยืนยัน
+          <span id="pending-badge-count" class="badge badge-warning" style="display:none; margin-left:auto; font-size:0.75rem;">0</span>
+        </a>
         <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
           <span class="nav-icon">👥</span> สมาชิก
         </a>
@@ -241,11 +245,48 @@
         </div>
       </div>
 
+      <!-- ===== PENDING TRANSACTIONS (DUAL STATION MODE) ===== -->
+      <div class="section" id="section-pending">
+        <div class="section-header">
+          <h2>⏳ รายการรอยืนยัน (สถานีออกใบเสร็จ)</h2>
+          <p>รายการที่ส่งมาจากสถานีชั่งน้ำหนัก (เครื่อง 1) ตรวจสอบข้อมูล ยืนยัน และพิมพ์ใบเสร็จ (เครื่อง 2)</p>
+        </div>
+
+        <div class="glass-card">
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>วันเวลา</th>
+                  <th>รหัสสมาชิก</th>
+                  <th>ชื่อสมาชิก</th>
+                  <th>สุทธิรวม</th>
+                  <th>ยอดเงินรวม</th>
+                  <th>ผู้ชั่ง (เครื่อง 1)</th>
+                  <th>สถานะ</th>
+                  <th>ดำเนินการ</th>
+                </tr>
+              </thead>
+              <tbody id="pending-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="pending-empty" style="display:none; padding:30px 20px;">
+            <div class="empty-icon">⏳</div>
+            <p>ไม่มีรายการรอยืนยันในขณะนี้</p>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== PURCHASE (MULTI-TRIP) ===== -->
       <div class="section" id="section-purchase">
-        <div class="section-header">
-          <h2>⚖️ รับซื้อยาง</h2>
-          <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรมลงในรอบส่งมอบยางปัจจุบัน</p>
+        <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h2>⚖️ รับซื้อยาง</h2>
+            <p>คำนวณน้ำหนักหลายเที่ยวและราคา แล้วบันทึกธุรกรรมลงในรอบส่งมอบยางปัจจุบัน</p>
+          </div>
+          <div id="dual-mode-purchase-badge" class="dual-mode-badge inactive">
+            <span class="live-dot yellow"></span> โหมด 2 เครื่อง: ปิดอยู่ (บันทึกและพิมพ์ในเครื่องเดียว)
+          </div>
         </div>
 
         <div class="purchase-grid">
@@ -579,18 +620,30 @@
             </div>
           </div>
 
-          <!-- Cart Weight & Deduction -->
+          <!-- Multi-Station & Printing Options -->
           <div class="glass-card">
-            <div class="settings-section-title">🛒 น้ำหนักและเปอร์เซ็นต์หัก</div>
-            <div class="settings-row">
-              <div class="form-group">
-                <label class="form-label" for="setting-cart-weight">น้ำหนักรถเข็นเริ่มต้น (กก.)</label>
-                <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
+            <div class="settings-section-title">⚡ โหมดการทำงาน & การแสดงผลใบเสร็จ</div>
+            
+            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:12px;">
+              <div>
+                <label class="form-label" style="margin:0; font-weight:600;">⚡ โหมดทำงาน 2 เครื่อง (สถานีชั่ง & สถานีออกใบเสร็จ)</label>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อเปิด: เครื่อง 1 ส่งข้อมูลไปรอยืนยันที่เครื่อง 2 เพื่อตรวจสอบและพิมพ์ใบเสร็จ</p>
               </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-deduction-percent">เปอร์เซ็นต์หักน้ำหนัก (%)</label>
-                <input type="number" id="setting-deduction-percent" class="form-input" step="0.1" min="0" max="100" placeholder="0">
+              <label class="switch">
+                <input type="checkbox" id="setting-dual-station-mode">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <div>
+                <label class="form-label" style="margin:0; font-weight:600;">💳 แสดงชื่อผู้จ่ายเงินอัตโนมัติในใบเสร็จ</label>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อปิด: ช่องผู้จ่ายเงินจะเป็นช่องเซ็นเปล่า (สำหรับกรณีโอนตรงผ่านธนาคาร)</p>
               </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-show-payer-name" checked>
+                <span class="slider round"></span>
+              </label>
             </div>
           </div>
 

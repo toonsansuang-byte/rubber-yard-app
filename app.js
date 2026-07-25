@@ -225,6 +225,27 @@ function initRealtimeSubscriptions() {
         if (currentSection === 'rounds') renderRounds();
       }
     )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pending_transactions' },
+      (payload) => {
+        renderPendingTransactions();
+        if (payload.eventType === 'INSERT') {
+          showToast(`📥 มีรายการส่งมาให้ตรวจสอบใหม่จาก ${payload.new.created_by_display_name || 'เครื่อง 1'}! (${payload.new.member_code} - ${payload.new.member_name})`, 'info');
+        } else if (payload.eventType === 'UPDATE' && payload.new.status === 'rejected') {
+          showToast(`⚠️ รายการของ ${payload.new.member_name} ถูกตีกลับ: ${payload.new.rejection_note || 'กรุณาตรวจสอบข้อมูล'}`, 'warning');
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'settings' },
+      async () => {
+        await loadSettings();
+        updatePurchaseDualModeUI();
+        if (currentSection === 'settings') renderSettings();
+      }
+    )
     .subscribe((status) => {
       if (badgeEl) {
         if (status === 'SUBSCRIBED') {
@@ -294,14 +315,17 @@ async function loadSettings() {
     if (error) throw error;
     cachedSettings = data;
     updatePlantationName();
+    updatePurchaseDualModeUI();
     return data;
   } catch (err) {
     console.error('Failed to load settings:', err);
     cachedSettings = {
       plantation_name: 'ลานยางพาราชุมชน',
       price_sheet: 45, price_cup: 35, price_latex: 50,
-      default_cart_weight: 5, deduction_percent: 0
+      default_cart_weight: 5, deduction_percent: 0,
+      dual_station_mode: false, show_payer_name: true
     };
+    updatePurchaseDualModeUI();
     return cachedSettings;
   }
 }
@@ -310,6 +334,26 @@ function updatePlantationName() {
   const name = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
   document.getElementById('sidebar-plantation-name').textContent = name;
   document.getElementById('login-plantation-name').textContent = name;
+}
+
+function updatePurchaseDualModeUI() {
+  const badgeEl = document.getElementById('dual-mode-purchase-badge');
+  const btnEl = document.getElementById('save-tx-btn');
+  const isDual = cachedSettings?.dual_station_mode === true;
+
+  if (badgeEl) {
+    if (isDual) {
+      badgeEl.className = 'dual-mode-badge active';
+      badgeEl.innerHTML = `<span class="live-dot"></span> ⚡ โหมด 2 เครื่อง: <strong>เปิดใช้งานอยู่</strong> (เครื่องนี้ = สถานีชั่ง ส่งข้อมูลไปสถานีออกใบเสร็จ)`;
+    } else {
+      badgeEl.className = 'dual-mode-badge inactive';
+      badgeEl.innerHTML = `<span class="live-dot yellow"></span> ⚪ โหมด 2 เครื่อง: <strong>ปิดอยู่</strong> (บันทึกและพิมพ์ในเครื่องเดียว)`;
+    }
+  }
+
+  if (btnEl) {
+    btnEl.innerHTML = isDual ? '📤 ส่งข้อมูลไปสถานีออกใบเสร็จ' : '💾 บันทึกและพิมพ์ใบเสร็จ';
+  }
 }
 
 // ========== PURCHASE ROUNDS MANAGEMENT ==========
@@ -1015,6 +1059,7 @@ function navigateTo(section) {
     case 'dashboard': renderDashboard(); break;
     case 'members': renderMembers(); break;
     case 'purchase': initPurchase(); break;
+    case 'pending': renderPendingTransactions(); break;
     case 'rounds': renderRounds(); break;
     case 'history': renderHistory(); break;
     case 'profile': renderProfile(); break;
@@ -1538,51 +1583,235 @@ async function saveTransaction(confirmedOverride = false) {
   const finalWeight = Math.max(0, totalNet - deductionAmount);
   const totalPrice = finalWeight * netPricePerKg;
 
+  const isDualMode = cachedSettings?.dual_station_mode === true;
+
   showLoading();
   try {
-    const payload = {
-      member_code: selectedMember.code,
-      member_name: selectedMember.name,
-      member_account_no: selectedMember.account_no || '',
-      rubber_type: rubberType,
-      gross_weight: totalGross,
-      cart_weight: totalCart,
-      net_weight: totalNet,
-      deduction_percent: deductionPercent,
-      final_weight: finalWeight,
-      auction_price: auctionPrice,
-      yard_fee: yardFee,
-      price_per_kg: netPricePerKg,
-      total_price: totalPrice,
-      trips: tripDetails,
-      trip_count: tripDetails.length,
-      round_id: currentRound ? currentRound.id : null,
-      created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
-      date: new Date().toISOString()
-    };
+    if (isDualMode) {
+      // Station 1: Submit data to pending_transactions table
+      const pendingPayload = {
+        member_code: selectedMember.code,
+        member_name: selectedMember.name,
+        member_account_no: selectedMember.account_no || '',
+        rubber_type: rubberType,
+        gross_weight: totalGross,
+        cart_weight: totalCart,
+        net_weight: totalNet,
+        deduction_percent: deductionPercent,
+        final_weight: finalWeight,
+        auction_price: auctionPrice,
+        yard_fee: yardFee,
+        price_per_kg: netPricePerKg,
+        total_price: totalPrice,
+        trips: tripDetails,
+        trip_count: tripDetails.length,
+        round_id: currentRound ? currentRound.id : null,
+        status: 'pending',
+        created_by_user_id: currentUser ? currentUser.id : null,
+        created_by_username: currentUser ? currentUser.username : 'user',
+        created_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+        date: new Date().toISOString()
+      };
 
-    let { data, error } = await sb.from('transactions').insert(payload).select().single();
+      const { data, error } = await sb.from('pending_transactions').insert(pendingPayload).select().single();
 
-    if (error && error.message.includes('column')) {
-      delete payload.auction_price;
-      delete payload.yard_fee;
-      const res = await sb.from('transactions').insert(payload).select().single();
-      data = res.data;
-      error = res.error;
+      if (error) {
+        if (error.message.includes('relation') || error.message.includes('pending_transactions')) {
+          throw new Error('ตาราง "pending_transactions" ยังไม่มีใน Supabase — กรุณารัน SQL สร้างตารางใน Supabase SQL Editor ก่อน');
+        }
+        throw error;
+      }
+
+      showToast(`📤 ส่งข้อมูลของ ${selectedMember.name} (${formatNumber(finalWeight)} กก. ยอด ${formatNumber(totalPrice)} ฿) ไปสถานีออกใบเสร็จเรียบร้อยแล้ว!`);
+      await initPurchase();
+    } else {
+      // Single Station Mode: Save directly & Print
+      const payload = {
+        member_code: selectedMember.code,
+        member_name: selectedMember.name,
+        member_account_no: selectedMember.account_no || '',
+        rubber_type: rubberType,
+        gross_weight: totalGross,
+        cart_weight: totalCart,
+        net_weight: totalNet,
+        deduction_percent: deductionPercent,
+        final_weight: finalWeight,
+        auction_price: auctionPrice,
+        yard_fee: yardFee,
+        price_per_kg: netPricePerKg,
+        total_price: totalPrice,
+        trips: tripDetails,
+        trip_count: tripDetails.length,
+        round_id: currentRound ? currentRound.id : null,
+        created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+        created_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+        confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+        date: new Date().toISOString()
+      };
+
+      let { data, error } = await sb.from('transactions').insert(payload).select().single();
+
+      if (error && error.message.includes('column')) {
+        delete payload.auction_price;
+        delete payload.yard_fee;
+        delete payload.created_by_display_name;
+        delete payload.confirmed_by_display_name;
+        const res = await sb.from('transactions').insert(payload).select().single();
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) throw error;
+
+      if (data && data.auction_price === undefined) {
+        data.auction_price = auctionPrice;
+        data.yard_fee = yardFee;
+      }
+
+      showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
+      showReceipt(data);
+      await initPurchase();
     }
-
-    if (error) throw error;
-
-    if (data && data.auction_price === undefined) {
-      data.auction_price = auctionPrice;
-      data.yard_fee = yardFee;
-    }
-
-    showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
-    showReceipt(data);
-    await initPurchase();
   } catch (err) {
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// ========== PENDING TRANSACTIONS (DUAL STATION MODE) ==========
+async function renderPendingTransactions() {
+  try {
+    const { data: pendingList, error } = await sb.from('pending_transactions')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Pending transactions table check skipped:', error);
+      return;
+    }
+
+    const list = pendingList || [];
+    const tbody = document.getElementById('pending-table-body');
+    const emptyState = document.getElementById('pending-empty');
+    const badgeEl = document.getElementById('pending-badge-count');
+
+    if (badgeEl) {
+      if (list.length > 0) {
+        badgeEl.textContent = list.length;
+        badgeEl.style.display = 'inline-block';
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    }
+
+    if (!tbody) return;
+
+    if (list.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      tbody.closest('.table-container').style.display = 'none';
+    } else {
+      emptyState.style.display = 'none';
+      tbody.closest('.table-container').style.display = 'block';
+      tbody.innerHTML = list.map(p => `
+        <tr>
+          <td>${formatDateTime(p.date || p.created_at)}</td>
+          <td><span class="badge badge-green">${p.member_code}</span></td>
+          <td><strong>${p.member_name}</strong></td>
+          <td>${formatNumber(p.final_weight || p.net_weight)} กก.</td>
+          <td style="font-weight:600; color: var(--gold);">${formatNumber(p.total_price)} ฿</td>
+          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${p.created_by_display_name || 'เครื่อง 1'}</span></td>
+          <td><span class="badge badge-warning">⏳ รอยืนยัน</span></td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="confirmPendingTransaction('${p.id}')">✅ ยืนยัน & พิมพ์</button>
+            <button class="btn btn-danger btn-sm" onclick="rejectPendingTransaction('${p.id}')" style="margin-left:4px;">↩️ ตีกลับ</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    console.error('renderPendingTransactions error:', err);
+  }
+}
+
+async function confirmPendingTransaction(pendingId) {
+  showLoading();
+  try {
+    const { data: p, error: fetchErr } = await sb.from('pending_transactions').select('*').eq('id', pendingId).single();
+    if (fetchErr || !p) throw new Error('ไม่พบข้อมูลรายการรอยืนยัน');
+
+    const txPayload = {
+      member_code: p.member_code,
+      member_name: p.member_name,
+      member_account_no: p.member_account_no || '',
+      rubber_type: p.rubber_type || 'cup',
+      gross_weight: p.gross_weight,
+      cart_weight: p.cart_weight,
+      net_weight: p.net_weight,
+      deduction_percent: p.deduction_percent,
+      final_weight: p.final_weight,
+      auction_price: p.auction_price,
+      yard_fee: p.yard_fee,
+      price_per_kg: p.price_per_kg,
+      total_price: p.total_price,
+      trips: p.trips,
+      trip_count: p.trip_count,
+      round_id: p.round_id,
+      created_by_name: p.created_by_display_name || 'ผู้ดูแลระบบ',
+      created_by_display_name: p.created_by_display_name || 'ผู้ดูแลระบบ',
+      confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+      date: p.date || new Date().toISOString()
+    };
+
+    let { data: newTx, error: txErr } = await sb.from('transactions').insert(txPayload).select().single();
+
+    if (txErr && txErr.message.includes('column')) {
+      delete txPayload.auction_price;
+      delete txPayload.yard_fee;
+      delete txPayload.created_by_display_name;
+      delete txPayload.confirmed_by_display_name;
+      const res = await sb.from('transactions').insert(txPayload).select().single();
+      newTx = res.data;
+      txErr = res.error;
+    }
+
+    if (txErr) throw txErr;
+
+    // Delete or remove from pending_transactions
+    await sb.from('pending_transactions').delete().eq('id', pendingId);
+
+    if (newTx && newTx.auction_price === undefined) {
+      newTx.auction_price = p.auction_price;
+      newTx.yard_fee = p.yard_fee;
+    }
+    newTx.created_by_display_name = p.created_by_display_name;
+    newTx.confirmed_by_display_name = currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ';
+
+    showToast(`✅ ยืนยันรายการสำเร็จ! ออกใบเสร็จของคุณ${p.member_name}`);
+    showReceipt(newTx);
+    await renderPendingTransactions();
+  } catch (err) {
+    showToast('ยืนยันไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function rejectPendingTransaction(pendingId) {
+  const note = window.prompt('กรุณาระบุเหตุผลที่ตีกลับรายการ (ส่งกลับแก้ไข):', 'ข้อมูลไม่ถูกต้อง');
+  if (note === null) return;
+
+  showLoading();
+  try {
+    const { error } = await sb.from('pending_transactions')
+      .update({ status: 'rejected', rejection_note: note })
+      .eq('id', pendingId);
+
+    if (error) throw error;
+    showToast('↩️ ตีกลับรายการส่งกลับแก้ไขเรียบร้อยแล้ว');
+    await renderPendingTransactions();
+  } catch (err) {
+    showToast('ตีกลับไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
 }
@@ -1646,6 +1875,20 @@ function buildReceiptCopyHTML(tx, plantName) {
     </div>
   `;
 
+  const isDual = cachedSettings?.dual_station_mode === true;
+  const showPayer = cachedSettings?.show_payer_name !== false;
+
+  let payerName = '..................................';
+  if (showPayer) {
+    if (isDual) {
+      payerName = tx.confirmed_by_display_name || currentUser?.display_name || 'ผู้ดูแลระบบ';
+    } else {
+      payerName = tx.confirmed_by_display_name || tx.created_by_name || tx.created_by_display_name || currentUser?.display_name || 'ผู้ดูแลระบบ';
+    }
+  }
+
+  let creatorName = tx.created_by_display_name || tx.created_by_name || 'ผู้ดูแลระบบ';
+
   return `
     <div class="receipt-single-copy">
       <div class="receipt-header" style="margin-bottom:10px;">
@@ -1673,7 +1916,7 @@ function buildReceiptCopyHTML(tx, plantName) {
         <div style="flex:1;">
           <div style="margin-bottom:28px;">ผู้จ่ายเงิน</div>
           <div>ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(..................................)</div>
+          <div style="margin-top:4px;">(${payerName})</div>
         </div>
         <div style="flex:1;">
           <div style="margin-bottom:28px;">ผู้รับเงิน</div>
@@ -1683,7 +1926,7 @@ function buildReceiptCopyHTML(tx, plantName) {
         <div style="flex:1;">
           <div style="margin-bottom:28px;">ผู้จัดทำ</div>
           <div>ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(${tx.created_by_name || 'ผู้ดูแลระบบ'})</div>
+          <div style="margin-top:4px;">(${creatorName})</div>
         </div>
       </div>
       <div class="receipt-footer" style="margin-top:10px;">
@@ -2148,11 +2391,19 @@ async function renderSettings() {
   if (yardFeeEl) yardFeeEl.value = s?.yard_fee !== undefined ? s.yard_fee : '0.50';
   document.getElementById('setting-cart-weight').value = s?.default_cart_weight || '';
   document.getElementById('setting-deduction-percent').value = s?.deduction_percent || '';
+
+  const dualModeEl = document.getElementById('setting-dual-station-mode');
+  if (dualModeEl) dualModeEl.checked = s?.dual_station_mode === true;
+
+  const showPayerEl = document.getElementById('setting-show-payer-name');
+  if (showPayerEl) showPayerEl.checked = s?.show_payer_name !== false;
 }
 
 async function saveSettings() {
   const priceCup = parseFloat(document.getElementById('setting-price-cup').value) || 0;
   const yardFeeVal = parseFloat(document.getElementById('setting-yard-fee')?.value) ?? 0.50;
+  const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
+  const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
 
   const updateData = {
     plantation_name: document.getElementById('setting-plantation-name').value.trim() || 'ลานยางพาราชุมชน',
@@ -2161,16 +2412,19 @@ async function saveSettings() {
     price_latex: priceCup,
     yard_fee: yardFeeVal,
     default_cart_weight: parseFloat(document.getElementById('setting-cart-weight').value) || 0,
-    deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0
+    deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0,
+    dual_station_mode: dualStationMode,
+    show_payer_name: showPayerName
   };
 
   showLoading();
   try {
-    // Use .select() (without .single()) to avoid crash when RLS blocks and 0 rows returned
     let { data, error } = await sb.from('settings').update(updateData).eq('id', 1).select();
 
-    // Fallback if yard_fee column doesn't exist
+    // Fallback if dual_station_mode or show_payer_name column doesn't exist yet
     if (error && error.message && error.message.includes('column')) {
+      delete updateData.dual_station_mode;
+      delete updateData.show_payer_name;
       delete updateData.yard_fee;
       const res = await sb.from('settings').update(updateData).eq('id', 1).select();
       data = res.data;
@@ -2179,14 +2433,13 @@ async function saveSettings() {
 
     if (error) throw error;
 
-    // Check if RLS silently blocked the update (0 rows returned)
     if (!data || data.length === 0) {
       throw new Error('RLS Policy บล็อกการแก้ไข — กรุณารัน SQL เพิ่ม Policy อนุญาต UPDATE ในตาราง settings ที่ Supabase SQL Editor');
     }
 
-    // Update cache with the actual saved data from Supabase
     cachedSettings = data[0];
     updatePlantationName();
+    updatePurchaseDualModeUI();
     showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
     renderSettings();
   } catch (err) {
