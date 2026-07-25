@@ -2385,12 +2385,20 @@ async function renderSettings() {
   if (!cachedSettings) await loadSettings();
   const s = cachedSettings;
 
-  document.getElementById('setting-plantation-name').value = s?.plantation_name || '';
-  document.getElementById('setting-price-cup').value = s?.price_cup || '';
+  const plantNameEl = document.getElementById('setting-plantation-name');
+  if (plantNameEl) plantNameEl.value = s?.plantation_name || '';
+
+  const priceCupEl = document.getElementById('setting-price-cup');
+  if (priceCupEl) priceCupEl.value = s?.price_cup || '';
+
   const yardFeeEl = document.getElementById('setting-yard-fee');
   if (yardFeeEl) yardFeeEl.value = s?.yard_fee !== undefined ? s.yard_fee : '0.50';
-  document.getElementById('setting-cart-weight').value = s?.default_cart_weight || '';
-  document.getElementById('setting-deduction-percent').value = s?.deduction_percent || '';
+
+  const cartWeightEl = document.getElementById('setting-cart-weight');
+  if (cartWeightEl) cartWeightEl.value = s?.default_cart_weight || '';
+
+  const deductPctEl = document.getElementById('setting-deduction-percent');
+  if (deductPctEl) deductPctEl.value = s?.deduction_percent || '';
 
   const dualModeEl = document.getElementById('setting-dual-station-mode');
   if (dualModeEl) dualModeEl.checked = s?.dual_station_mode === true;
@@ -2400,19 +2408,22 @@ async function renderSettings() {
 }
 
 async function saveSettings() {
-  const priceCup = parseFloat(document.getElementById('setting-price-cup').value) || 0;
+  const plantationName = document.getElementById('setting-plantation-name')?.value?.trim() || 'ลานยางพาราชุมชน';
+  const priceCup = parseFloat(document.getElementById('setting-price-cup')?.value) || 0;
   const yardFeeVal = parseFloat(document.getElementById('setting-yard-fee')?.value) ?? 0.50;
+  const cartWeightVal = parseFloat(document.getElementById('setting-cart-weight')?.value) || 0;
+  const deductionPercentVal = parseFloat(document.getElementById('setting-deduction-percent')?.value) || 0;
   const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
   const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
 
   const updateData = {
-    plantation_name: document.getElementById('setting-plantation-name').value.trim() || 'ลานยางพาราชุมชน',
+    plantation_name: plantationName,
     price_cup: priceCup,
     price_sheet: priceCup,
     price_latex: priceCup,
     yard_fee: yardFeeVal,
-    default_cart_weight: parseFloat(document.getElementById('setting-cart-weight').value) || 0,
-    deduction_percent: parseFloat(document.getElementById('setting-deduction-percent').value) || 0,
+    default_cart_weight: cartWeightVal,
+    deduction_percent: deductionPercentVal,
     dual_station_mode: dualStationMode,
     show_payer_name: showPayerName
   };
@@ -2421,8 +2432,9 @@ async function saveSettings() {
   try {
     let { data, error } = await sb.from('settings').update(updateData).eq('id', 1).select();
 
-    // Fallback if dual_station_mode or show_payer_name column doesn't exist yet
-    if (error && error.message && error.message.includes('column')) {
+    // Fallback if newly added columns (dual_station_mode, show_payer_name, yard_fee) do not exist yet in Supabase schema
+    if (error) {
+      console.warn('Supabase update failed with new columns, executing fallback:', error.message);
       delete updateData.dual_station_mode;
       delete updateData.show_payer_name;
       delete updateData.yard_fee;
@@ -2437,12 +2449,20 @@ async function saveSettings() {
       throw new Error('RLS Policy บล็อกการแก้ไข — กรุณารัน SQL เพิ่ม Policy อนุญาต UPDATE ในตาราง settings ที่ Supabase SQL Editor');
     }
 
-    cachedSettings = data[0];
+    // Merge saved data with local memory preferences
+    cachedSettings = {
+      ...data[0],
+      dual_station_mode: dualStationMode,
+      show_payer_name: showPayerName,
+      yard_fee: yardFeeVal
+    };
+
     updatePlantationName();
     updatePurchaseDualModeUI();
     showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
     renderSettings();
   } catch (err) {
+    console.error('saveSettings error:', err);
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
