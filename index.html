@@ -716,7 +716,7 @@
 
   <!-- ===== RECEIPT MODAL ===== -->
   <div class="modal-overlay" id="receipt-modal">
-    <div class="modal-content" style="max-width: 520px;">
+    <div class="modal-content" style="max-width: 540px;">
       <div class="modal-header">
         <h3>🧾 ใบเสร็จรับเงิน</h3>
         <button class="modal-close" onclick="closeReceiptModal()">✕</button>
@@ -724,9 +724,18 @@
       <div class="modal-body">
         <div class="receipt-content" id="receipt-content"></div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeReceiptModal()">ปิด</button>
-        <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์</button>
+      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📄 รูปแบบพิมพ์:</span>
+          <select id="receipt-print-format" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto; border-color:var(--gold);" onchange="onReceiptFormatChange(this.value)">
+            <option value="2">2 สำเนาต่อแผ่น (A4 แบ่งครึ่ง)</option>
+            <option value="1">1 สำเนาต่อแผ่น (เต็มแผ่น A4)</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="closeReceiptModal()">ปิด</button>
+          <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์</button>
+        </div>
       </div>
     </div>
   </div>
@@ -743,9 +752,18 @@
           <!-- Rendered dynamically for printing/previewing -->
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
-        <button class="btn btn-primary" onclick="printRoundReport()">🖨️ พิมพ์ / ดาวน์โหลดเอกสาร</button>
+      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📄 รูปแบบพิมพ์:</span>
+          <select id="round-report-print-format" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto;" onchange="onRoundReportFormatChange(this.value)">
+            <option value="1">1 สำเนาต่อแผ่น (เต็มแผ่น A4)</option>
+            <option value="2">2 สำเนาต่อแผ่น (A4 แบ่งครึ่ง)</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
+          <button class="btn btn-primary" onclick="printRoundReport()">🖨️ พิมพ์ / ดาวน์โหลดเอกสาร</button>
+        </div>
       </div>
     </div>
   </div>
@@ -809,9 +827,18 @@
           <p>สมาชิกท่านนี้ยังไม่มีประวัติการขายยาง</p>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeMemberSalesModal()">ปิด</button>
-        <button class="btn btn-primary" onclick="printMemberSalesSummary()">🖨️ พิมพ์เอกสารสรุปรายการขาย</button>
+      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📄 รูปแบบพิมพ์:</span>
+          <select id="member-summary-print-format" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto;" onchange="onMemberSummaryFormatChange(this.value)">
+            <option value="1">1 สำเนาต่อแผ่น (เต็มแผ่น A4)</option>
+            <option value="2">2 สำเนาต่อแผ่น (A4 แบ่งครึ่ง)</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="closeMemberSalesModal()">ปิด</button>
+          <button class="btn btn-primary" onclick="printMemberSalesSummary()">🖨️ พิมพ์เอกสารสรุปรายการขาย</button>
+        </div>
       </div>
     </div>
   </div>
