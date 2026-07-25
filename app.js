@@ -1894,31 +1894,37 @@ async function saveUser() {
       if (password) {
         updatePayload.password = await hashPassword(password);
       }
-      let { error } = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
 
-      // Fallback if position column doesn't exist in Supabase schema yet
-      if (error && error.message && error.message.includes('column')) {
-        delete updatePayload.position;
-        const res = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
-        error = res.error;
+      let { data, error } = await sb.from('app_users').update(updatePayload).eq('id', hiddenId).select();
+
+      // If position column does not exist yet in Supabase PostgreSQL schema
+      if (error && error.message && error.message.includes('position')) {
+        throw new Error('คอลัมน์ "position" ยังไม่มีในตาราง app_users — กรุณารัน SQL เพิ่มคอลัมน์ใน Supabase SQL Editorก่อน:\nALTER TABLE app_users ADD COLUMN IF NOT EXISTS position text DEFAULT \'\';');
       }
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error('ไม่สามารถบันทึกผู้ใช้ได้ (0 แถวถูกอัปเดต) — กรุณาตรวจสอบ RLS Policy ของตาราง app_users');
+      }
 
       showToast('แก้ไขผู้ใช้งานสำเร็จ!');
     } else {
       const hashedPass = await hashPassword(password);
       const insertPayload = { username, display_name, position, password: hashedPass, role };
-      let { error } = await sb.from('app_users').insert(insertPayload);
 
-      // Fallback if position column doesn't exist in Supabase schema yet
-      if (error && error.message && error.message.includes('column')) {
-        delete insertPayload.position;
-        const res = await sb.from('app_users').insert(insertPayload);
-        error = res.error;
+      let { data, error } = await sb.from('app_users').insert(insertPayload).select();
+
+      // If position column does not exist yet in Supabase PostgreSQL schema
+      if (error && error.message && error.message.includes('position')) {
+        throw new Error('คอลัมน์ "position" ยังไม่มีในตาราง app_users — กรุณารัน SQL เพิ่มคอลัมน์ใน Supabase SQL Editorก่อน:\nALTER TABLE app_users ADD COLUMN IF NOT EXISTS position text DEFAULT \'\';');
       }
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error('ไม่สามารถเพิ่มผู้ใช้ใหม่ได้ — กรุณาตรวจสอบ RLS Policy ของตาราง app_users');
+      }
 
       showToast('เพิ่มผู้ใช้งานใหม่สำเร็จ!');
     }
