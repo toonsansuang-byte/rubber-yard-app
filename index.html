@@ -131,9 +131,14 @@
 
       <!-- ===== DASHBOARD ===== -->
       <div class="section active" id="section-dashboard">
-        <div class="section-header">
-          <h2>📊 แดชบอร์ด</h2>
-          <p id="dashboard-subtitle">ภาพรวมของรอบส่งมอบยางปัจจุบัน</p>
+        <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h2>📊 แดชบอร์ด</h2>
+            <p id="dashboard-subtitle">ภาพรวมของรอบส่งมอบยางปัจจุบัน</p>
+          </div>
+          <div id="realtime-status-badge" class="realtime-status-badge" title="ระบบเชื่อมต่อ Realtime เรียบร้อยแล้ว ข้อมูลจะอัปเดตอัตโนมัติ">
+            <span class="live-dot"></span> <span class="live-text">Realtime เชื่อมต่อแล้ว</span>
+          </div>
         </div>
 
         <div class="stats-grid">

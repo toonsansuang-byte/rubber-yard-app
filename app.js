@@ -172,7 +172,97 @@ async function showApp() {
   updateUserSidebarUI();
   await loadSettings();
   await loadCurrentRound();
+  initRealtimeSubscriptions();
   navigateTo('dashboard');
+}
+
+// ========== REALTIME SUBSCRIPTIONS & AUTO RECONNECT ==========
+let realtimeChannel = null;
+
+function initRealtimeSubscriptions() {
+  if (!sb || realtimeChannel) return;
+
+  const badgeEl = document.getElementById('realtime-status-badge');
+
+  realtimeChannel = sb.channel('dashboard-realtime-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'transactions' },
+      async (payload) => {
+        console.log('Realtime transaction change detected:', payload);
+        if (payload.eventType === 'INSERT') {
+          const t = payload.new;
+          const weightStr = formatNumber(t.final_weight || t.net_weight);
+          const amountStr = formatNumber(t.total_price);
+          showToast(`⚡ มีรายการใหม่! รหัส ${t.member_code} (${t.member_name}) — ${weightStr} กก. [${amountStr} ฿]`, 'info');
+        } else if (payload.eventType === 'DELETE') {
+          showToast('ℹ️ มีการลบรายการรับซื้อในระบบ', 'info');
+        }
+
+        // Live update dashboard metrics silently without screen flicker
+        if (currentSection === 'dashboard') {
+          await renderDashboard(false, payload.eventType === 'INSERT' ? payload.new : null);
+        }
+        if (currentSection === 'history') {
+          filterHistory();
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'members' },
+      () => {
+        if (currentSection === 'dashboard') renderDashboard(false);
+        if (currentSection === 'members') renderMembers();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'purchase_rounds' },
+      async () => {
+        await loadCurrentRound();
+        if (currentSection === 'dashboard') renderDashboard(false);
+        if (currentSection === 'rounds') renderRounds();
+      }
+    )
+    .subscribe((status) => {
+      if (badgeEl) {
+        if (status === 'SUBSCRIBED') {
+          badgeEl.className = 'realtime-status-badge';
+          badgeEl.innerHTML = `<span class="live-dot"></span> <span class="live-text">Realtime เชื่อมต่อแล้ว</span>`;
+          badgeEl.title = 'ระบบเชื่อมต่อ Realtime เรียบร้อยแล้ว ข้อมูลจะอัปเดตอัตโนมัติ';
+        } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+          badgeEl.className = 'realtime-status-badge connecting';
+          badgeEl.innerHTML = `<span class="live-dot yellow"></span> <span class="live-text">Realtime กำลังเชื่อมต่อใหม่...</span>`;
+          badgeEl.title = 'กำลังพยายามเชื่อมต่อระบบ Realtime ใหม่อีกครั้ง';
+        }
+      }
+    });
+
+  window.removeEventListener('online', handleNetworkReconnect);
+  window.removeEventListener('offline', handleNetworkOffline);
+  window.addEventListener('online', handleNetworkReconnect);
+  window.addEventListener('offline', handleNetworkOffline);
+}
+
+function handleNetworkOffline() {
+  const badgeEl = document.getElementById('realtime-status-badge');
+  if (badgeEl) {
+    badgeEl.className = 'realtime-status-badge offline';
+    badgeEl.innerHTML = `<span class="live-dot red"></span> <span class="live-text">ไม่มีสัญญาณอินเทอร์เน็ต</span>`;
+    badgeEl.title = 'ขาดการเชื่อมต่ออินเทอร์เน็ต ระบบจะเชื่อมต่อใหม่อัตโนมัติเมื่ออินเทอร์เน็ตกลับมา';
+  }
+}
+
+async function handleNetworkReconnect() {
+  showToast('🔄 เชื่อมต่ออินเทอร์เน็ตอีกครั้ง กำลังซิงค์ข้อมูลล่าสุด...', 'info');
+  if (currentSection === 'dashboard') await renderDashboard(false);
+
+  if (realtimeChannel) {
+    try { sb.removeChannel(realtimeChannel); } catch (e) { /* ignore */ }
+    realtimeChannel = null;
+  }
+  initRealtimeSubscriptions();
 }
 
 function updateUserSidebarUI() {
@@ -966,8 +1056,8 @@ function getRubberTypeBadge(type) {
 }
 
 // ========== DASHBOARD ==========
-async function renderDashboard() {
-  showLoading();
+async function renderDashboard(showSpinner = true, newTransaction = null) {
+  if (showSpinner) showLoading();
   try {
     await loadCurrentRound();
 
@@ -1021,8 +1111,10 @@ async function renderDashboard() {
     } else {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = recentTx.map(t => `
-        <tr>
+      tbody.innerHTML = recentTx.map(t => {
+        const isNew = newTransaction && String(t.id) === String(newTransaction.id);
+        return `
+        <tr class="${isNew ? 'new-row-flash' : ''}">
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${t.member_code}</span></td>
           <td>${t.member_name}</td>
@@ -1032,12 +1124,13 @@ async function renderDashboard() {
           <td style="font-weight:600; color: var(--gold);">${formatNumber(t.total_price)} ฿</td>
           <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
   } catch (err) {
     showToast('โหลดข้อมูลแดชบอร์ดไม่สำเร็จ: ' + err.message, 'error');
   }
-  hideLoading();
+  if (showSpinner) hideLoading();
 }
 
 // ========== MEMBERS ==========
