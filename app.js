@@ -720,7 +720,7 @@ function closeMemberSalesModal() {
   document.getElementById('member-sales-modal').classList.remove('show');
 }
 
-function printMemberSalesSummary() {
+async function printMemberSalesSummary() {
   const name = document.getElementById('m-history-name').textContent;
   const codeAccount = document.getElementById('m-history-code-account').textContent;
   const rounds = document.getElementById('m-stat-rounds-count').textContent;
@@ -728,6 +728,22 @@ function printMemberSalesSummary() {
   const totalWeight = document.getElementById('m-stat-total-weight').textContent;
   const totalAmount = document.getElementById('m-stat-total-amount').textContent;
   const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+
+  // Fetch Chairman display name dynamically from app_users where position contains 'ประธาน'
+  let chairmanName = '..................................';
+  try {
+    const { data: chairmen } = await sb.from('app_users')
+      .select('display_name')
+      .ilike('position', '%ประธาน%')
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (chairmen && chairmen.length > 0 && chairmen[0].display_name) {
+      chairmanName = chairmen[0].display_name;
+    }
+  } catch (err) {
+    console.warn('Could not fetch chairman name from app_users:', err);
+  }
 
   // Get table rows from the member sales history table
   const tableBody = document.getElementById('m-history-table-body');
@@ -775,8 +791,8 @@ function printMemberSalesSummary() {
         th { background: #f0f0f0; font-weight: 600; padding: ${rowPadding}; border: 1px solid #ccc; text-align: left; font-size: ${fontSize}; }
         td { padding: ${rowPadding}; border: 1px solid #ddd; font-size: ${fontSize}; }
         tr:nth-child(even) { background: #fafafa; }
-        .footer-sign { display: flex; justify-content: space-between; margin-top: 16px; font-size: 11px; text-align: center; }
-        .sign-box { flex: 1; }
+        .footer-sign { display: flex; justify-content: space-around; margin-top: 24px; font-size: 11px; text-align: center; }
+        .sign-box { flex: 0 0 40%; }
         .sign-box .dots { margin-top: 24px; }
       </style>
     </head>
@@ -812,18 +828,13 @@ function printMemberSalesSummary() {
       <div class="footer-sign">
         <div class="sign-box">
           <div class="dots">ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(..................................)</div>
-          <div>ผู้จ่ายเงิน</div>
-        </div>
-        <div class="sign-box">
-          <div class="dots">ลงชื่อ..................................</div>
           <div style="margin-top:4px;">(${name})</div>
-          <div>ผู้รับเงิน</div>
+          <div style="font-weight:600;margin-top:2px;">สมาชิก</div>
         </div>
         <div class="sign-box">
           <div class="dots">ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(..................................)</div>
-          <div>ผู้จัดทำ</div>
+          <div style="margin-top:4px;">(${chairmanName})</div>
+          <div style="font-weight:600;margin-top:2px;">ประธานกรรมการ</div>
         </div>
       </div>
     </body>
@@ -1800,6 +1811,7 @@ async function renderUsers() {
         <tr>
           <td><strong>${u.username}</strong></td>
           <td>${u.display_name}</td>
+          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${u.position || '-'}</span></td>
           <td>
             ${u.role === 'admin' 
               ? '<span class="badge badge-admin">แอดมิน (Admin)</span>' 
@@ -1826,6 +1838,7 @@ async function openUserModal(id = null) {
   const titleEl = document.getElementById('user-modal-title');
   const usernameInput = document.getElementById('user-username');
   const nameInput = document.getElementById('user-display-name');
+  const posInput = document.getElementById('user-position');
   const passInput = document.getElementById('user-password');
   const roleInput = document.getElementById('user-role');
   const hiddenId = document.getElementById('user-id-hidden');
@@ -1838,6 +1851,7 @@ async function openUserModal(id = null) {
     usernameInput.value = u.username;
     usernameInput.disabled = true;
     nameInput.value = u.display_name;
+    if (posInput) posInput.value = u.position || '';
     passInput.value = ''; // Leave password blank unless updating
     passInput.placeholder = 'กรอกรหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)';
     roleInput.value = u.role;
@@ -1847,6 +1861,7 @@ async function openUserModal(id = null) {
     usernameInput.value = '';
     usernameInput.disabled = false;
     nameInput.value = '';
+    if (posInput) posInput.value = '';
     passInput.value = '';
     passInput.placeholder = 'กรอกรหัสผ่าน';
     roleInput.value = 'user';
@@ -1864,6 +1879,7 @@ async function saveUser() {
   const hiddenId = document.getElementById('user-id-hidden').value;
   const username = document.getElementById('user-username').value.trim();
   const display_name = document.getElementById('user-display-name').value.trim();
+  const position = document.getElementById('user-position')?.value.trim() || '';
   const password = document.getElementById('user-password').value;
   const role = document.getElementById('user-role').value;
 
@@ -1874,19 +1890,34 @@ async function saveUser() {
   showLoading();
   try {
     if (hiddenId) {
-      const updatePayload = { display_name, role };
+      const updatePayload = { display_name, position, role };
       if (password) {
         updatePayload.password = await hashPassword(password);
       }
-      const { error } = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
+      let { error } = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
+
+      // Fallback if position column doesn't exist in Supabase schema yet
+      if (error && error.message && error.message.includes('column')) {
+        delete updatePayload.position;
+        const res = await sb.from('app_users').update(updatePayload).eq('id', hiddenId);
+        error = res.error;
+      }
+
       if (error) throw error;
 
       showToast('แก้ไขผู้ใช้งานสำเร็จ!');
     } else {
       const hashedPass = await hashPassword(password);
-      const { error } = await sb.from('app_users').insert({
-        username, display_name, password: hashedPass, role
-      });
+      const insertPayload = { username, display_name, position, password: hashedPass, role };
+      let { error } = await sb.from('app_users').insert(insertPayload);
+
+      // Fallback if position column doesn't exist in Supabase schema yet
+      if (error && error.message && error.message.includes('column')) {
+        delete insertPayload.position;
+        const res = await sb.from('app_users').insert(insertPayload);
+        error = res.error;
+      }
+
       if (error) throw error;
 
       showToast('เพิ่มผู้ใช้งานใหม่สำเร็จ!');
