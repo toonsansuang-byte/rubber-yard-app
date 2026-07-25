@@ -720,6 +720,123 @@ function closeMemberSalesModal() {
   document.getElementById('member-sales-modal').classList.remove('show');
 }
 
+function printMemberSalesSummary() {
+  const name = document.getElementById('m-history-name').textContent;
+  const codeAccount = document.getElementById('m-history-code-account').textContent;
+  const rounds = document.getElementById('m-stat-rounds-count').textContent;
+  const txCount = document.getElementById('m-stat-tx-count').textContent;
+  const totalWeight = document.getElementById('m-stat-total-weight').textContent;
+  const totalAmount = document.getElementById('m-stat-total-amount').textContent;
+  const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+
+  // Get table rows from the member sales history table
+  const tableBody = document.getElementById('m-history-table-body');
+  const rows = tableBody ? tableBody.querySelectorAll('tr') : [];
+  const rowCount = rows.length;
+
+  // Dynamic font size: scale down if too many rows
+  let fontSize = '11px';
+  let rowPadding = '4px 6px';
+  if (rowCount > 20) { fontSize = '9px'; rowPadding = '2px 4px'; }
+  else if (rowCount > 12) { fontSize = '10px'; rowPadding = '3px 5px'; }
+
+  let tableRowsHtml = '';
+  rows.forEach((row, idx) => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 6) {
+      tableRowsHtml += `<tr>
+        <td style="padding:${rowPadding};">${idx + 1}</td>
+        <td style="padding:${rowPadding};">${cells[0].textContent}</td>
+        <td style="padding:${rowPadding};">${cells[1].textContent}</td>
+        <td style="padding:${rowPadding};text-align:center;">${cells[3].textContent}</td>
+        <td style="padding:${rowPadding};text-align:right;">${cells[4].textContent}</td>
+        <td style="padding:${rowPadding};text-align:right;font-weight:600;">${cells[5].textContent}</td>
+      </tr>`;
+    }
+  });
+
+  const printHtml = `
+    <html>
+    <head>
+      <title>สรุปรายการขาย - ${name}</title>
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Sarabun', sans-serif; font-size: ${fontSize}; color: #000; }
+        .header { text-align: center; margin-bottom: 8px; }
+        .header h2 { font-size: 16px; margin-bottom: 2px; }
+        .header h3 { font-size: 13px; margin-bottom: 2px; }
+        .header p { font-size: 11px; color: #555; }
+        .stats { display: flex; justify-content: space-around; margin: 8px 0; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+        .stat-item { text-align: center; }
+        .stat-label { font-size: 10px; color: #666; }
+        .stat-value { font-size: 13px; font-weight: 700; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th { background: #f0f0f0; font-weight: 600; padding: ${rowPadding}; border: 1px solid #ccc; text-align: left; font-size: ${fontSize}; }
+        td { padding: ${rowPadding}; border: 1px solid #ddd; font-size: ${fontSize}; }
+        tr:nth-child(even) { background: #fafafa; }
+        .footer-sign { display: flex; justify-content: space-between; margin-top: 16px; font-size: 11px; text-align: center; }
+        .sign-box { flex: 1; }
+        .sign-box .dots { margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>🌿 ${plantName}</h2>
+        <h3>เอกสารสรุปรายการขายยางพารา</h3>
+        <p>${codeAccount}</p>
+        <p style="font-size:13px;font-weight:600;margin-top:4px;">${name}</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat-item"><div class="stat-label">จำนวนรอบ</div><div class="stat-value">${rounds}</div></div>
+        <div class="stat-item"><div class="stat-label">จำนวนครั้ง</div><div class="stat-value">${txCount}</div></div>
+        <div class="stat-item"><div class="stat-label">น้ำหนักรวม</div><div class="stat-value">${totalWeight}</div></div>
+        <div class="stat-item"><div class="stat-label">ยอดเงินรวม</div><div class="stat-value">${totalAmount}</div></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px;">#</th>
+            <th>วันเวลา</th>
+            <th>รอบ</th>
+            <th style="text-align:center;">เที่ยว</th>
+            <th style="text-align:right;">น้ำหนักสุทธิ</th>
+            <th style="text-align:right;">ยอดเงิน</th>
+          </tr>
+        </thead>
+        <tbody>${tableRowsHtml}</tbody>
+      </table>
+
+      <div class="footer-sign">
+        <div class="sign-box">
+          <div class="dots">ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(..................................)</div>
+          <div>ผู้จ่ายเงิน</div>
+        </div>
+        <div class="sign-box">
+          <div class="dots">ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(${name})</div>
+          <div>ผู้รับเงิน</div>
+        </div>
+        <div class="sign-box">
+          <div class="dots">ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(..................................)</div>
+          <div>ผู้จัดทำ</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  printWindow.document.write(printHtml);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { printWindow.print(); }, 500);
+}
+
 // ========== NAVIGATION ==========
 function navigateTo(section) {
   // Check admin security for users section
@@ -1167,9 +1284,9 @@ function calculatePrice() {
   const netHint = document.getElementById('net-price-hint');
   if (netHint) {
     if (auctionPrice > 0 && auctionPrice <= yardFee) {
-      netHint.innerHTML = `<span style="color:#f87171;font-weight:700;">⚠️ คำเตือน: ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าจัดการลาน (${formatNumber(yardFee)} บาท)!</span>`;
+      netHint.innerHTML = `<span style="color:#f87171;font-weight:700;">⚠️ คำเตือน: ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าบริหารจัดการ (${formatNumber(yardFee)} บาท)!</span>`;
     } else {
-      netHint.innerHTML = `ราคาหลังหักค่าจัดการลาน: <strong>${formatNumber(netPricePerKg)}</strong> บาท/กก. (หักค่าจัดการ -${formatNumber(yardFee)} บาท)`;
+      netHint.innerHTML = `ราคาหลังหักค่าบริหารจัดการ: <strong>${formatNumber(netPricePerKg)}</strong> บาท/กก. (หักค่าจัดการ -${formatNumber(yardFee)} บาท)`;
     }
   }
 
@@ -1235,7 +1352,7 @@ async function saveTransaction(confirmedOverride = false) {
   // Check warning for auction price
   const warnings = [];
   if (auctionPrice > 0 && auctionPrice <= yardFee) {
-    warnings.push(`<strong>ราคาประมูล:</strong> ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าจัดการลาน (${formatNumber(yardFee)} บาท)`);
+    warnings.push(`<strong>ราคาประมูล:</strong> ราคาประมูล (${formatNumber(auctionPrice)} บาท) น้อยกว่าหรือเท่ากับค่าบริหารจัดการ (${formatNumber(yardFee)} บาท)`);
   }
 
   if (warnings.length > 0 && !confirmedOverride) {
@@ -1388,20 +1505,33 @@ function buildReceiptCopyHTML(tx, plantName) {
       <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
       ${deductionHtml}
       <div class="receipt-row"><span>ราคาประมูล:</span><span>${formatNumber(tx.auction_price !== undefined ? tx.auction_price : (Number(tx.price_per_kg) + (tx.yard_fee !== undefined ? Number(tx.yard_fee) : 0.50)))} บาท/กก.</span></div>
-      <div class="receipt-row" style="color:#ef4444;"><span>หักค่าจัดการลาน:</span><span>-${formatNumber(tx.yard_fee !== undefined ? tx.yard_fee : 0.50)} บาท/กก.</span></div>
+      <div class="receipt-row" style="color:#ef4444;"><span>หักค่าบริหารจัดการ:</span><span>-${formatNumber(tx.yard_fee !== undefined ? tx.yard_fee : 0.50)} บาท/กก.</span></div>
       <div class="receipt-row"><span>ราคาสุทธิต่อ กก.:</span><span><strong>${formatNumber(tx.price_per_kg)} บาท/กก.</strong></span></div>
       <div class="receipt-row total" style="padding:6px 0;">
         <span>💰 ยอดเงินรวม:</span>
         <span style="font-size:1.2rem;">${formatNumber(tx.total_price)} บาท</span>
       </div>
       <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
-      <div class="receipt-row" style="font-size:0.8rem;">
-        <span>ผู้จัดทำ:</span>
-        <span><strong>${tx.created_by_name || 'ผู้ดูแลระบบ'}</strong></span>
+      <div style="display:flex; justify-content:space-between; margin-top:16px; font-size:0.75rem; text-align:center; gap:8px;">
+        <div style="flex:1;">
+          <div style="margin-bottom:28px;">ผู้จ่ายเงิน</div>
+          <div>ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(..................................)</div>
+        </div>
+        <div style="flex:1;">
+          <div style="margin-bottom:28px;">ผู้รับเงิน</div>
+          <div>ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(${tx.member_name})</div>
+        </div>
+        <div style="flex:1;">
+          <div style="margin-bottom:28px;">ผู้จัดทำ</div>
+          <div>ลงชื่อ..................................</div>
+          <div style="margin-top:4px;">(${tx.created_by_name || 'ผู้ดูแลระบบ'})</div>
+        </div>
       </div>
-      <div class="receipt-footer" style="margin-top:8px;">
-        <p style="font-size:0.8rem;">ขอบคุณที่ใช้บริการ</p>
-        <p style="font-size:0.65rem;margin-top:2px;color:#94a3b8;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
+      <div class="receipt-footer" style="margin-top:10px;">
+        <p style="font-size:0.7rem;">ขอบคุณที่ใช้บริการ</p>
+        <p style="font-size:0.6rem;margin-top:2px;color:#94a3b8;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
       </div>
     </div>
   `;
@@ -1833,17 +1963,27 @@ async function saveSettings() {
 
   showLoading();
   try {
-    let { error } = await sb.from('settings').update(updateData).eq('id', 1);
+    // Use .select() (without .single()) to avoid crash when RLS blocks and 0 rows returned
+    let { data, error } = await sb.from('settings').update(updateData).eq('id', 1).select();
 
-    if (error && error.message.includes('column')) {
+    // Fallback if yard_fee column doesn't exist
+    if (error && error.message && error.message.includes('column')) {
       delete updateData.yard_fee;
-      const res = await sb.from('settings').update(updateData).eq('id', 1);
+      const res = await sb.from('settings').update(updateData).eq('id', 1).select();
+      data = res.data;
       error = res.error;
     }
 
     if (error) throw error;
 
-    await loadSettings();
+    // Check if RLS silently blocked the update (0 rows returned)
+    if (!data || data.length === 0) {
+      throw new Error('RLS Policy บล็อกการแก้ไข — กรุณารัน SQL เพิ่ม Policy อนุญาต UPDATE ในตาราง settings ที่ Supabase SQL Editor');
+    }
+
+    // Update cache with the actual saved data from Supabase
+    cachedSettings = data[0];
+    updatePlantationName();
     showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
     renderSettings();
   } catch (err) {
