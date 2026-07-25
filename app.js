@@ -338,7 +338,7 @@ function updatePlantationName() {
 
 function updatePurchaseDualModeUI() {
   const badgeEl = document.getElementById('dual-mode-purchase-badge');
-  const btnEl = document.getElementById('save-tx-btn');
+  const btnEl = document.getElementById('save-transaction-btn') || document.getElementById('save-tx-btn');
   const isDual = cachedSettings?.dual_station_mode === true;
 
   if (badgeEl) {
@@ -352,7 +352,7 @@ function updatePurchaseDualModeUI() {
   }
 
   if (btnEl) {
-    btnEl.innerHTML = isDual ? '📤 ส่งข้อมูลไปสถานีออกใบเสร็จ' : '💾 บันทึกและพิมพ์ใบเสร็จ';
+    btnEl.innerHTML = isDual ? '📤 ส่งข้อมูลไปสถานีออกใบเสร็จ' : '💾 บันทึกธุรกรรม';
   }
 }
 
@@ -1362,6 +1362,7 @@ async function initPurchase() {
   trips = [{ grossWeight: 0 }];
   renderTrips();
   calculatePrice();
+  updatePurchaseDualModeUI();
 }
 
 function addTrip() {
@@ -1715,7 +1716,7 @@ async function renderPendingTransactions() {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
       tbody.innerHTML = list.map(p => `
-        <tr>
+        <tr style="cursor:pointer;" onclick="openPendingDetailModal('${p.id}')">
           <td>${formatDateTime(p.date || p.created_at)}</td>
           <td><span class="badge badge-green">${p.member_code}</span></td>
           <td><strong>${p.member_name}</strong></td>
@@ -1723,8 +1724,9 @@ async function renderPendingTransactions() {
           <td style="font-weight:600; color: var(--gold);">${formatNumber(p.total_price)} ฿</td>
           <td><span class="badge" style="background:rgba(255,255,255,0.08);">${p.created_by_display_name || 'เครื่อง 1'}</span></td>
           <td><span class="badge badge-warning">⏳ รอยืนยัน</span></td>
-          <td>
-            <button class="btn btn-primary btn-sm" onclick="confirmPendingTransaction('${p.id}')">✅ ยืนยัน & พิมพ์</button>
+          <td onclick="event.stopPropagation()">
+            <button class="btn btn-secondary btn-sm" onclick="openPendingDetailModal('${p.id}')">🔍 ดูรายละเอียด</button>
+            <button class="btn btn-primary btn-sm" onclick="confirmPendingTransaction('${p.id}')" style="margin-left:4px;">✅ ยืนยัน</button>
             <button class="btn btn-danger btn-sm" onclick="rejectPendingTransaction('${p.id}')" style="margin-left:4px;">↩️ ตีกลับ</button>
           </td>
         </tr>
@@ -1733,6 +1735,121 @@ async function renderPendingTransactions() {
   } catch (err) {
     console.error('renderPendingTransactions error:', err);
   }
+}
+
+let currentPendingDetailItem = null;
+
+async function openPendingDetailModal(pendingId) {
+  showLoading();
+  try {
+    const { data: p, error } = await sb.from('pending_transactions').select('*').eq('id', pendingId).single();
+    if (error || !p) throw new Error('ไม่พบข้อมูลรายการรอยืนยัน');
+
+    currentPendingDetailItem = p;
+    const bodyEl = document.getElementById('pending-detail-body');
+    const footerEl = document.getElementById('pending-detail-actions');
+
+    const tripsList = p.trips || [];
+    let tripsHtml = '';
+    if (tripsList.length > 0) {
+      tripsHtml = `
+        <div style="margin-top:14px; border-top:1px dashed var(--border); padding-top:10px;">
+          <div style="font-weight:600; margin-bottom:8px; font-size:0.9rem;">⚖️ รายละเอียดเที่ยวชั่งน้ำหนัก (${tripsList.length} เที่ยว):</div>
+          <table class="data-table" style="font-size:0.85rem;">
+            <thead>
+              <tr>
+                <th>เที่ยวที่</th>
+                <th>น้ำหนักชั่งรวม</th>
+                <th>หักรถเข็น</th>
+                <th>น้ำหนักสุทธิ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tripsList.map(t => `
+                <tr>
+                  <td>เที่ยวที่ ${t.trip}</td>
+                  <td>${formatNumber(t.gross_weight)} กก.</td>
+                  <td>${formatNumber(t.cart_weight)} กก.</td>
+                  <td><strong>${formatNumber(t.net_weight)} กก.</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    const deductPct = Number(p.deduction_percent || 0);
+
+    bodyEl.innerHTML = `
+      <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+          <div>
+            <span class="badge badge-green" style="font-size:0.95rem;">${p.member_code}</span>
+            <strong style="font-size:1.15rem; margin-left:8px;">${p.member_name}</strong>
+          </div>
+          <span class="badge badge-warning" style="font-size:0.85rem;">⏳ รอยืนยัน (จากเครื่อง 1)</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem;">
+          <div><strong>📅 วันเวลาที่ชั่ง:</strong> ${formatDateTime(p.date || p.created_at)}</div>
+          <div><strong>👤 ผู้ชั่ง (เครื่อง 1):</strong> ${p.created_by_display_name || 'พนักงานชั่ง'}</div>
+          <div><strong>💳 เลขบัญชี:</strong> ${p.member_account_no || 'ไม่มีเลขบัญชี'}</div>
+          <div><strong>🍃 ประเภทยาง:</strong> ยางก้อนถ้วย (100%)</div>
+        </div>
+
+        ${tripsHtml}
+
+        <div style="margin-top:14px; border-top:1px dashed var(--border); padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem;">
+          <div><strong>น้ำหนักสุทธิรวม:</strong> ${formatNumber(p.net_weight)} กก.</div>
+          <div><strong>หักเปอร์เซ็นต์ (${deductPct}%):</strong> -${formatNumber(Number(p.net_weight) - Number(p.final_weight))} กก.</div>
+          <div style="grid-column: span 2; font-size:1.05rem; font-weight:600; color:var(--green);">
+            ⚖️ น้ำหนักสุทธิหลังหัก: ${formatNumber(p.final_weight)} กก.
+          </div>
+        </div>
+
+        <div style="margin-top:14px; border-top:1px dashed var(--border); padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem;">
+          <div><strong>ราคาประมูล:</strong> ${formatNumber(p.auction_price !== undefined ? p.auction_price : (Number(p.price_per_kg) + Number(p.yard_fee || 0.5)))} บาท/กก.</div>
+          <div><strong>หักค่าบริหารจัดการ:</strong> -${formatNumber(p.yard_fee !== undefined ? p.yard_fee : 0.5)} บาท/กก.</div>
+          <div><strong>ราคาสุทธิต่อ กก.:</strong> ${formatNumber(p.price_per_kg)} บาท/กก.</div>
+          <div style="font-size:1.25rem; font-weight:700; color:var(--gold);">
+            💰 ยอดเงินรวม: ${formatNumber(p.total_price)} บาท
+          </div>
+        </div>
+      </div>
+    `;
+
+    footerEl.innerHTML = `
+      <button class="btn btn-primary" onclick="confirmPendingTransactionFromModal('${p.id}')">
+        ✅ ยืนยัน & พิมพ์ใบเสร็จ
+      </button>
+      <button class="btn btn-danger" onclick="rejectPendingTransactionFromModal('${p.id}')">
+        ↩️ ตีกลับรายการ
+      </button>
+      <button class="btn btn-secondary" onclick="closePendingDetailModal()">
+        ปิด
+      </button>
+    `;
+
+    document.getElementById('pending-detail-modal').classList.add('show');
+  } catch (err) {
+    showToast('เปิดดูรายละเอียดไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closePendingDetailModal() {
+  document.getElementById('pending-detail-modal').classList.remove('show');
+}
+
+async function confirmPendingTransactionFromModal(id) {
+  closePendingDetailModal();
+  await confirmPendingTransaction(id);
+}
+
+async function rejectPendingTransactionFromModal(id) {
+  closePendingDetailModal();
+  await rejectPendingTransaction(id);
 }
 
 async function confirmPendingTransaction(pendingId) {

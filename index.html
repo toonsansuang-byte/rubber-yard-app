@@ -1005,6 +1005,18 @@
     </div>
   </div>
 
+  <!-- ===== PENDING DETAIL MODAL (STATION 2) ===== -->
+  <div class="modal-overlay" id="pending-detail-modal">
+    <div class="modal-content" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3>🔍 รายละเอียดรายการรอยืนยัน</h3>
+        <button class="modal-close" onclick="closePendingDetailModal()">✕</button>
+      </div>
+      <div class="modal-body" id="pending-detail-body" style="max-height: 70vh; overflow-y: auto;"></div>
+      <div class="modal-footer" id="pending-detail-actions" style="justify-content: flex-end; gap: 8px; flex-wrap: wrap;"></div>
+    </div>
+  </div>
+
   <!-- SheetJS (XLSX) Client for Excel/CSV parsing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Supabase JS Client -->
