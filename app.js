@@ -1719,14 +1719,18 @@ async function renderPendingTransactions() {
         <tr style="cursor:pointer;" onclick="openPendingDetailModal('${p.id}')">
           <td>${formatDateTime(p.date || p.created_at)}</td>
           <td><span class="badge badge-green">${p.member_code}</span></td>
-          <td><strong>${p.member_name}</strong></td>
+          <td>
+            <strong style="color: #38bdf8; text-decoration: underline;" title="คลิกเพื่อดูรายละเอียด">
+              ${p.member_name} 🔍
+            </strong>
+          </td>
           <td>${formatNumber(p.final_weight || p.net_weight)} กก.</td>
           <td style="font-weight:600; color: var(--gold);">${formatNumber(p.total_price)} ฿</td>
           <td><span class="badge" style="background:rgba(255,255,255,0.08);">${p.created_by_display_name || 'เครื่อง 1'}</span></td>
           <td><span class="badge badge-warning">⏳ รอยืนยัน</span></td>
           <td onclick="event.stopPropagation()">
-            <button class="btn btn-secondary btn-sm" onclick="openPendingDetailModal('${p.id}')">🔍 ดูรายละเอียด</button>
-            <button class="btn btn-primary btn-sm" onclick="confirmPendingTransaction('${p.id}')" style="margin-left:4px;">✅ ยืนยัน</button>
+            <button class="btn btn-info btn-sm" onclick="openPendingDetailModal('${p.id}')">🔍 ดูรายละเอียด</button>
+            <button class="btn btn-primary btn-sm" onclick="confirmPendingTransaction('${p.id}')" style="margin-left:4px;">✅ ยืนยัน & พิมพ์</button>
             <button class="btn btn-danger btn-sm" onclick="rejectPendingTransaction('${p.id}')" style="margin-left:4px;">↩️ ตีกลับ</button>
           </td>
         </tr>

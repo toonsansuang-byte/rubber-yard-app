@@ -1803,3 +1803,13 @@ input:checked + .slider:before {
   border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
+.btn-info {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.btn-info:hover {
+  background: #0369a1;
+  box-shadow: 0 0 12px rgba(2, 132, 199, 0.4);
+}
+
