@@ -2138,16 +2138,6 @@ function closeWeightWarningModal() {
 
 // ========== RECEIPT (100% IDENTICAL DUAL COPIES ON SINGLE PAGE) ==========
 function buildReceiptCopyHTML(tx, plantName) {
-  const tripsList = tx.trips || [];
-
-  let tripsHtml = '';
-  if (tripsList.length > 0) {
-    tripsHtml = `
-      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
-      <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px;">รายละเอียดเที่ยวชั่ง (${tripsList.length} เที่ยว):</div>
-      ${tripsList.map(t => `
-        <div class="receipt-row" style="font-size:0.8rem;">
-function buildReceiptCopyHTML(tx, plantName) {
   const plantAddress = cachedSettings?.plantation_address || localStorage.getItem('setting_plantation_address') || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
   const auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
 
@@ -2293,7 +2283,6 @@ function buildReceiptCopyHTML(tx, plantName) {
       </div>
     </div>
   `;
-}
 }
 
 let currentReceiptTx = null;
