@@ -500,9 +500,9 @@ async function renderRounds() {
     // Render active round detail card
     const activeDetailEl = document.getElementById('active-round-detail');
     if (currentRound) {
-      // Query summary for active round
+      // Query summary & truck tagging info for active round
       const { data: roundTx } = await sb.from('transactions')
-        .select('net_weight, final_weight, total_price, member_code')
+        .select('*')
         .eq('round_id', currentRound.id);
 
       const txArr = roundTx || [];
@@ -510,6 +510,122 @@ async function renderRounds() {
       const uniqueMembers = new Set(txArr.map(t => t.member_code)).size;
       const totalWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
       const totalAmount = txArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+      // Group by truck_number
+      const truckGroups = {};
+      let unassignedWeight = 0;
+      let unassignedAmount = 0;
+      let unassignedCount = 0;
+
+      txArr.forEach(t => {
+        const wt = Number(t.final_weight || t.net_weight || 0);
+        const amt = Number(t.total_price || 0);
+        const tNum = (t.truck_number || '').trim();
+
+        if (!tNum) {
+          unassignedWeight += wt;
+          unassignedAmount += amt;
+          unassignedCount++;
+        } else {
+          if (!truckGroups[tNum]) {
+            truckGroups[tNum] = {
+              headWeight: 0, headAmount: 0, headCount: 0,
+              trailerWeight: 0, trailerAmount: 0, trailerCount: 0,
+              unspecifiedWeight: 0, unspecifiedAmount: 0, unspecifiedCount: 0,
+              totalWeight: 0, totalAmount: 0, totalCount: 0
+            };
+          }
+          const g = truckGroups[tNum];
+          g.totalWeight += wt;
+          g.totalAmount += amt;
+          g.totalCount++;
+
+          if (t.trailer_type === 'head') {
+            g.headWeight += wt;
+            g.headAmount += amt;
+            g.headCount++;
+          } else if (t.trailer_type === 'trailer') {
+            g.trailerWeight += wt;
+            g.trailerAmount += amt;
+            g.trailerCount++;
+          } else {
+            g.unspecifiedWeight += wt;
+            g.unspecifiedAmount += amt;
+            g.unspecifiedCount++;
+          }
+        }
+      });
+
+      const truckKeys = Object.keys(truckGroups).sort();
+      const assignedTrucksWeight = totalWeight - unassignedWeight;
+      const assignedTrucksAmount = totalAmount - unassignedAmount;
+
+      let truckSummaryHtml = '';
+      if (truckKeys.length === 0 && unassignedCount === 0) {
+        truckSummaryHtml = `<p style="font-size:0.85rem; color:var(--text-muted); padding:10px 0; margin:0;">ยังไม่มีรายการรับซื้อในรอบนี้</p>`;
+      } else if (truckKeys.length === 0) {
+        truckSummaryHtml = `
+          <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); padding:12px 16px; border-radius:var(--radius-md); font-size:0.9rem; margin-top:12px;">
+            ⚠️ มีรายการรับซื้อ ${unassignedCount} รายการ (${formatNumber(unassignedWeight)} กก.) แต่ยังไม่ได้ติดป้ายเลือกจัดขึ้นรถคันไหน
+          </div>
+        `;
+      } else {
+        const truckCards = truckKeys.map(tNum => {
+          const g = truckGroups[tNum];
+          return `
+            <div class="glass-card" style="padding:14px; background:rgba(255,255,255,0.02); border:1px solid var(--border); font-size:0.85rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+                <strong style="font-size:1rem; color:var(--gold);">🚛 ${tNum}</strong>
+                <button class="btn btn-secondary btn-sm" onclick="openTruckDetailModal('${currentRound.id}', '${tNum}')" style="font-size:0.75rem; padding:4px 10px;">🔍 ดูสมาชิก (${g.totalCount})</button>
+              </div>
+              <div style="line-height:1.7;">
+                <div><strong>🚛 ตัวแม่:</strong> ${formatNumber(g.headWeight)} กก. [${formatNumber(g.headAmount)} ฿] <span style="color:var(--text-muted);">(${g.headCount} รายการ)</span></div>
+                <div><strong>🚚 ตัวลูก:</strong> ${formatNumber(g.trailerWeight)} กก. [${formatNumber(g.trailerAmount)} ฿] <span style="color:var(--text-muted);">(${g.trailerCount} รายการ)</span></div>
+                ${g.unspecifiedCount > 0 ? `<div style="color:var(--warning);"><strong>⚠️ ไม่ระบุพ่วง:</strong> ${formatNumber(g.unspecifiedWeight)} กก. (${g.unspecifiedCount} รายการ)</div>` : ''}
+                <div style="border-top:1px dashed var(--border); margin-top:8px; padding-top:6px; font-weight:700; color:var(--green); font-size:0.95rem;">
+                  📊 รวมคันนี้: ${formatNumber(g.totalWeight)} กก. [${formatNumber(g.totalAmount)} ฿]
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        truckSummaryHtml = `
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px; margin-top:14px;">
+            ${truckCards}
+          </div>
+        `;
+      }
+
+      const reconciliationHtml = `
+        <div style="margin-top:20px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px 18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+            <h5 style="font-size:1.05rem; margin:0; color:var(--text-accent);">🚚 สรุปการจัดขึ้นรถพ่วง & ตรวจสอบผลต่างยาง</h5>
+            <span class="badge ${unassignedWeight === 0 ? 'badge-green' : 'badge-warning'}" style="font-size:0.85rem; padding:4px 12px;">
+              ${unassignedWeight === 0 ? '🟢 ขึ้นรถครบ 100%' : '⚠️ มียางยังไม่ขึ้นรถ ' + formatNumber(unassignedWeight) + ' กก.'}
+            </span>
+          </div>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:0.85rem; margin-top:10px;">
+            <div style="background:rgba(255,255,255,0.02); padding:10px; border-radius:var(--radius-sm);">
+              <span style="color:var(--text-muted); display:block; font-size:0.75rem;">📦 ยอดรับซื้อทั้งหมดในรอบ</span>
+              <strong style="font-size:1.1rem; color:var(--text-primary);">${formatNumber(totalWeight)} กก.</strong>
+              <div style="font-size:0.75rem; color:var(--gold);">${formatNumber(totalAmount)} บาท</div>
+            </div>
+            <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:10px; border-radius:var(--radius-sm);">
+              <span style="color:var(--green); display:block; font-size:0.75rem;">🚚 ยอดติดป้ายขึ้นรถพ่วงแล้ว</span>
+              <strong style="font-size:1.1rem; color:var(--green);">${formatNumber(assignedTrucksWeight)} กก.</strong>
+              <div style="font-size:0.75rem; color:var(--gold);">${formatNumber(assignedTrucksAmount)} บาท</div>
+            </div>
+            <div style="background:${unassignedWeight > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${unassignedWeight > 0 ? 'rgba(245,158,11,0.3)' : 'var(--border)'}; padding:10px; border-radius:var(--radius-sm);">
+              <span style="color:${unassignedWeight > 0 ? 'var(--warning)' : 'var(--text-muted)'}; display:block; font-size:0.75rem;">⏳ คงเหลือยังไม่ติดป้ายรถ</span>
+              <strong style="font-size:1.1rem; color:${unassignedWeight > 0 ? 'var(--warning)' : 'var(--text-muted)'};">${formatNumber(unassignedWeight)} กก.</strong>
+              <div style="font-size:0.75rem; color:var(--text-muted);">${formatNumber(unassignedAmount)} บาท</div>
+            </div>
+          </div>
+
+          ${truckSummaryHtml}
+        </div>
+      `;
 
       activeDetailEl.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
@@ -542,6 +658,7 @@ async function renderRounds() {
             <div class="card-value" style="font-size:1.3rem; color:var(--gold);">${formatNumber(totalAmount)} <span class="unit">บาท</span></div>
           </div>
         </div>
+        ${reconciliationHtml}
       `;
     } else {
       activeDetailEl.innerHTML = `
@@ -1358,11 +1475,49 @@ async function initPurchase() {
   document.getElementById('cart-weight').value = cachedSettings?.default_cart_weight || '';
   document.getElementById('price-per-kg').value = cachedSettings?.price_cup || cachedSettings?.price_sheet || '';
 
+  const truckSelect = document.getElementById('purchase-truck-number');
+  const trailerSelect = document.getElementById('purchase-trailer-type');
+  if (trailerSelect) trailerSelect.value = '';
+
+  if (currentRound && truckSelect) {
+    try {
+      const { data: tData } = await sb.from('transactions')
+        .select('truck_number')
+        .eq('round_id', currentRound.id)
+        .neq('truck_number', '');
+
+      const existingTrucks = Array.from(new Set((tData || []).map(t => t.truck_number).filter(Boolean)));
+      const defaultSet = new Set(['คันที่ 1', 'คันที่ 2', 'คันที่ 3', ...existingTrucks]);
+
+      truckSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>' +
+        Array.from(defaultSet).map(t => `<option value="${t}">${t}</option>`).join('') +
+        '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
+      truckSelect.value = '';
+    } catch (e) { /* ignore */ }
+  }
+
   // Start with one trip
   trips = [{ grossWeight: 0 }];
   renderTrips();
   calculatePrice();
   updatePurchaseDualModeUI();
+}
+
+function onPurchaseTruckSelect(val) {
+  if (val === 'NEW') {
+    const name = window.prompt('กรุณากรอกชื่อหรือหมายเลขรถคันใหม่ (เช่น คันที่ 4 หรือ ทะเบียนรถ):', 'คันที่ 4');
+    const selectEl = document.getElementById('purchase-truck-number');
+    if (name && name.trim() && selectEl) {
+      const trimmed = name.trim();
+      const newOpt = document.createElement('option');
+      newOpt.value = trimmed;
+      newOpt.textContent = trimmed;
+      newOpt.selected = true;
+      selectEl.insertBefore(newOpt, selectEl.lastElementChild);
+    } else if (selectEl) {
+      selectEl.value = '';
+    }
+  }
 }
 
 function addTrip() {
@@ -1585,6 +1740,8 @@ async function saveTransaction(confirmedOverride = false) {
   const totalPrice = finalWeight * netPricePerKg;
 
   const isDualMode = cachedSettings?.dual_station_mode === true;
+  const truckNumberVal = document.getElementById('purchase-truck-number')?.value || '';
+  const trailerTypeVal = document.getElementById('purchase-trailer-type')?.value || '';
 
   showLoading();
   try {
@@ -1607,6 +1764,8 @@ async function saveTransaction(confirmedOverride = false) {
         trips: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
+        truck_number: truckNumberVal,
+        trailer_type: trailerTypeVal,
         status: 'pending',
         created_by_user_id: currentUser ? currentUser.id : null,
         created_by_username: currentUser ? currentUser.username : 'user',
@@ -1614,7 +1773,15 @@ async function saveTransaction(confirmedOverride = false) {
         date: new Date().toISOString()
       };
 
-      const { data, error } = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+      let { data, error } = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+
+      if (error && error.message.includes('column')) {
+        delete pendingPayload.truck_number;
+        delete pendingPayload.trailer_type;
+        const res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+        data = res.data;
+        error = res.error;
+      }
 
       if (error) {
         if (error.message.includes('relation') || error.message.includes('pending_transactions')) {
@@ -1644,6 +1811,8 @@ async function saveTransaction(confirmedOverride = false) {
         trips: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
+        truck_number: truckNumberVal,
+        trailer_type: trailerTypeVal,
         created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
         created_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
         confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
@@ -1657,6 +1826,8 @@ async function saveTransaction(confirmedOverride = false) {
         delete payload.yard_fee;
         delete payload.created_by_display_name;
         delete payload.confirmed_by_display_name;
+        delete payload.truck_number;
+        delete payload.trailer_type;
         const res = await sb.from('transactions').insert(payload).select().single();
         data = res.data;
         error = res.error;
@@ -1879,6 +2050,8 @@ async function confirmPendingTransaction(pendingId) {
       trips: p.trips,
       trip_count: p.trip_count,
       round_id: p.round_id,
+      truck_number: p.truck_number || '',
+      trailer_type: p.trailer_type || '',
       created_by_name: p.created_by_display_name || 'ผู้ดูแลระบบ',
       created_by_display_name: p.created_by_display_name || 'ผู้ดูแลระบบ',
       confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
@@ -1892,6 +2065,8 @@ async function confirmPendingTransaction(pendingId) {
       delete txPayload.yard_fee;
       delete txPayload.created_by_display_name;
       delete txPayload.confirmed_by_display_name;
+      delete txPayload.truck_number;
+      delete txPayload.trailer_type;
       const res = await sb.from('transactions').insert(txPayload).select().single();
       newTx = res.data;
       txErr = res.error;
@@ -2157,7 +2332,13 @@ async function filterHistory() {
     } else {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = filtered.map(t => `
+      tbody.innerHTML = filtered.map(t => {
+        let truckText = '<span style="color:var(--text-muted); font-size:0.8rem;">-</span>';
+        if (t.truck_number) {
+          const typeStr = t.trailer_type === 'head' ? 'ตัวแม่' : (t.trailer_type === 'trailer' ? 'ตัวลูก' : '');
+          truckText = `<span class="badge badge-info" style="font-size:0.75rem;">🚚 ${t.truck_number} ${typeStr ? '(' + typeStr + ')' : ''}</span>`;
+        }
+        return `
         <tr>
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${t.member_code}</span></td>
@@ -2169,17 +2350,203 @@ async function filterHistory() {
           <td>${formatNumber(t.price_per_kg)}</td>
           <td style="font-weight:600;color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
           <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
+          <td>${truckText}</td>
           <td>
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openEditTruckModal('${t.id}')" title="แก้ไขป้ายรถ">🚚</button>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ" style="margin-left:4px;">🧾</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
   } catch (err) {
     showToast('โหลดประวัติไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
+}
+
+// ========== EDIT TRUCK TAG (HISTORY & RECONCILIATION) ==========
+let editingTruckTxId = null;
+
+async function openEditTruckModal(txId) {
+  showLoading();
+  try {
+    const { data: t, error } = await sb.from('transactions').select('*').eq('id', txId).single();
+    if (error || !t) throw new Error('ไม่พบข้อมูลธุรกรรม');
+
+    editingTruckTxId = txId;
+    const infoEl = document.getElementById('edit-truck-info');
+    infoEl.innerHTML = `
+      <div><strong>สมาชิก:</strong> [${t.member_code}] ${t.member_name}</div>
+      <div><strong>วันเวลา:</strong> ${formatDateTime(t.date)} | <strong>น้ำหนัก:</strong> ${formatNumber(t.final_weight || t.net_weight)} กก. [${formatNumber(t.total_price)} ฿]</div>
+    `;
+
+    // Fetch existing trucks in this round for dropdown options
+    let existingTrucks = [];
+    if (t.round_id) {
+      const { data: tData } = await sb.from('transactions')
+        .select('truck_number')
+        .eq('round_id', t.round_id)
+        .neq('truck_number', '');
+      existingTrucks = Array.from(new Set((tData || []).map(x => x.truck_number).filter(Boolean)));
+    }
+    const defaultSet = new Set(['คันที่ 1', 'คันที่ 2', 'คันที่ 3', ...existingTrucks]);
+    if (t.truck_number) defaultSet.add(t.truck_number);
+
+    const truckSelect = document.getElementById('edit-truck-number');
+    truckSelect.innerHTML = '<option value="">-- ไม่ระบุ (ไม่ผูกกับรถ) --</option>' +
+      Array.from(defaultSet).map(x => `<option value="${x}">${x}</option>`).join('') +
+      '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
+
+    truckSelect.value = t.truck_number || '';
+    document.getElementById('edit-trailer-type').value = t.trailer_type || '';
+
+    document.getElementById('edit-truck-modal').classList.add('show');
+  } catch (err) {
+    showToast('เปิดแก้ไขป้ายรถไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closeEditTruckModal() {
+  document.getElementById('edit-truck-modal').classList.remove('show');
+  editingTruckTxId = null;
+}
+
+function onEditTruckSelect(val) {
+  if (val === 'NEW') {
+    const name = window.prompt('กรุณากรอกชื่อหรือหมายเลขรถคันใหม่ (เช่น คันที่ 4 หรือ ทะเบียนรถ):', 'คันที่ 4');
+    const selectEl = document.getElementById('edit-truck-number');
+    if (name && name.trim() && selectEl) {
+      const trimmed = name.trim();
+      const newOpt = document.createElement('option');
+      newOpt.value = trimmed;
+      newOpt.textContent = trimmed;
+      newOpt.selected = true;
+      selectEl.insertBefore(newOpt, selectEl.lastElementChild);
+    } else if (selectEl) {
+      selectEl.value = '';
+    }
+  }
+}
+
+async function saveEditTruck() {
+  if (!editingTruckTxId) return;
+
+  const truckNumber = document.getElementById('edit-truck-number')?.value || '';
+  const trailerType = document.getElementById('edit-trailer-type')?.value || '';
+
+  showLoading();
+  try {
+    let { error } = await sb.from('transactions')
+      .update({
+        truck_number: truckNumber,
+        trailer_type: trailerType
+      })
+      .eq('id', editingTruckTxId);
+
+    if (error && error.message.includes('column')) {
+      throw new Error('ยังไม่ได้เพิ่มคอลัมน์ truck_number ใน Supabase — กรุณารัน SQL เพิ่มคอลัมน์ที่ Supabase SQL Editor');
+    }
+
+    if (error) throw error;
+
+    showToast('บันทึกเปลี่ยนป้ายรถพ่วงสำเร็จ!');
+    closeEditTruckModal();
+    await filterHistory();
+    if (currentSection === 'rounds') await renderRounds();
+  } catch (err) {
+    showToast('บันทึกเปลี่ยนป้ายรถไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// ========== TRUCK DETAIL MODAL (ROUNDS SUMMARY) ==========
+async function openTruckDetailModal(roundId, truckNum) {
+  showLoading();
+  try {
+    const { data: txList, error } = await sb.from('transactions')
+      .select('*')
+      .eq('round_id', roundId)
+      .eq('truck_number', truckNum)
+      .order('date', { ascending: true });
+
+    if (error) throw error;
+
+    const list = txList || [];
+    const titleEl = document.getElementById('truck-detail-title');
+    const bodyEl = document.getElementById('truck-detail-body');
+
+    titleEl.textContent = `🚛 รายละเอียดจัดส่งมอบในรถ ${truckNum} (${list.length} รายการ)`;
+
+    const headList = list.filter(t => t.trailer_type === 'head');
+    const trailerList = list.filter(t => t.trailer_type === 'trailer');
+    const unspecifiedList = list.filter(t => t.trailer_type !== 'head' && t.trailer_type !== 'trailer');
+
+    const sumHeadWeight = headList.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const sumHeadAmount = headList.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    const sumTrailerWeight = trailerList.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const sumTrailerAmount = trailerList.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    const sumTotalWeight = list.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const sumTotalAmount = list.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    const renderSubTable = (subList, titleStr, colorStyle) => {
+      if (subList.length === 0) return '';
+      return `
+        <div style="margin-bottom:16px;">
+          <h4 style="font-size:0.95rem; margin-bottom:8px; ${colorStyle}">${titleStr} (${subList.length} รายการ)</h4>
+          <table class="data-table" style="font-size:0.85rem;">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>วันเวลา</th>
+                <th>รหัส</th>
+                <th>ชื่อสมาชิก</th>
+                <th>น้ำหนักสุทธิ</th>
+                <th>ยอดเงินรวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subList.map((t, idx) => `
+                <tr>
+                  <td>${idx + 1}</td>
+                  <td>${formatDateTime(t.date)}</td>
+                  <td><span class="badge badge-green">${t.member_code}</span></td>
+                  <td><strong>${t.member_name}</strong></td>
+                  <td>${formatNumber(t.final_weight || t.net_weight)} กก.</td>
+                  <td style="font-weight:600; color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    };
+
+    bodyEl.innerHTML = `
+      <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; font-size:0.9rem;">
+        <div><strong>🚛 ยอดรวมตัวแม่:</strong> ${formatNumber(sumHeadWeight)} กก. [${formatNumber(sumHeadAmount)} ฿]</div>
+        <div><strong>🚚 ยอดรวมตัวลูก:</strong> ${formatNumber(sumTrailerWeight)} กก. [${formatNumber(sumTrailerAmount)} ฿]</div>
+        <div style="font-weight:700; color:var(--green);"><strong>📊 ยอดรวมทั้งคัน:</strong> ${formatNumber(sumTotalWeight)} กก. [${formatNumber(sumTotalAmount)} ฿]</div>
+      </div>
+
+      ${renderSubTable(headList, '🚛 1. รายการพ่วงตัวแม่', 'color:var(--green);')}
+      ${renderSubTable(trailerList, '🚚 2. รายการพ่วงตัวลูก', 'color:var(--text-accent);')}
+      ${renderSubTable(unspecifiedList, '⚠️ 3. รายการไม่ได้ระบุพ่วง', 'color:var(--warning);')}
+    `;
+
+    document.getElementById('truck-detail-modal').classList.add('show');
+  } catch (err) {
+    showToast('เปิดดูรายการสมาชิกในรถไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closeTruckDetailModal() {
+  document.getElementById('truck-detail-modal').classList.remove('show');
 }
 
 function clearHistoryFilter() {
