@@ -330,17 +330,18 @@
               </div>
             </div>
 
-            <!-- Truck & Trailer Tagging -->
-            <div class="glass-card" style="margin-bottom: 20px;">
+            <!-- Independent Truck Delivery Logger -->
+            <div class="glass-card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-light);">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="font-size: 1rem; margin:0;">🚚 ติดป้ายรถพ่วง (จัดขึ้นรถ)</h3>
-                <span class="badge" style="font-weight:normal; background:rgba(255,255,255,0.08); font-size:0.75rem;">ไม่บังคับกรอก</span>
+                <h3 style="font-size: 1rem; margin:0; color:var(--text-accent);">🚚 บันทึกจัดส่งมอบยางขึ้นรถพ่วง (ประจำรอบ)</h3>
+                <span class="badge badge-info" style="font-size:0.75rem;">แยกต่างหาก ไม่เกี่ยวกับสมาชิก</span>
               </div>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="purchase-truck-number">รถคันที่</label>
-                  <select id="purchase-truck-number" class="form-input" style="font-size:0.9rem;" onchange="onPurchaseTruckSelect(this.value)">
-                    <option value="">-- ไม่ระบุ --</option>
+                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-number">รถคันที่ / ทะเบียน</label>
+                  <select id="truck-delivery-number" class="form-input" style="font-size:0.9rem;" onchange="onTruckDeliverySelect(this.value)">
+                    <option value="">-- เลือกรถ --</option>
                     <option value="คันที่ 1">คันที่ 1</option>
                     <option value="คันที่ 2">คันที่ 2</option>
                     <option value="คันที่ 3">คันที่ 3</option>
@@ -348,14 +349,28 @@
                   </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="purchase-trailer-type">พ่วง (ประเภท)</label>
-                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.9rem;">
-                    <option value="">-- ไม่ระบุ --</option>
+                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-trailer-type">ลักษณะพ่วง</label>
+                  <select id="truck-delivery-trailer-type" class="form-input" style="font-size:0.9rem;">
                     <option value="head">🚛 ตัวแม่</option>
                     <option value="trailer">🚚 ตัวลูก</option>
                   </select>
                 </div>
               </div>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-weight">น้ำหนักจัดขึ้น (กก.)</label>
+                  <input type="number" id="truck-delivery-weight" class="form-input" placeholder="0.00" step="0.01" min="0" style="font-size:0.9rem;">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-target">เป้าหมายคันนี้ (กก.) [ระบุหรือไม่ก็ได้]</label>
+                  <input type="number" id="truck-delivery-target" class="form-input" placeholder="เช่น 30000" step="100" min="0" style="font-size:0.9rem;">
+                </div>
+              </div>
+
+              <button class="btn btn-primary btn-block" style="padding: 10px;" onclick="saveTruckDelivery()">
+                💾 บันทึกน้ำหนักจัดขึ้นรถพ่วง
+              </button>
             </div>
 
             <!-- Multi-Trip Weighing -->
@@ -516,7 +531,6 @@
                   <th>ราคา/กก.</th>
                   <th>ยอดเงิน</th>
                   <th>ผู้บันทึก</th>
-                  <th>🚚 รถพ่วง</th>
                   <th>จัดการ</th>
                 </tr>
               </thead>
@@ -1046,39 +1060,34 @@
     </div>
   </div>
 
-  <!-- ===== EDIT TRUCK TAG MODAL (HISTORY) ===== -->
-  <div class="modal-overlay" id="edit-truck-modal">
+  <!-- ===== EDIT TRUCK DELIVERY MODAL (ROUNDS) ===== -->
+  <div class="modal-overlay" id="edit-truck-delivery-modal">
     <div class="modal-content" style="max-width: 500px;">
       <div class="modal-header">
-        <h3>🚚 แก้ไขป้ายรถพ่วง (จัดส่งมอบ)</h3>
-        <button class="modal-close" onclick="closeEditTruckModal()">✕</button>
+        <h3>🚚 แก้ไขข้อมูลจัดขึ้นรถพ่วง</h3>
+        <button class="modal-close" onclick="closeEditTruckDeliveryModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div id="edit-truck-info" style="margin-bottom:16px; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); font-size:0.9rem;"></div>
-        
         <div class="form-group mb-3">
-          <label class="form-label" for="edit-truck-number">🚚 เลือกรถคันที่</label>
-          <select id="edit-truck-number" class="form-input" onchange="onEditTruckSelect(this.value)">
-            <option value="">-- ไม่ระบุ (ไม่ผูกกับรถ) --</option>
-            <option value="คันที่ 1">คันที่ 1</option>
-            <option value="คันที่ 2">คันที่ 2</option>
-            <option value="คันที่ 3">คันที่ 3</option>
-            <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
-          </select>
+          <label class="form-label" for="edit-td-number">🚚 รถคันที่ / ทะเบียน</label>
+          <input type="text" id="edit-td-number" class="form-input" placeholder="เช่น คันที่ 1">
         </div>
-
         <div class="form-group mb-3">
-          <label class="form-label" for="edit-trailer-type">🚛 เลือกลักษณะพ่วง</label>
-          <select id="edit-trailer-type" class="form-input">
-            <option value="">-- ไม่ระบุ --</option>
-            <option value="head">🚛 ตัวแม่</option>
-            <option value="trailer">🚚 ตัวลูก</option>
-          </select>
+          <label class="form-label" for="edit-td-head">🚛 น้ำหนักรวมพ่วงตัวแม่ (กก.)</label>
+          <input type="number" id="edit-td-head" class="form-input" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label" for="edit-td-trailer">🚚 น้ำหนักรวมพ่วงตัวลูก (กก.)</label>
+          <input type="number" id="edit-td-trailer" class="form-input" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label" for="edit-td-target">🎯 เป้าหมายน้ำหนักทั้งคัน (กก.)</label>
+          <input type="number" id="edit-td-target" class="form-input" placeholder="0.00" step="100" min="0">
         </div>
       </div>
       <div class="modal-footer" style="justify-content: flex-end; gap: 8px;">
-        <button class="btn btn-secondary" onclick="closeEditTruckModal()">ยกเลิก</button>
-        <button class="btn btn-primary" onclick="saveEditTruck()">💾 บันทึกเปลี่ยนป้ายรถ</button>
+        <button class="btn btn-secondary" onclick="closeEditTruckDeliveryModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveEditTruckDelivery()">💾 บันทึกแก้ไขข้อมูลรถ</button>
       </div>
     </div>
   </div>
