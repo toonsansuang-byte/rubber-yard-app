@@ -335,7 +335,10 @@
 
             <!-- Truck Auto-Tagging -->
             <div class="glass-card" style="margin-bottom: 20px; border-left: 4px solid var(--gold);">
-              <h3 style="margin-bottom: 12px; font-size: 1rem; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ (คำนวณอัตโนมัติ)</h3>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size: 1rem; margin:0; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ (คำนวณอัตโนมัติ)</h3>
+                <span class="badge badge-info" style="font-size:0.75rem;">📌 จำค่าต่อเนื่อง</span>
+              </div>
               <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                 <div class="form-group mb-0">
                   <label class="form-label" style="font-size:0.85rem;" for="purchase-truck-number">รถคันที่ / ทะเบียน</label>
@@ -354,6 +357,9 @@
                     <option value="trailer">🚚 ตัวลูก</option>
                   </select>
                 </div>
+              </div>
+              <div style="font-size:0.78rem; color:var(--gold); margin-top:8px;">
+                📌 ระบบจะจำค่ารถคันนี้สำหรับสมาชิกรายถัดไปให้อัตโนมัติ (เปลี่ยนเฉพาะเมื่อย้ายรถ)
               </div>
             </div>
 

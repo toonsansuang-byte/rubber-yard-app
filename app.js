@@ -1472,7 +1472,10 @@ async function initPurchase() {
 
   const truckSelect = document.getElementById('purchase-truck-number');
   const trailerSelect = document.getElementById('purchase-trailer-type');
-  if (trailerSelect) trailerSelect.value = '';
+
+  // Preserve previously selected truck & trailer
+  const savedTruck = truckSelect ? truckSelect.value : '';
+  const savedTrailer = trailerSelect ? trailerSelect.value : 'head';
 
   if (currentRound && truckSelect) {
     try {
@@ -1484,11 +1487,24 @@ async function initPurchase() {
       const existingTrucks = Array.from(new Set((tData || []).map(t => t.truck_number).filter(Boolean)));
       const defaultSet = new Set(['คันที่ 1', 'คันที่ 2', 'คันที่ 3', ...existingTrucks]);
 
-      truckSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>' +
+      if (savedTruck && savedTruck !== 'NEW') {
+        defaultSet.add(savedTruck);
+      }
+
+      truckSelect.innerHTML = '<option value="">-- ไม่ระบุ / เก็บในลาน --</option>' +
         Array.from(defaultSet).map(t => `<option value="${t}">${t}</option>`).join('') +
         '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
-      truckSelect.value = '';
+
+      if (savedTruck && savedTruck !== 'NEW') {
+        truckSelect.value = savedTruck;
+      } else {
+        truckSelect.value = '';
+      }
     } catch (e) { /* ignore */ }
+  }
+
+  if (trailerSelect && savedTrailer) {
+    trailerSelect.value = savedTrailer;
   }
 
   // Start with one trip
