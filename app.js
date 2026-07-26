@@ -2764,6 +2764,210 @@ async function deleteTruckDelivery(id) {
   hideLoading();
 }
 
+async function printTruckWeightsReport() {
+  if (!currentRound) {
+    showToast('กรุณาเปิดรอบส่งมอบยางก่อนพิมพ์เอกสาร', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+
+    // 1. Query purchased totals from member transactions
+    const { data: roundTx } = await sb.from('transactions')
+      .select('net_weight, final_weight, total_price')
+      .eq('round_id', currentRound.id);
+
+    const txArr = roundTx || [];
+    const totalPurchasedWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const totalPurchasedAmount = txArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    // 2. Query truck deliveries
+    const { data: tdData } = await sb.from('truck_deliveries')
+      .select('*')
+      .eq('round_id', currentRound.id)
+      .order('truck_number', { ascending: true });
+
+    const truckDeliveries = tdData || [];
+    const sumHeadWeight = truckDeliveries.reduce((s, t) => s + Number(t.head_weight || 0), 0);
+    const sumTrailerWeight = truckDeliveries.reduce((s, t) => s + Number(t.trailer_weight || 0), 0);
+    const sumTotalTruckWeight = truckDeliveries.reduce((s, t) => s + Number(t.total_weight || 0), 0);
+    const discrepancy = totalPurchasedWeight - sumTotalTruckWeight;
+
+    // 3. Resolve President name for dynamic signature
+    let presidentName = '';
+    try {
+      const { data: users } = await sb.from('app_users').select('display_name, position').order('created_at');
+      if (users && users.length > 0) {
+        const presUser = users.find(u => u.position && u.position.includes('ประธาน'));
+        presidentName = presUser ? presUser.display_name : users[0].display_name;
+      }
+    } catch (e) { /* ignore */ }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตป๊อปอัพเพื่อพิมพ์', 'error');
+      hideLoading();
+      return;
+    }
+
+    const printDateStr = formatDateTime(new Date());
+
+    let discrepancyStatusText = 'ตรงกันพอดี 100%';
+    if (discrepancy > 0) {
+      discrepancyStatusText = `ยางรับซื้อคงเหลือในลาน ${formatNumber(discrepancy)} กก.`;
+    } else if (discrepancy < 0) {
+      discrepancyStatusText = `ยอดขึ้นรถเกินรับซื้อ ${formatNumber(Math.abs(discrepancy))} กก.`;
+    }
+
+    const tableRowsHtml = truckDeliveries.length === 0
+      ? `<tr><td colspan="6" style="text-align:center; padding:15px; color:#666;">ยังไม่มีข้อมูลการบันทึกจัดขึ้นรถพ่วงในรอบนี้</td></tr>`
+      : truckDeliveries.map((t, idx) => `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td><strong>🚛 ${t.truck_number}</strong></td>
+            <td style="text-align:right;">${formatNumber(t.head_weight || 0)} กก.</td>
+            <td style="text-align:right;">${formatNumber(t.trailer_weight || 0)} กก.</td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(t.total_weight || 0)} กก.</td>
+            <td style="text-align:center;">${t.target_weight > 0 ? `${formatNumber(t.target_weight)} กก.` : '-'}</td>
+          </tr>
+        `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="th">
+      <head>
+        <meta charset="UTF-8">
+        <title>เอกสารสรุปน้ำหนักรถพ่วง - ${currentRound.title}</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body {
+            font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+            font-size: 14px;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            background: #fff;
+          }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+          .header h2 { margin: 0 0 5px 0; font-size: 20px; }
+          .header h3 { margin: 0 0 5px 0; font-size: 16px; font-weight: normal; }
+          .header p { margin: 0; font-size: 13px; color: #333; }
+
+          .summary-box {
+            border: 1px solid #000;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background: #fafafa;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            font-size: 13px;
+          }
+          .summary-box div { line-height: 1.6; }
+
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+          th, td { border: 1px solid #000; padding: 8px 10px; }
+          th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
+          tr.total-row td { font-weight: bold; background-color: #f9f9f9; }
+
+          .signatures {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            text-align: center;
+            page-break-inside: avoid;
+          }
+          .sig-box { border: 1px solid #ccc; padding: 15px 10px; border-radius: 4px; }
+          .sig-line { margin-top: 35px; border-bottom: 1px dotted #000; display: inline-block; width: 80%; }
+          .sig-name { margin-top: 6px; font-size: 12px; }
+          .sig-role { font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>🌿 ${plantName}</h2>
+          <h3>เอกสารสรุปน้ำหนักจัดส่งมอบยางขึ้นรถพ่วง</h3>
+          <p><strong>รอบส่งมอบยาง:</strong> ${currentRound.title} | <strong>วันที่พิมพ์:</strong> ${printDateStr}</p>
+        </div>
+
+        <div class="summary-box">
+          <div>
+            <strong>📦 ยอดรับซื้อรวมจากสมาชิก:</strong><br>
+            ${formatNumber(totalPurchasedWeight)} กก. (${formatNumber(totalPurchasedAmount)} บาท)
+          </div>
+          <div>
+            <strong>🚚 ยอดจัดขึ้นรถพ่วงรวมทุกคัน:</strong><br>
+            ${formatNumber(sumTotalTruckWeight)} กก. (ตัวแม่: ${formatNumber(sumHeadWeight)} | ตัวลูก: ${formatNumber(sumTrailerWeight)})
+          </div>
+          <div>
+            <strong>⚖️ ผลต่างยาง (คงเหลือ/ขาด/เกิน):</strong><br>
+            ${formatNumber(Math.abs(discrepancy))} กก. (${discrepancyStatusText})
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>รถคันที่ / ทะเบียนรถ</th>
+              <th style="width:120px;">🚛 พ่วงตัวแม่</th>
+              <th style="width:120px;">🚚 พ่วงตัวลูก</th>
+              <th style="width:130px;">📊 รวมทั้งคัน</th>
+              <th style="width:110px;">🎯 เป้าหมาย</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+            <tr class="total-row">
+              <td colspan="2" style="text-align:center;">รวมทั้งสิ้น (ทุกคันในรอบ)</td>
+              <td style="text-align:right;">${formatNumber(sumHeadWeight)} กก.</td>
+              <td style="text-align:right;">${formatNumber(sumTrailerWeight)} กก.</td>
+              <td style="text-align:right;">${formatNumber(sumTotalTruckWeight)} กก.</td>
+              <td style="text-align:center;">-</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="signatures">
+          <div class="sig-box">
+            <div class="sig-role">ผู้จัดทำเอกสาร / พนักงานชั่ง</div>
+            <div class="sig-line"></div>
+            <div class="sig-name">(${currentUser ? currentUser.display_name : '..................................'})</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-role">พนักงานขับรถ / ผู้รับมอบ</div>
+            <div class="sig-line"></div>
+            <div class="sig-name">(..................................)</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-role">ประธานกรรมการ</div>
+            <div class="sig-line"></div>
+            <div class="sig-name">(${presidentName || '..................................'})</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+
+  } catch (err) {
+    showToast('สร้างเอกสารพิมพ์ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
 function clearHistoryFilter() {
   document.getElementById('history-round-filter').value = '';
   document.getElementById('history-date-from').value = '';
