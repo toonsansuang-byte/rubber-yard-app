@@ -2147,29 +2147,50 @@ function buildReceiptCopyHTML(tx, plantName) {
       <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px;">รายละเอียดเที่ยวชั่ง (${tripsList.length} เที่ยว):</div>
       ${tripsList.map(t => `
         <div class="receipt-row" style="font-size:0.8rem;">
-          <span>เที่ยวที่ ${t.trip}</span>
-          <span>${formatNumber(t.gross_weight)} - ${formatNumber(t.cart_weight)} = <strong>${formatNumber(t.net_weight)}</strong> กก.</span>
-        </div>
-      `).join('')}
-    `;
+function buildReceiptCopyHTML(tx, plantName) {
+  const plantAddress = cachedSettings?.plantation_address || localStorage.getItem('setting_plantation_address') || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
+  const auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+
+  // Format date: e.g. "9 มิ.ย. 69"
+  const d = new Date(tx.date || Date.now());
+  const monthNamesShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const day = d.getDate();
+  const month = monthNamesShort[d.getMonth()];
+  const yearShort = (d.getFullYear() + 543).toString().substring(2);
+  const dateFormattedStr = `${day} ${month} ${yearShort}`;
+
+  // Member Code format: e.g. ก00089 if code is 89
+  let memberCodeFormatted = String(tx.member_code || '');
+  if (!memberCodeFormatted.startsWith('ก')) {
+    memberCodeFormatted = 'ก' + memberCodeFormatted.padStart(5, '0');
   }
 
-  const deductPct = Number(tx.deduction_percent || 0);
-  const deductionHtml = deductPct > 0 ? `
-    <div class="receipt-row">
-      <span>หักเปอร์เซ็นต์ (${deductPct}%):</span>
-      <span>- ${formatNumber(Number(tx.net_weight) - Number(tx.final_weight))} กก.</span>
-    </div>
-    <div class="receipt-row">
-      <span>น้ำหนักหลังหัก:</span>
-      <span><strong>${formatNumber(tx.final_weight)} กก.</strong></span>
-    </div>
-  ` : `
-    <div class="receipt-row">
-      <span>น้ำหนักสุทธิ:</span>
-      <span><strong>${formatNumber(tx.final_weight || tx.net_weight)} กก.</strong></span>
-    </div>
-  `;
+  // Sequence No & Queue No
+  const sequenceNo = tx.sequence_no || tx.seq_no || tx.queue_no || 1;
+  const queueNo = tx.queue_no !== undefined ? tx.queue_no : 0;
+
+  // Trips calculation (8 grid boxes matching paper form)
+  let tripsArr = [];
+  if (Array.isArray(tx.trips) && tx.trips.length > 0) {
+    tripsArr = tx.trips;
+  } else if (tx.trip_details && Array.isArray(tx.trip_details)) {
+    tripsArr = tx.trip_details;
+  } else {
+    tripsArr = [{ gross_weight: tx.gross_weight || tx.net_weight, cart_weight: tx.cart_weight || 0, net_weight: tx.net_weight }];
+  }
+
+  let tripGridCellsHtml = '';
+  const maxBoxes = 8;
+  for (let i = 0; i < maxBoxes; i++) {
+    const trip = tripsArr[i];
+    const val = trip ? (trip.gross_weight || trip.gross || trip.net_weight) : undefined;
+    const displayVal = (val !== undefined && Number(val) > 0) ? formatNumber(val) : '-';
+    tripGridCellsHtml += `<td style="border:1px solid #000; padding:2px 1px; width:12.5%; text-align:center; font-size:11px;">${displayVal}</td>`;
+  }
+
+  const totalGross = tripsArr.reduce((s, t) => s + Number(t.gross_weight || t.gross || t.net_weight || 0), 0);
+  const totalCart = tripsArr.reduce((s, t) => s + Number(t.cart_weight || 0), 0);
+  const finalNetWeight = Number(tx.final_weight || tx.net_weight || 0);
 
   const isDual = cachedSettings?.dual_station_mode === true;
   const showPayer = cachedSettings?.show_payer_name !== false;
@@ -2186,51 +2207,93 @@ function buildReceiptCopyHTML(tx, plantName) {
   let creatorName = tx.created_by_display_name || tx.created_by_name || 'ผู้ดูแลระบบ';
 
   return `
-    <div class="receipt-single-copy">
-      <div class="receipt-header" style="margin-bottom:10px;">
-        <h3 style="font-size:1.15rem;">🌿 ${plantName}</h3>
-        <p style="font-size:0.9rem;font-weight:600;">ใบเสร็จรับซื้อยางพารา</p>
-        <p style="font-size:0.75rem;margin-top:4px;color:#64748b;">${formatDateTime(tx.date)}</p>
+    <div class="receipt-single-copy" style="font-family:'Sarabun','TH Sarabun New',sans-serif; color:#000; padding:10px 14px; background:#fff; font-size:12px; line-height:1.35; border:1px solid #ddd; margin-bottom:10px;">
+      <!-- Header -->
+      <div style="text-align:center; margin-bottom:10px; border-bottom:1px solid #000; padding-bottom:6px;">
+        <div style="font-size:15px; font-weight:bold; color:#000;">${plantName}</div>
+        <div style="font-size:12px; color:#000; margin-top:2px;">${plantAddress}</div>
       </div>
-      <div class="receipt-row"><span>รหัสสมาชิก:</span><span><strong>${tx.member_code}</strong></span></div>
-      <div class="receipt-row"><span>ชื่อสมาชิก:</span><span>${tx.member_name}</span></div>
-      ${tx.member_account_no ? `<div class="receipt-row"><span>เลขบัญชี:</span><span>${tx.member_account_no}</span></div>` : ''}
-      <div class="receipt-row"><span>ประเภทยาง:</span><span>ยางก้อนถ้วย</span></div>
-      ${tripsHtml}
-      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
-      <div class="receipt-row"><span>น้ำหนักสุทธิรวม:</span><span>${formatNumber(tx.net_weight)} กก.</span></div>
-      ${deductionHtml}
-      <div class="receipt-row"><span>ราคาประมูล:</span><span>${formatNumber(tx.auction_price !== undefined ? tx.auction_price : (Number(tx.price_per_kg) + (tx.yard_fee !== undefined ? Number(tx.yard_fee) : 0.50)))} บาท/กก.</span></div>
-      <div class="receipt-row" style="color:#ef4444;"><span>หักค่าบริหารจัดการ:</span><span>-${formatNumber(tx.yard_fee !== undefined ? tx.yard_fee : 0.50)} บาท/กก.</span></div>
-      <div class="receipt-row"><span>ราคาสุทธิต่อ กก.:</span><span><strong>${formatNumber(tx.price_per_kg)} บาท/กก.</strong></span></div>
-      <div class="receipt-row total" style="padding:6px 0;">
-        <span>💰 ยอดเงินรวม:</span>
-        <span style="font-size:1.2rem;">${formatNumber(tx.total_price)} บาท</span>
-      </div>
-      <div style="border-top:1px dashed #ccc;margin:6px 0;"></div>
-      <div style="display:flex; justify-content:space-between; margin-top:16px; font-size:0.75rem; text-align:center; gap:8px;">
-        <div style="flex:1;">
-          <div style="margin-bottom:28px;">ผู้จ่ายเงิน</div>
-          <div>ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(${payerName})</div>
+
+      <!-- Main Form Table -->
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <tr>
+          <td style="width:140px; font-weight:bold; padding:2px 0;">วันที่ขายยาง</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${dateFormattedStr}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">ผู้ประมูล</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${auctionBuyer}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">ลำดับที่</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${sequenceNo}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">เลขที่บิล/คิว</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${queueNo}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">รหัสสมาชิก</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${memberCodeFormatted}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">ชื่อสมาชิก</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">ชื่อคนกรีด</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:4px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
+          <td style="padding:4px 0;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr>
+                ${tripGridCellsHtml}
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางรวมรถ</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalGross)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักรวมรถเข็น</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalCart)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางสุทธิ</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(finalNetWeight)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">ราคา / กิโลกรัม</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(tx.price_per_kg)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:3px 0; font-size:13px;">จำนวนเงิน</td>
+          <td style="border-bottom:1px solid #000; font-weight:bold; text-align:center; font-size:14px;">${formatNumber(tx.total_price)}</td>
+        </tr>
+      </table>
+
+      <!-- Signatures Footer -->
+      <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; font-size:11px;">
+        <div>
+          <div style="border-bottom:1px solid #000; height:20px; font-size:10px; display:flex; align-items:flex-end; justify-content:center;">${creatorName}</div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้จัดทำ</div>
         </div>
-        <div style="flex:1;">
-          <div style="margin-bottom:28px;">ผู้รับเงิน</div>
-          <div>ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(${tx.member_name})</div>
+        <div>
+          <div style="border-bottom:1px solid #000; height:20px; font-size:10px; display:flex; align-items:flex-end; justify-content:center;">${payerName}</div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้จ่ายเงิน</div>
         </div>
-        <div style="flex:1;">
-          <div style="margin-bottom:28px;">ผู้จัดทำ</div>
-          <div>ลงชื่อ..................................</div>
-          <div style="margin-top:4px;">(${creatorName})</div>
+        <div>
+          <div style="border-bottom:1px solid #000; height:20px; font-size:10px;"></div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้รับเงิน</div>
         </div>
-      </div>
-      <div class="receipt-footer" style="margin-top:10px;">
-        <p style="font-size:0.7rem;">ขอบคุณที่ใช้บริการ</p>
-        <p style="font-size:0.6rem;margin-top:2px;color:#94a3b8;">Ref: ${(tx.id || '').substring(0, 8).toUpperCase()}</p>
       </div>
     </div>
   `;
+}
 }
 
 let currentReceiptTx = null;
@@ -3235,6 +3298,12 @@ async function renderSettings() {
   const plantNameEl = document.getElementById('setting-plantation-name');
   if (plantNameEl) plantNameEl.value = s?.plantation_name || '';
 
+  const plantAddrEl = document.getElementById('setting-plantation-address');
+  if (plantAddrEl) plantAddrEl.value = s?.plantation_address || localStorage.getItem('setting_plantation_address') || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
+
+  const buyerEl = document.getElementById('setting-auction-buyer');
+  if (buyerEl) buyerEl.value = s?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+
   const priceCupEl = document.getElementById('setting-price-cup');
   if (priceCupEl) priceCupEl.value = s?.price_cup || '';
 
@@ -3255,7 +3324,10 @@ async function renderSettings() {
 }
 
 async function saveSettings() {
-  const plantationName = document.getElementById('setting-plantation-name')?.value?.trim() || 'ลานยางพาราชุมชน';
+  const plantationName = document.getElementById('setting-plantation-name')?.value?.trim() || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
+  const plantationAddress = document.getElementById('setting-plantation-address')?.value?.trim() || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
+  const auctionBuyer = document.getElementById('setting-auction-buyer')?.value?.trim() || 'เฮียต้อม ยางพารา';
+
   const priceCup = parseFloat(document.getElementById('setting-price-cup')?.value) || 0;
   const yardFeeVal = parseFloat(document.getElementById('setting-yard-fee')?.value) ?? 0.50;
   const cartWeightVal = parseFloat(document.getElementById('setting-cart-weight')?.value) || 0;
@@ -3263,8 +3335,13 @@ async function saveSettings() {
   const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
   const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
 
+  localStorage.setItem('setting_plantation_address', plantationAddress);
+  localStorage.setItem('setting_auction_buyer', auctionBuyer);
+
   const updateData = {
     plantation_name: plantationName,
+    plantation_address: plantationAddress,
+    auction_buyer: auctionBuyer,
     price_cup: priceCup,
     price_sheet: priceCup,
     price_latex: priceCup,
@@ -3279,9 +3356,11 @@ async function saveSettings() {
   try {
     let { data, error } = await sb.from('settings').update(updateData).eq('id', 1).select();
 
-    // Fallback if newly added columns (dual_station_mode, show_payer_name, yard_fee) do not exist yet in Supabase schema
+    // Fallback if newly added columns do not exist yet in Supabase schema
     if (error) {
       console.warn('Supabase update failed with new columns, executing fallback:', error.message);
+      delete updateData.plantation_address;
+      delete updateData.auction_buyer;
       delete updateData.dual_station_mode;
       delete updateData.show_payer_name;
       delete updateData.yard_fee;
@@ -3293,12 +3372,14 @@ async function saveSettings() {
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      throw new Error('RLS Policy บล็อกการแก้ไข — กรุณารัน SQL เพิ่ม Policy อนุญาต UPDATE ในตาราง settings ที่ Supabase SQL Editor');
+      throw new Error('RLS Policy บล็อกการแก้ไข — กรุณารัน SQL อนุญาต UPDATE ในตาราง settings');
     }
 
     // Merge saved data with local memory preferences
     cachedSettings = {
       ...data[0],
+      plantation_address: plantationAddress,
+      auction_buyer: auctionBuyer,
       dual_station_mode: dualStationMode,
       show_payer_name: showPayerName,
       yard_fee: yardFeeVal
