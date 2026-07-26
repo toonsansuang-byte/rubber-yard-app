@@ -1491,7 +1491,7 @@ async function initPurchase() {
         defaultSet.add(savedTruck);
       }
 
-      truckSelect.innerHTML = '<option value="">-- ไม่ระบุ / เก็บในลาน --</option>' +
+      truckSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>' +
         Array.from(defaultSet).map(t => `<option value="${t}">${t}</option>`).join('') +
         '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
 
@@ -1512,6 +1512,22 @@ async function initPurchase() {
   renderTrips();
   calculatePrice();
   updatePurchaseDualModeUI();
+  updatePurchaseTruckIndicator();
+}
+
+function updatePurchaseTruckIndicator() {
+  const truckNum = document.getElementById('purchase-truck-number')?.value;
+  const trailerType = document.getElementById('purchase-trailer-type')?.value;
+  const indicatorEl = document.getElementById('purchase-truck-indicator');
+
+  if (!indicatorEl) return;
+
+  if (truckNum && truckNum !== 'NEW') {
+    const trailerText = trailerType === 'trailer' ? 'ตัวลูก' : 'ตัวแม่';
+    indicatorEl.innerHTML = `<span class="badge badge-green" style="font-size:0.8rem; padding:4px 10px;">✅ ระบุรถเรียบร้อย: ${truckNum} (${trailerText})</span>`;
+  } else {
+    indicatorEl.innerHTML = `<span class="badge badge-warning" style="font-size:0.8rem; padding:4px 10px;">⚠️ ยังไม่ได้เลือกรถ</span>`;
+  }
 }
 
 function onPurchaseTruckSelect(val) {
@@ -1529,6 +1545,7 @@ function onPurchaseTruckSelect(val) {
       selectEl.value = '';
     }
   }
+  updatePurchaseTruckIndicator();
 }
 
 function addTrip() {
@@ -1729,6 +1746,27 @@ async function saveTransaction(confirmedOverride = false) {
     return;
   }
 
+  const truckNumber = document.getElementById('purchase-truck-number')?.value || '';
+  const trailerType = document.getElementById('purchase-trailer-type')?.value || 'head';
+
+  if (!truckNumber && !confirmedOverride) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-message').innerHTML = `
+      <span class="confirm-icon" style="color:var(--warning);">⚠️</span>
+      <strong style="font-size:1.05rem;">ยังไม่ได้เลือก "รถพ่วงที่จะจัดส่งมอบ"</strong><br><br>
+      รายการนี้จะถูกบันทึกโดย <strong>"ไม่ได้ระบุรถพ่วง"</strong><br>
+      <small style="color:var(--text-muted);">หากต้องการจัดขึ้นรถพ่วง ให้ย้อนกลับไปเลือกรถคันที่ก่อนครับ</small>
+    `;
+    const actionBtn = document.getElementById('confirm-action-btn');
+    actionBtn.textContent = '💾 ยืนยันบันทึก (ไม่ระบุรถพ่วง)';
+    actionBtn.onclick = () => {
+      closeConfirmModal();
+      saveTransaction(true);
+    };
+    modal.classList.add('show');
+    return;
+  }
+
   const tripDetails = activeTrips.map((t, i) => {
     const isDirectRubber = t.grossWeight <= cartWeight;
     const appliedCart = isDirectRubber ? 0 : cartWeight;
@@ -1753,8 +1791,6 @@ async function saveTransaction(confirmedOverride = false) {
   const isDualMode = cachedSettings?.dual_station_mode === true;
 
   showLoading();
-  const truckNumber = document.getElementById('purchase-truck-number')?.value || '';
-  const trailerType = document.getElementById('purchase-trailer-type')?.value || 'head';
 
   try {
     if (isDualMode) {
@@ -2816,19 +2852,27 @@ function closeTruckMembersModal() {
 }
 
 async function printTruckWeightsReport() {
-  if (!currentRound) {
-    showToast('กรุณาเปิดรอบส่งมอบยางก่อนพิมพ์เอกสาร', 'error');
-    return;
-  }
-
   showLoading();
   try {
-    const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+    let roundObj = currentRound;
+    if (!roundObj) {
+      try {
+        const { data: rData } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false }).limit(1);
+        if (rData && rData.length > 0) roundObj = rData[0];
+      } catch (e) { /* ignore */ }
+    }
+    if (!roundObj) {
+      roundObj = { id: 'all', title: 'รอบส่งมอบยางประจำวัน', start_date: new Date().toISOString() };
+    }
+
+    const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
 
     // 1. Query purchased totals from member transactions
-    const { data: roundTx } = await sb.from('transactions')
-      .select('*')
-      .eq('round_id', currentRound.id);
+    let query = sb.from('transactions').select('*');
+    if (roundObj.id && roundObj.id !== 'all') {
+      query = query.eq('round_id', roundObj.id);
+    }
+    const { data: roundTx } = await query;
 
     const txArr = roundTx || [];
     const totalPurchasedWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
@@ -2912,7 +2956,7 @@ async function printTruckWeightsReport() {
       <html lang="th">
       <head>
         <meta charset="UTF-8">
-        <title>เอกสารสรุปน้ำหนักรถพ่วง - ${currentRound.title}</title>
+        <title>เอกสารสรุปน้ำหนักรถพ่วง - ${roundObj.title}</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           body {
@@ -2964,7 +3008,7 @@ async function printTruckWeightsReport() {
         <div class="header">
           <h2>${plantName}</h2>
           <h3>เอกสารสรุปน้ำหนักจัดส่งมอบยางขึ้นรถพ่วง</h3>
-          <p><strong>รอบส่งมอบยาง:</strong> ${currentRound.title} | <strong>วันที่พิมพ์:</strong> ${printDateStr}</p>
+          <p><strong>รอบส่งมอบยาง:</strong> ${roundObj.title} | <strong>วันที่พิมพ์:</strong> ${printDateStr}</p>
         </div>
 
         <div class="summary-box">
