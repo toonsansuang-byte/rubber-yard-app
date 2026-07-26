@@ -335,14 +335,16 @@
 
             <!-- Truck Auto-Tagging -->
             <div class="glass-card" style="margin-bottom: 20px; border-left: 4px solid var(--gold);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
                 <h3 style="font-size: 1rem; margin:0; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ (คำนวณอัตโนมัติ)</h3>
-                <span class="badge badge-info" style="font-size:0.75rem;">📌 จำค่าต่อเนื่อง</span>
+                <div id="purchase-truck-indicator">
+                  <span class="badge badge-warning" style="font-size:0.8rem; padding:4px 10px;">⚠️ ยังไม่ได้เลือกรถ (เก็บลงลาน)</span>
+                </div>
               </div>
               <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                 <div class="form-group mb-0">
                   <label class="form-label" style="font-size:0.85rem;" for="purchase-truck-number">รถคันที่ / ทะเบียน</label>
-                  <select id="purchase-truck-number" class="form-input" style="font-size:0.9rem;" onchange="onPurchaseTruckSelect(this.value)">
+                  <select id="purchase-truck-number" class="form-input" style="font-size:0.9rem;" onchange="onPurchaseTruckSelect(this.value); updatePurchaseTruckIndicator();">
                     <option value="">-- ไม่ระบุ / เก็บในลาน --</option>
                     <option value="คันที่ 1">คันที่ 1</option>
                     <option value="คันที่ 2">คันที่ 2</option>
@@ -352,7 +354,7 @@
                 </div>
                 <div class="form-group mb-0">
                   <label class="form-label" style="font-size:0.85rem;" for="purchase-trailer-type">ลักษณะพ่วง</label>
-                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.9rem;">
+                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.9rem;" onchange="updatePurchaseTruckIndicator();">
                     <option value="head">🚛 ตัวแม่</option>
                     <option value="trailer">🚚 ตัวลูก</option>
                   </select>

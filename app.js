@@ -645,11 +645,11 @@ async function renderRounds() {
           </div>
           <div class="glass-card stat-card" style="padding:12px 16px;">
             <div class="card-title">น้ำหนักรวม</div>
-            <div class="card-value" style="font-size:1.3rem;">${formatNumber(totalWeight)} <span class="unit">กก.</span></div>
+            <div class="card-value" style="font-size:1.3rem;">${formatNumber(totalPurchasedWeight)} <span class="unit">กก.</span></div>
           </div>
           <div class="glass-card stat-card" style="padding:12px 16px;">
             <div class="card-title">ยอดเงินรวม</div>
-            <div class="card-value" style="font-size:1.3rem; color:var(--gold);">${formatNumber(totalAmount)} <span class="unit">บาท</span></div>
+            <div class="card-value" style="font-size:1.3rem; color:var(--gold);">${formatNumber(totalPurchasedAmount)} <span class="unit">บาท</span></div>
           </div>
         </div>
         ${reconciliationHtml}
@@ -2766,7 +2766,7 @@ async function printTruckWeightsReport() {
       : truckList.map((t, idx) => `
           <tr>
             <td style="text-align:center;">${idx + 1}</td>
-            <td><strong>🚛 ${t.truck_number}</strong></td>
+            <td><strong>${t.truck_number}</strong></td>
             <td style="text-align:right;">${formatNumber(t.head_weight)} กก.</td>
             <td style="text-align:right;">${formatNumber(t.trailer_weight)} กก.</td>
             <td style="text-align:right; font-weight:bold;">${formatNumber(t.total_weight)} กก.</td>
@@ -2829,22 +2829,22 @@ async function printTruckWeightsReport() {
       </head>
       <body>
         <div class="header">
-          <h2>🌿 ${plantName}</h2>
+          <h2>${plantName}</h2>
           <h3>เอกสารสรุปน้ำหนักจัดส่งมอบยางขึ้นรถพ่วง</h3>
           <p><strong>รอบส่งมอบยาง:</strong> ${currentRound.title} | <strong>วันที่พิมพ์:</strong> ${printDateStr}</p>
         </div>
 
         <div class="summary-box">
           <div>
-            <strong>📦 ยอดรับซื้อรวมจากสมาชิก:</strong><br>
+            <strong>ยอดรับซื้อรวมจากสมาชิก:</strong><br>
             ${formatNumber(totalPurchasedWeight)} กก. (${formatNumber(totalPurchasedAmount)} บาท)
           </div>
           <div>
-            <strong>🚚 ยอดจัดขึ้นรถพ่วงรวมทุกคัน:</strong><br>
+            <strong>ยอดจัดขึ้นรถพ่วงรวมทุกคัน:</strong><br>
             ${formatNumber(sumTotalTruckWeight)} กก. (ตัวแม่: ${formatNumber(sumHeadWeight)} | ตัวลูก: ${formatNumber(sumTrailerWeight)})
           </div>
           <div>
-            <strong>⚖️ ผลต่างยาง (คงเหลือในลาน):</strong><br>
+            <strong>ผลต่างยาง (คงเหลือในลาน):</strong><br>
             ${formatNumber(Math.abs(discrepancy))} กก. (${discrepancyStatusText})
           </div>
         </div>
@@ -2854,9 +2854,9 @@ async function printTruckWeightsReport() {
             <tr>
               <th style="width:40px;">#</th>
               <th>รถคันที่ / ทะเบียนรถ</th>
-              <th style="width:120px;">🚛 พ่วงตัวแม่</th>
-              <th style="width:120px;">🚚 พ่วงตัวลูก</th>
-              <th style="width:130px;">📊 รวมทั้งคัน</th>
+              <th style="width:120px;">พ่วงตัวแม่</th>
+              <th style="width:120px;">พ่วงตัวลูก</th>
+              <th style="width:130px;">รวมทั้งคัน</th>
               <th style="width:110px;">จำนวนรายการ</th>
             </tr>
           </thead>
