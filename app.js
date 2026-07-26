@@ -2269,6 +2269,8 @@ async function renderHistory() {
   await filterHistory();
 }
 
+let currentFilteredHistory = [];
+
 async function filterHistory() {
   showLoading();
   try {
@@ -2288,6 +2290,7 @@ async function filterHistory() {
     if (error) throw error;
 
     const filtered = data || [];
+    currentFilteredHistory = filtered;
 
     const totalCount = filtered.length;
     const totalWeight = filtered.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
@@ -2297,8 +2300,25 @@ async function filterHistory() {
     document.getElementById('summary-weight').innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
     document.getElementById('summary-amount').innerHTML = `${formatNumber(totalAmount)} <span class="unit">บาท</span>`;
 
+    // Admin Delete All button visibility
+    const deleteAllBtn = document.getElementById('history-delete-all-btn');
+    const totalBadge = document.getElementById('history-total-count-badge');
+    if (deleteAllBtn) {
+      if (currentUser?.role === 'admin' && filtered.length > 0) {
+        deleteAllBtn.style.display = 'inline-flex';
+        if (totalBadge) totalBadge.textContent = totalCount;
+      } else {
+        deleteAllBtn.style.display = 'none';
+      }
+    }
+
     const tbody = document.getElementById('history-table-body');
     const emptyState = document.getElementById('history-empty');
+
+    // Reset select all checkbox
+    const selectAllCb = document.getElementById('history-select-all');
+    if (selectAllCb) selectAllCb.checked = false;
+    updateHistoryBatchDeleteUI();
 
     if (filtered.length === 0) {
       tbody.innerHTML = '';
@@ -2309,6 +2329,9 @@ async function filterHistory() {
       tbody.closest('.table-container').style.display = 'block';
       tbody.innerHTML = filtered.map(t => `
         <tr>
+          <td style="text-align:center;">
+            <input type="checkbox" class="history-row-cb" value="${t.id}" onchange="updateHistoryBatchDeleteUI()">
+          </td>
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${t.member_code}</span></td>
           <td>${t.member_name}</td>
@@ -2328,6 +2351,107 @@ async function filterHistory() {
     }
   } catch (err) {
     showToast('โหลดประวัติไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function toggleSelectAllHistory(isChecked) {
+  const checkboxes = document.querySelectorAll('.history-row-cb');
+  checkboxes.forEach(cb => cb.checked = isChecked);
+  updateHistoryBatchDeleteUI();
+}
+
+function deselectAllHistory() {
+  const selectAllCb = document.getElementById('history-select-all');
+  if (selectAllCb) selectAllCb.checked = false;
+  toggleSelectAllHistory(false);
+}
+
+function getSelectedHistoryIds() {
+  const checkboxes = document.querySelectorAll('.history-row-cb:checked');
+  return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function updateHistoryBatchDeleteUI() {
+  const selectedIds = getSelectedHistoryIds();
+  const bar = document.getElementById('history-batch-action-bar');
+  const countEl = document.getElementById('history-selected-count');
+  const btnCountEl = document.getElementById('history-btn-count');
+
+  if (bar) {
+    if (selectedIds.length > 0) {
+      bar.style.display = 'flex';
+      if (countEl) countEl.textContent = selectedIds.length;
+      if (btnCountEl) btnCountEl.textContent = selectedIds.length;
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+}
+
+function confirmDeleteSelectedHistory() {
+  const selectedIds = getSelectedHistoryIds();
+  if (selectedIds.length === 0) return;
+
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-message').innerHTML = `
+    <span class="confirm-icon">🗑️</span>
+    คุณต้องการ <strong>ลบประวัติธุรกรรมที่เลือกทั้งหมด ${selectedIds.length} รายการ</strong> ใช่หรือไม่?<br>
+    <small style="color:var(--danger);">⚠️ การลบนี้จะไม่สามารถกู้คืนกลับมาได้</small>
+  `;
+  document.getElementById('confirm-action-btn').onclick = () => deleteSelectedHistory(selectedIds);
+  modal.classList.add('show');
+}
+
+async function deleteSelectedHistory(ids) {
+  showLoading();
+  try {
+    const { error } = await sb.from('transactions').delete().in('id', ids);
+    if (error) throw error;
+
+    closeConfirmModal();
+    await filterHistory();
+    showToast(`ลบธุรกรรมที่เลือกเรียบร้อยแล้ว (${ids.length} รายการ)`);
+  } catch (err) {
+    showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function confirmDeleteAllFilteredHistory() {
+  if (currentUser?.role !== 'admin') {
+    showToast('เฉพาะแอดมินเท่านั้นที่สามารถลบประวัติทั้งหมดได้', 'error');
+    return;
+  }
+
+  const count = currentFilteredHistory.length;
+  if (count === 0) return;
+
+  const modal = document.getElementById('confirm-modal');
+  document.getElementById('confirm-message').innerHTML = `
+    <span class="confirm-icon" style="color:var(--danger);">⚠️</span>
+    <strong style="color:var(--danger); font-size:1.1rem;">คำเตือนสำคัญมาก!</strong><br><br>
+    คุณกำลังจะ <strong>ลบประวัติธุรกรรมทั้งหมดตามตัวกรองนี้ (${count} รายการ)</strong><br>
+    <small style="color:var(--text-muted);">ข้อมูลทั้งหมดจะถูกลบออกจากฐานข้อมูลและไม่สามารถกู้คืนได้</small>
+  `;
+  document.getElementById('confirm-action-btn').onclick = () => deleteAllFilteredHistory();
+  modal.classList.add('show');
+}
+
+async function deleteAllFilteredHistory() {
+  const ids = currentFilteredHistory.map(t => t.id);
+  if (ids.length === 0) return;
+
+  showLoading();
+  try {
+    const { error } = await sb.from('transactions').delete().in('id', ids);
+    if (error) throw error;
+
+    closeConfirmModal();
+    await filterHistory();
+    showToast(`ลบประวัติทั้งหมดในตัวกรองสำเร็จ (${ids.length} รายการ)`);
+  } catch (err) {
+    showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
 }

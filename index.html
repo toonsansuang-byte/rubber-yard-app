@@ -584,11 +584,36 @@
           </div>
         </div>
 
+        <!-- History Bulk Action Bar -->
+        <div id="history-batch-action-bar" style="display:none; background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.3); padding:10px 16px; border-radius:var(--radius-md); margin-bottom:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div style="font-size:0.9rem; color:var(--danger);">
+            <strong>☑️ เลือกอยู่ <span id="history-selected-count">0</span> รายการ</strong>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-danger btn-sm" onclick="confirmDeleteSelectedHistory()">
+              🗑️ ลบรายการที่เลือก (<span id="history-btn-count">0</span>)
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="deselectAllHistory()">
+              ✕ ยกเลิกการเลือก
+            </button>
+          </div>
+        </div>
+
         <div class="glass-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+            <div style="font-weight:600; font-size:0.95rem; color:var(--text-accent);">📜 รายการประวัติธุรกรรม</div>
+            <button class="btn btn-danger btn-sm" id="history-delete-all-btn" onclick="confirmDeleteAllFilteredHistory()" style="display:none;">
+              🗑️ ลบประวัติทั้งหมดในตัวกรองนี้ (<span id="history-total-count-badge">0</span> รายการ)
+            </button>
+          </div>
+
           <div class="table-container">
             <table class="data-table">
               <thead>
                 <tr>
+                  <th style="width:40px; text-align:center;">
+                    <input type="checkbox" id="history-select-all" onchange="toggleSelectAllHistory(this.checked)" title="เลือกทั้งหมด">
+                  </th>
                   <th>วันที่</th>
                   <th>รหัส</th>
                   <th>ชื่อสมาชิก</th>
