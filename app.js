@@ -2197,46 +2197,46 @@ function buildReceiptCopyHTML(tx, plantName) {
   let creatorName = tx.created_by_display_name || tx.created_by_name || 'ผู้ดูแลระบบ';
 
   return `
-    <div class="receipt-single-copy" style="font-family:'Sarabun','TH Sarabun New',sans-serif; color:#000; padding:10px 14px; background:#fff; font-size:12px; line-height:1.35; border:1px solid #ddd; margin-bottom:10px;">
+    <div class="receipt-single-copy" style="font-family:'Sarabun','TH Sarabun New',sans-serif; color:#000; padding:6px 12px; background:#fff; font-size:11px; line-height:1.3; border:1px solid #000; margin-bottom:4px; box-sizing:border-box;">
       <!-- Header -->
-      <div style="text-align:center; margin-bottom:10px; border-bottom:1px solid #000; padding-bottom:6px;">
-        <div style="font-size:15px; font-weight:bold; color:#000;">${plantName}</div>
-        <div style="font-size:12px; color:#000; margin-top:2px;">${plantAddress}</div>
+      <div style="text-align:center; margin-bottom:6px; border-bottom:1px solid #000; padding-bottom:4px;">
+        <div style="font-size:14px; font-weight:bold; color:#000;">${plantName}</div>
+        <div style="font-size:11px; color:#000; margin-top:1px;">${plantAddress}</div>
       </div>
 
       <!-- Main Form Table -->
-      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+      <table style="width:100%; border-collapse:collapse; font-size:11px;">
         <tr>
-          <td style="width:140px; font-weight:bold; padding:2px 0;">วันที่ขายยาง</td>
+          <td style="width:130px; font-weight:bold; padding:1px 0;">วันที่ขายยาง</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${dateFormattedStr}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">ผู้ประมูล</td>
+          <td style="font-weight:bold; padding:1px 0;">ผู้ประมูล</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${auctionBuyer}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">ลำดับที่</td>
+          <td style="font-weight:bold; padding:1px 0;">ลำดับที่</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${sequenceNo}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">เลขที่บิล/คิว</td>
+          <td style="font-weight:bold; padding:1px 0;">เลขที่บิล/คิว</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${queueNo}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">รหัสสมาชิก</td>
+          <td style="font-weight:bold; padding:1px 0;">รหัสสมาชิก</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${memberCodeFormatted}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">ชื่อสมาชิก</td>
+          <td style="font-weight:bold; padding:1px 0;">ชื่อสมาชิก</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">ชื่อคนกรีด</td>
+          <td style="font-weight:bold; padding:1px 0;">ชื่อคนกรีด</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:4px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
-          <td style="padding:4px 0;">
+          <td style="font-weight:bold; padding:2px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
+          <td style="padding:2px 0;">
             <table style="width:100%; border-collapse:collapse;">
               <tr>
                 ${tripGridCellsHtml}
@@ -2245,40 +2245,40 @@ function buildReceiptCopyHTML(tx, plantName) {
           </td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางรวมรถ</td>
+          <td style="font-weight:bold; padding:1px 0;">น้ำหนักยางรวมรถ</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalGross)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">น้ำหนักรวมรถเข็น</td>
+          <td style="font-weight:bold; padding:1px 0;">น้ำหนักรวมรถเข็น</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalCart)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางสุทธิ</td>
+          <td style="font-weight:bold; padding:1px 0;">น้ำหนักยางสุทธิ</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(finalNetWeight)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0;">ราคา / กิโลกรัม</td>
+          <td style="font-weight:bold; padding:1px 0;">ราคา / กิโลกรัม</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(tx.price_per_kg)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:3px 0; font-size:13px;">จำนวนเงิน</td>
-          <td style="border-bottom:1px solid #000; font-weight:bold; text-align:center; font-size:14px;">${formatNumber(tx.total_price)}</td>
+          <td style="font-weight:bold; padding:2px 0; font-size:12px;">จำนวนเงิน</td>
+          <td style="border-bottom:1px solid #000; font-weight:bold; text-align:center; font-size:13px;">${formatNumber(tx.total_price)}</td>
         </tr>
       </table>
 
       <!-- Signatures Footer -->
-      <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; font-size:11px;">
+      <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; text-align:center; font-size:10px;">
         <div>
-          <div style="border-bottom:1px solid #000; height:20px; font-size:10px; display:flex; align-items:flex-end; justify-content:center;">${creatorName}</div>
-          <div style="font-weight:bold; margin-top:2px;">ผู้จัดทำ</div>
+          <div style="border-bottom:1px solid #000; height:16px; font-size:9px; display:flex; align-items:flex-end; justify-content:center;">${creatorName}</div>
+          <div style="font-weight:bold; margin-top:1px;">ผู้จัดทำ</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:20px; font-size:10px; display:flex; align-items:flex-end; justify-content:center;">${payerName}</div>
-          <div style="font-weight:bold; margin-top:2px;">ผู้จ่ายเงิน</div>
+          <div style="border-bottom:1px solid #000; height:16px; font-size:9px; display:flex; align-items:flex-end; justify-content:center;">${payerName}</div>
+          <div style="font-weight:bold; margin-top:1px;">ผู้จ่ายเงิน</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:20px; font-size:10px;"></div>
-          <div style="font-weight:bold; margin-top:2px;">ผู้รับเงิน</div>
+          <div style="border-bottom:1px solid #000; height:16px; font-size:9px;"></div>
+          <div style="font-weight:bold; margin-top:1px;">ผู้รับเงิน</div>
         </div>
       </div>
     </div>
@@ -2289,37 +2289,22 @@ let currentReceiptTx = null;
 
 function showReceipt(tx) {
   currentReceiptTx = tx;
-  const prefFormat = localStorage.getItem('print_pref_receipt') || '2';
-  const formatSelect = document.getElementById('receipt-print-format');
-  if (formatSelect) formatSelect.value = prefFormat;
-
-  renderReceiptContent(prefFormat);
+  renderReceiptContent();
   document.getElementById('receipt-modal').classList.add('show');
 }
 
-function onReceiptFormatChange(format) {
-  localStorage.setItem('print_pref_receipt', format);
-  if (currentReceiptTx) {
-    renderReceiptContent(format);
-  }
-}
-
-function renderReceiptContent(format) {
+function renderReceiptContent() {
   if (!currentReceiptTx) return;
-  const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+  const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
   const copy1 = buildReceiptCopyHTML(currentReceiptTx, plantName);
+  const copy2 = buildReceiptCopyHTML(currentReceiptTx, plantName);
+  const cutLine = `<div class="receipt-cut-line" style="text-align:center; font-size:9px; margin:3px 0; color:#333; font-weight:bold;">----------------------------------------------------------------------------------------------------</div>`;
 
-  if (format === '1') {
-    document.getElementById('receipt-content').innerHTML = copy1;
-  } else {
-    const copy2 = buildReceiptCopyHTML(currentReceiptTx, plantName);
-    const cutLine = `<div class="receipt-cut-line">--------------------------------------------------</div>`;
-    document.getElementById('receipt-content').innerHTML = `
-      ${copy1}
-      ${cutLine}
-      ${copy2}
-    `;
-  }
+  document.getElementById('receipt-content').innerHTML = `
+    ${copy1}
+    ${cutLine}
+    ${copy2}
+  `;
 }
 
 function closeReceiptModal() {

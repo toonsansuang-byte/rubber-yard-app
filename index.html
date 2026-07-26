@@ -939,17 +939,13 @@
       <div class="modal-body">
         <div class="receipt-content" id="receipt-content"></div>
       </div>
-      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📄 รูปแบบพิมพ์:</span>
-          <select id="receipt-print-format" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto; border-color:var(--gold);" onchange="onReceiptFormatChange(this.value)">
-            <option value="2">2 สำเนาต่อแผ่น (A4 แบ่งครึ่ง)</option>
-            <option value="1">1 สำเนาต่อแผ่น (เต็มแผ่น A4)</option>
-          </select>
+      <div class="modal-footer" style="justify-content: space-between; align-items: center;">
+        <div style="font-size:0.85rem; color:var(--text-secondary);">
+          📄 สั่งพิมพ์ 2 สำเนาแบ่งครึ่ง (สำหรับสมาชิก 1 ใบ / ลานยาง 1 ใบ ใน A4 แผ่นเดียว)
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-secondary" onclick="closeReceiptModal()">ปิด</button>
-          <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์</button>
+          <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์ใบเสร็จ (A4 แผ่นเดียว)</button>
         </div>
       </div>
     </div>
