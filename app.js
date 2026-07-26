@@ -2311,6 +2311,102 @@ function closeReceiptModal() {
   document.getElementById('receipt-modal').classList.remove('show');
 }
 
+function printReceipt() {
+  if (!currentReceiptTx) return;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตป๊อปอัพเพื่อพิมพ์', 'error');
+    return;
+  }
+
+  const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
+  const copy1 = buildReceiptCopyHTML(currentReceiptTx, plantName);
+  const copy2 = buildReceiptCopyHTML(currentReceiptTx, plantName);
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="UTF-8">
+      <title>ใบเสร็จรับเงิน - ${currentReceiptTx.member_name}</title>
+      <style>
+        @page {
+          size: A4 portrait;
+          margin: 4mm 5mm;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        html, body {
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+          overflow: hidden;
+        }
+        .page-container {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          height: 100%;
+          max-height: 288mm;
+          padding: 1mm;
+          box-sizing: border-box;
+        }
+        .receipt-single-copy {
+          height: 48.5%;
+          border: 1px solid #000;
+          padding: 10px 14px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-sizing: border-box;
+          background: #fff;
+        }
+        .receipt-cut-line {
+          height: 2%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          font-weight: bold;
+          color: #000;
+          letter-spacing: 2px;
+          margin: 2px 0;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12.5px;
+        }
+        td {
+          padding: 2.5px 0;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="page-container">
+        ${copy1}
+        <div class="receipt-cut-line">----------------------------------------------------------------------------------------------------</div>
+        ${copy2}
+      </div>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(htmlContent);
+  printWindow.document.close();
+
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 350);
+}
+
 // ========== HISTORY ==========
 async function renderHistory() {
   // Populate round filter & member filter
