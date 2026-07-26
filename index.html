@@ -79,6 +79,9 @@
         <a class="sidebar-link" onclick="navigateTo('rounds')" id="nav-rounds">
           <span class="nav-icon">🔄</span> รอบส่งมอบยาง
         </a>
+        <a class="sidebar-link" onclick="navigateTo('truck-weights')" id="nav-truck-weights">
+          <span class="nav-icon">🚚</span> ข้อมูลน้ำหนักรถพ่วง
+        </a>
         <a class="sidebar-link" onclick="navigateTo('history')" id="nav-history">
           <span class="nav-icon">📋</span> ประวัติธุรกรรม
         </a>
@@ -330,49 +333,6 @@
               </div>
             </div>
 
-            <!-- Independent Truck Delivery Logger -->
-            <div class="glass-card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-light);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="font-size: 1rem; margin:0; color:var(--text-accent);">🚚 บันทึกจัดส่งมอบยางขึ้นรถพ่วง (ประจำรอบ)</h3>
-                <span class="badge badge-info" style="font-size:0.75rem;">แยกต่างหาก ไม่เกี่ยวกับสมาชิก</span>
-              </div>
-
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-number">รถคันที่ / ทะเบียน</label>
-                  <select id="truck-delivery-number" class="form-input" style="font-size:0.9rem;" onchange="onTruckDeliverySelect(this.value)">
-                    <option value="">-- เลือกรถ --</option>
-                    <option value="คันที่ 1">คันที่ 1</option>
-                    <option value="คันที่ 2">คันที่ 2</option>
-                    <option value="คันที่ 3">คันที่ 3</option>
-                    <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
-                  </select>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-trailer-type">ลักษณะพ่วง</label>
-                  <select id="truck-delivery-trailer-type" class="form-input" style="font-size:0.9rem;">
-                    <option value="head">🚛 ตัวแม่</option>
-                    <option value="trailer">🚚 ตัวลูก</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-weight">น้ำหนักจัดขึ้น (กก.)</label>
-                  <input type="number" id="truck-delivery-weight" class="form-input" placeholder="0.00" step="0.01" min="0" style="font-size:0.9rem;">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:0.85rem;" for="truck-delivery-target">เป้าหมายคันนี้ (กก.) [ระบุหรือไม่ก็ได้]</label>
-                  <input type="number" id="truck-delivery-target" class="form-input" placeholder="เช่น 30000" step="100" min="0" style="font-size:0.9rem;">
-                </div>
-              </div>
-
-              <button class="btn btn-primary btn-block" style="padding: 10px;" onclick="saveTruckDelivery()">
-                💾 บันทึกน้ำหนักจัดขึ้นรถพ่วง
-              </button>
-            </div>
-
             <!-- Multi-Trip Weighing -->
             <div class="glass-card">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -464,6 +424,114 @@
           <div class="empty-state" id="rounds-empty" style="display:none;">
             <div class="empty-icon">📂</div>
             <p>ยังไม่มีประวัติรอบส่งมอบยาง กดปุ่ม "เริ่มรอบใหม่" เพื่อเริ่มต้น</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TRUCK WEIGHTS (ข้อมูลน้ำหนักรถพ่วง) ===== -->
+      <div class="section" id="section-truck-weights">
+        <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h2>🚚 ข้อมูลน้ำหนักรถพ่วง</h2>
+            <p>บันทึกและจัดการน้ำหนักจัดส่งมอบยางขึ้นรถพ่วงแยกรายคัน (ตัวแม่ / ตัวลูก) ประจำรอบ</p>
+          </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="navigateTo('rounds')">🔄 ดูรอบส่งมอบยาง</button>
+          </div>
+        </div>
+
+        <!-- Reconciliation Bar / Round Summary -->
+        <div class="glass-card mb-4" id="tw-summary-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+            <h3 style="font-size:1.1rem; margin:0; color:var(--text-accent);" id="tw-round-title">⚡ ข้อมูลน้ำหนักรถพ่วงประจำรอบปัจจุบัน</h3>
+            <div id="tw-discrepancy-badge"></div>
+          </div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;" id="tw-discrepancy-text">
+            ตรวจสอบเปรียบเทียบระหว่างยอดรับซื้อยางจากสมาชิก และยอดน้ำหนักยางที่จัดขึ้นรถพ่วง
+          </p>
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+            <div style="background:rgba(255,255,255,0.02); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <span style="color:var(--text-muted); display:block; font-size:0.8rem;">📦 ยอดรับซื้อรวมจากสมาชิก</span>
+              <strong style="font-size:1.3rem; color:var(--text-primary);" id="tw-total-purchased">0.00 กก.</strong>
+              <div style="font-size:0.8rem; color:var(--gold);" id="tw-total-amount">0.00 บาท</div>
+            </div>
+            <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:14px; border-radius:var(--radius-md);">
+              <span style="color:var(--green); display:block; font-size:0.8rem;">🚚 ยอดน้ำหนักขึ้นรถพ่วงรวมทุกคัน</span>
+              <strong style="font-size:1.3rem; color:var(--green);" id="tw-total-trucks">0.00 กก.</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted);" id="tw-truck-breakdown">ตัวแม่: 0.00 | ตัวลูก: 0.00</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); padding:14px; border-radius:var(--radius-md);" id="tw-discrepancy-card">
+              <span style="color:var(--warning); display:block; font-size:0.8rem;">⚖️ ผลต่าง (ยางคงเหลือ/ขาด/เกิน)</span>
+              <strong style="font-size:1.3rem; color:var(--warning);" id="tw-discrepancy-weight">0.00 กก.</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted);" id="tw-discrepancy-subtext">ยางยังเหลืออยู่ในลาน</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Truck Weight Form Logger -->
+        <div class="glass-card mb-4" style="border-left: 4px solid var(--gold);">
+          <h3 style="font-size: 1.05rem; margin-bottom: 14px; color:var(--gold);">➕ บันทึกข้อมูลน้ำหนักจัดขึ้นรถพ่วง</h3>
+          
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">
+            <div class="form-group mb-0">
+              <label class="form-label" for="tw-input-number">🚚 รถคันที่ / ทะเบียนรถ</label>
+              <select id="tw-input-number" class="form-input" onchange="onTruckWeightSelect(this.value)">
+                <option value="">-- เลือกรถ --</option>
+                <option value="คันที่ 1">คันที่ 1</option>
+                <option value="คันที่ 2">คันที่ 2</option>
+                <option value="คันที่ 3">คันที่ 3</option>
+                <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" for="tw-input-trailer-type">🚛 ลักษณะพ่วง</label>
+              <select id="tw-input-trailer-type" class="form-input">
+                <option value="head">🚛 ตัวแม่</option>
+                <option value="trailer">🚚 ตัวลูก</option>
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" for="tw-input-weight">⚖️ น้ำหนักจัดขึ้น (กก.)</label>
+              <input type="number" id="tw-input-weight" class="form-input" placeholder="0.00" step="0.01" min="0">
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" for="tw-input-target">🎯 เป้าหมายน้ำหนักคันนี้ (กก.)</label>
+              <input type="number" id="tw-input-target" class="form-input" placeholder="เช่น 30000" step="100" min="0">
+            </div>
+          </div>
+
+          <button class="btn btn-gold btn-block" style="padding: 12px; font-weight:700;" onclick="saveTruckWeight()">
+            💾 บันทึกข้อมูลน้ำหนักจัดขึ้นรถ
+          </button>
+        </div>
+
+        <!-- Truck Weights Table -->
+        <div class="glass-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="font-size: 1.05rem; margin:0;">📜 ตารางสรุปข้อมูลน้ำหนักรถพ่วงในรอบนี้</h3>
+            <button class="btn btn-secondary btn-sm" onclick="renderTruckWeights()">🔄 รีเฟรชตาราง</button>
+          </div>
+
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>รถคันที่ / ทะเบียน</th>
+                  <th>🚛 น้ำหนักพ่วงตัวแม่ (กก.)</th>
+                  <th>🚚 น้ำหนักพ่วงตัวลูก (กก.)</th>
+                  <th>📊 รวมน้ำหนักทั้งคัน (กก.)</th>
+                  <th>🎯 เป้าหมายคันนี้</th>
+                  <th>วันที่บันทึกล่าสุด</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="tw-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="tw-empty-state" style="display:none; padding:30px 20px;">
+            <div class="empty-icon">🚛</div>
+            <p>ยังไม่มีการบันทึกข้อมูลน้ำหนักรถพ่วงในรอบนี้</p>
           </div>
         </div>
       </div>
