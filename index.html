@@ -333,6 +333,30 @@
               </div>
             </div>
 
+            <!-- Truck Auto-Tagging -->
+            <div class="glass-card" style="margin-bottom: 20px; border-left: 4px solid var(--gold);">
+              <h3 style="margin-bottom: 12px; font-size: 1rem; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ (คำนวณอัตโนมัติ)</h3>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                <div class="form-group mb-0">
+                  <label class="form-label" style="font-size:0.85rem;" for="purchase-truck-number">รถคันที่ / ทะเบียน</label>
+                  <select id="purchase-truck-number" class="form-input" style="font-size:0.9rem;" onchange="onPurchaseTruckSelect(this.value)">
+                    <option value="">-- ไม่ระบุ / เก็บในลาน --</option>
+                    <option value="คันที่ 1">คันที่ 1</option>
+                    <option value="คันที่ 2">คันที่ 2</option>
+                    <option value="คันที่ 3">คันที่ 3</option>
+                    <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
+                  </select>
+                </div>
+                <div class="form-group mb-0">
+                  <label class="form-label" style="font-size:0.85rem;" for="purchase-trailer-type">ลักษณะพ่วง</label>
+                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.9rem;">
+                    <option value="head">🚛 ตัวแม่</option>
+                    <option value="trailer">🚚 ตัวลูก</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <!-- Multi-Trip Weighing -->
             <div class="glass-card">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -470,48 +494,14 @@
           </div>
         </div>
 
-        <!-- Truck Weight Form Logger -->
-        <div class="glass-card mb-4" style="border-left: 4px solid var(--gold);">
-          <h3 style="font-size: 1.05rem; margin-bottom: 14px; color:var(--gold);">➕ บันทึกข้อมูลน้ำหนักจัดขึ้นรถพ่วง</h3>
-          
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">
-            <div class="form-group mb-0">
-              <label class="form-label" for="tw-input-number">🚚 รถคันที่ / ทะเบียนรถ</label>
-              <select id="tw-input-number" class="form-input" onchange="onTruckWeightSelect(this.value)">
-                <option value="">-- เลือกรถ --</option>
-                <option value="คันที่ 1">คันที่ 1</option>
-                <option value="คันที่ 2">คันที่ 2</option>
-                <option value="คันที่ 3">คันที่ 3</option>
-                <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
-              </select>
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" for="tw-input-trailer-type">🚛 ลักษณะพ่วง</label>
-              <select id="tw-input-trailer-type" class="form-input">
-                <option value="head">🚛 ตัวแม่</option>
-                <option value="trailer">🚚 ตัวลูก</option>
-              </select>
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" for="tw-input-weight">⚖️ น้ำหนักจัดขึ้น (กก.)</label>
-              <input type="number" id="tw-input-weight" class="form-input" placeholder="0.00" step="0.01" min="0">
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" for="tw-input-target">🎯 เป้าหมายน้ำหนักคันนี้ (กก.)</label>
-              <input type="number" id="tw-input-target" class="form-input" placeholder="เช่น 30000" step="100" min="0">
-            </div>
-          </div>
-
-          <button class="btn btn-gold btn-block" style="padding: 12px; font-weight:700;" onclick="saveTruckWeight()">
-            💾 บันทึกข้อมูลน้ำหนักจัดขึ้นรถ
-          </button>
-        </div>
-
-        <!-- Truck Weights Table -->
+        <!-- Truck Weights Table (Auto-calculated from Member Receipts) -->
         <div class="glass-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="font-size: 1.05rem; margin:0;">📜 ตารางสรุปข้อมูลน้ำหนักรถพ่วงในรอบนี้</h3>
-            <button class="btn btn-secondary btn-sm" onclick="renderTruckWeights()">🔄 รีเฟรชตาราง</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h3 style="font-size: 1.05rem; margin:0; color:var(--text-accent);">📜 ตารางสรุปข้อมูลน้ำหนักรถพ่วงในรอบนี้</h3>
+              <span style="font-size:0.8rem; color:var(--text-muted);">คำนวณสะสมอัตโนมัติจากใบเสร็จรับซื้อของสมาชิกที่ติดป้ายรถ</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="renderTruckWeights()">🔄 รีเฟรชข้อมูล</button>
           </div>
 
           <div class="table-container">
@@ -522,9 +512,8 @@
                   <th>🚛 น้ำหนักพ่วงตัวแม่ (กก.)</th>
                   <th>🚚 น้ำหนักพ่วงตัวลูก (กก.)</th>
                   <th>📊 รวมน้ำหนักทั้งคัน (กก.)</th>
-                  <th>🎯 เป้าหมายคันนี้</th>
-                  <th>วันที่บันทึกล่าสุด</th>
-                  <th>จัดการ</th>
+                  <th>👥 จำนวนสมาชิก/รายการ</th>
+                  <th>รายละเอียดรายการในรถ</th>
                 </tr>
               </thead>
               <tbody id="tw-table-body"></tbody>
@@ -1182,6 +1171,22 @@
       <div class="modal-footer" style="justify-content: flex-end; gap: 8px;">
         <button class="btn btn-secondary" onclick="closeEditTruckDeliveryModal()">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditTruckDelivery()">💾 บันทึกแก้ไขข้อมูลรถ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TRUCK MEMBERS DETAIL MODAL ===== -->
+  <div class="modal-overlay" id="truck-members-modal">
+    <div class="modal-content" style="max-width: 750px;">
+      <div class="modal-header">
+        <h3 id="truck-members-modal-title">🚛 รายการธุรกรรมสมาชิกที่จัดขึ้นรถพ่วง</h3>
+        <button class="modal-close" onclick="closeTruckMembersModal()">✕</button>
+      </div>
+      <div class="modal-body" id="truck-members-modal-body" style="max-height: 65vh; overflow-y: auto;">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button class="btn btn-secondary" onclick="closeTruckMembersModal()">ปิดหน้าต่าง</button>
       </div>
     </div>
   </div>
