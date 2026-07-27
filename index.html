@@ -969,17 +969,14 @@
           <!-- Rendered dynamically for printing/previewing -->
         </div>
       </div>
-      <div class="modal-footer" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📄 รูปแบบพิมพ์:</span>
-          <select id="round-report-print-format" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto;" onchange="onRoundReportFormatChange(this.value)">
-            <option value="1">1 สำเนาต่อแผ่น (เต็มแผ่น A4)</option>
-            <option value="2">2 สำเนาต่อแผ่น (A4 แบ่งครึ่ง)</option>
-          </select>
+      <div class="modal-footer" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-size:0.85rem; color:var(--text-secondary);">
+          📄 เอกสารสรุปสำหรับยื่นธนาคาร (ส่งโอนเงินเข้าบัญชีสมาชิก)
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
-          <button class="btn btn-primary" onclick="printRoundReport()">🖨️ พิมพ์ / ดาวน์โหลดเอกสาร</button>
+          <button class="btn btn-gold" onclick="exportRoundToExcel()">📊 ดาวน์โหลด Excel (.xlsx)</button>
+          <button class="btn btn-primary" onclick="printRoundReport()">🖨️ พิมพ์ / บันทึก PDF (A4)</button>
         </div>
       </div>
     </div>

@@ -698,17 +698,21 @@ async function renderRounds() {
           <td>${r.end_date ? formatDateTime(r.end_date) : '-'}</td>
           <td>${r.closed_by_name || '-'}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')">
+            <button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')" title="ดูสรุปรอบ">
               📄 สรุปรอบ
             </button>
           </td>
           <td>
-            ${r.status === 'open' 
-              ? `<button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${r.id}')">🔒 ปิดรอบ</button>` 
-              : `<button class="btn btn-secondary btn-sm" onclick="showRoundReport('${r.id}')">🖨️ พิมพ์เอกสาร</button>`}
-            ${currentUser?.role === 'admin' 
-              ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteRound('${r.id}')" title="ลบรอบนี้" style="margin-left:4px;">🗑️</button>` 
-              : ''}
+            <div style="display:flex; gap:4px; align-items:center;">
+              <button class="btn btn-gold btn-sm" onclick="exportRoundToExcel('${r.id}')" title="ดาวน์โหลด Excel สำหรับธนาคาร">📊 Excel</button>
+              <button class="btn btn-primary btn-sm" onclick="printRoundReport('${r.id}')" title="พิมพ์ A4 / บันทึก PDF สำหรับธนาคาร">🖨️ PDF/พิมพ์</button>
+              ${r.status === 'open' 
+                ? `<button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${r.id}')" style="margin-left:4px;">🔒 ปิดรอบ</button>` 
+                : ''}
+              ${currentUser?.role === 'admin' 
+                ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteRound('${r.id}')" title="ลบรอบนี้" style="margin-left:4px;">🗑️</button>` 
+                : ''}
+            </div>
           </td>
         </tr>
       `).join('');
@@ -875,8 +879,304 @@ function closeRoundReportModal() {
   document.getElementById('round-report-modal').classList.remove('show');
 }
 
-function printRoundReport() {
-  window.print();
+async function exportRoundToExcel(roundId = null) {
+  let round = currentReportRound;
+  if (roundId && (!round || round.id !== roundId)) {
+    try {
+      const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+      if (data) round = data;
+    } catch (e) { /* ignore */ }
+  }
+
+  if (!round) {
+    showToast('ไม่พบข้อมูลรอบส่งมอบยาง', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const { data: txList } = await sb.from('transactions').select('*').eq('round_id', round.id).order('member_code');
+    const transactions = txList || [];
+    const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
+    const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
+
+    // Group transactions by member
+    const memberSummary = {};
+    let totalWeight = 0;
+    let totalAmount = 0;
+
+    transactions.forEach(t => {
+      const code = t.member_code;
+      const wt = Number(t.final_weight || t.net_weight || 0);
+      const amt = Number(t.total_price || 0);
+
+      if (!memberSummary[code]) {
+        memberSummary[code] = {
+          code: code,
+          name: t.member_name,
+          account_no: t.member_account_no || '-',
+          totalWeight: 0,
+          totalAmount: 0,
+          pricePerKg: t.price_per_kg || 0
+        };
+      }
+      memberSummary[code].totalWeight += wt;
+      memberSummary[code].totalAmount += amt;
+      totalWeight += wt;
+      totalAmount += amt;
+    });
+
+    const rows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
+
+    // Construct Excel Data Sheet
+    const excelRows = [
+      [plantationName],
+      [plantationAddress],
+      [`เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)`],
+      [`รอบส่งมอบยาง: ${round.title}`, `วันที่เริ่ม: ${formatDate(round.start_date)}`, `วันที่ปิดรอบ: ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}`],
+      [],
+      ['ลำดับ', 'รหัสสมาชิก', 'ชื่อ-นามสกุลสมาชิก', 'เลขที่บัญชีธนาคาร', 'น้ำหนักยางสุทธิ (กก.)', 'ราคาต่อ กก. (บาท)', 'จำนวนเงินที่ต้องโอน (บาท)']
+    ];
+
+    rows.forEach((m, idx) => {
+      const avgPrice = m.totalWeight > 0 ? (m.totalAmount / m.totalWeight) : m.pricePerKg;
+      excelRows.push([
+        idx + 1,
+        m.code,
+        m.name,
+        m.account_no,
+        m.totalWeight,
+        Number(avgPrice.toFixed(2)),
+        m.totalAmount
+      ]);
+    });
+
+    // Summary Row
+    excelRows.push([]);
+    excelRows.push(['', '', 'ยอดรวมสุทธิทั้งรอบ:', '', totalWeight, '', totalAmount]);
+
+    const worksheet = XLSX.utils.aoa_to_sheet(excelRows);
+    
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 8 },  // ลำดับ
+      { wch: 14 }, // รหัส
+      { wch: 28 }, // ชื่อ
+      { wch: 22 }, // เลขบัญชี
+      { wch: 20 }, // น้ำหนัก
+      { wch: 16 }, // ราคา
+      { wch: 24 }  // ยอดเงิน
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'สรุปโอนเงินธนาคาร');
+
+    const cleanTitle = round.title.replace(/[\/\s]/g, '_');
+    const fileName = `สรุปยอดโอนเงินธนาคาร_${cleanTitle}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    showToast('ดาวน์โหลดไฟล์ Excel สำหรับธนาคารสำเร็จ!');
+  } catch (err) {
+    showToast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function printRoundReport(roundId = null) {
+  let round = currentReportRound;
+  let transactions = currentReportTxList;
+
+  if (roundId && (!round || round.id !== roundId)) {
+    showLoading();
+    try {
+      const { data: rData } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+      const { data: tData } = await sb.from('transactions').select('*').eq('round_id', roundId).order('member_code');
+      round = rData;
+      transactions = tData || [];
+    } catch (e) { /* ignore */ }
+    hideLoading();
+  }
+
+  if (!round) {
+    showToast('ไม่พบข้อมูลรอบส่งมอบยาง', 'error');
+    return;
+  }
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตป๊อปอัพเพื่อพิมพ์', 'error');
+    return;
+  }
+
+  const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
+  const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
+
+  // Group transactions by member
+  const memberSummary = {};
+  let grandTotalWeight = 0;
+  let grandTotalAmount = 0;
+
+  transactions.forEach(t => {
+    const code = t.member_code;
+    const weight = Number(t.final_weight || t.net_weight || 0);
+    const amount = Number(t.total_price || 0);
+
+    if (!memberSummary[code]) {
+      memberSummary[code] = {
+        code: code,
+        name: t.member_name,
+        account_no: t.member_account_no || '-',
+        txCount: 0,
+        totalWeight: 0,
+        totalAmount: 0
+      };
+    }
+    memberSummary[code].txCount += 1;
+    memberSummary[code].totalWeight += weight;
+    memberSummary[code].totalAmount += amount;
+
+    grandTotalWeight += weight;
+    grandTotalAmount += amount;
+  });
+
+  const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
+
+  // Resolve President name for dynamic signature
+  let presidentName = '';
+  try {
+    const { data: presUser } = await sb.from('app_users').select('display_name').eq('position', 'ประธานกรรมการ').limit(1);
+    if (presUser && presUser.length > 0) {
+      presidentName = presUser[0].display_name;
+    }
+  } catch (e) { /* ignore */ }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="UTF-8">
+      <title>เอกสารสรุปยอดโอนเงินธนาคาร - ${round.title}</title>
+      <style>
+        @page { size: A4 portrait; margin: 12mm 15mm; }
+        * { box-sizing: border-box; }
+        body {
+          font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+          font-size: 13px;
+          color: #000;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+        }
+        .header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+        .header h2 { margin: 0 0 4px 0; font-size: 18px; font-weight: bold; }
+        .header h3 { margin: 0 0 4px 0; font-size: 15px; font-weight: bold; }
+        .header p { margin: 0; font-size: 12px; color: #333; }
+
+        .meta-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
+          gap: 8px;
+          margin-bottom: 16px;
+          border: 1px solid #000;
+          padding: 10px 12px;
+          border-radius: 4px;
+          background: #fafafa;
+          font-size: 12px;
+        }
+        .meta-item strong { display: block; font-size: 11px; color: #555; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+        th, td { border: 1px solid #000; padding: 6px 8px; }
+        th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
+        tr.total-row td { font-weight: bold; background-color: #f9f9f9; font-size: 13px; }
+
+        .signatures {
+          margin-top: 35px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 30px;
+          text-align: center;
+          page-break-inside: avoid;
+        }
+        .sig-box { border: 1px solid #ccc; padding: 12px; border-radius: 4px; }
+        .sig-line { margin-top: 35px; border-bottom: 1px dotted #000; display: inline-block; width: 75%; }
+        .sig-name { margin-top: 6px; font-size: 12px; }
+        .sig-role { font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>${plantationName}</h2>
+        <p>${plantationAddress}</p>
+        <h3 style="margin-top:6px;">เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</h3>
+        <p><strong>รอบส่งมอบยาง:</strong> ${round.title} | <strong>วันที่เริ่ม:</strong> ${formatDate(round.start_date)} | <strong>วันที่ปิดรอบ:</strong> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}</p>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item"><strong>จำนวนสมาชิกที่ขาย:</strong> ${memberRows.length} คน</div>
+        <div class="meta-item"><strong>จำนวนเที่ยวชั่งรวม:</strong> ${transactions.length} เที่ยว</div>
+        <div class="meta-item"><strong>น้ำหนักสุทธิรวม:</strong> ${formatNumber(grandTotalWeight)} กก.</div>
+        <div class="meta-item"><strong>ยอดเงินต้องโอนรวม:</strong> ${formatNumber(grandTotalAmount)} บาท</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">ลำดับ</th>
+            <th style="width:70px;">รหัส</th>
+            <th>ชื่อ-นามสกุลสมาชิก</th>
+            <th style="width:140px;">เลขที่บัญชีธนาคาร</th>
+            <th style="width:80px; text-align:center;">จำนวนเที่ยว</th>
+            <th style="width:110px; text-align:right;">น้ำหนักสุทธิ (กก.)</th>
+            <th style="width:120px; text-align:right;">ยอดเงินที่ต้องโอน (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${memberRows.length === 0 ? '<tr><td colspan="7" style="text-align:center;">ไม่มีข้อมูลสมาชิกในรอบนี้</td></tr>' :
+            memberRows.map((m, idx) => `
+              <tr>
+                <td style="text-align:center;">${idx + 1}</td>
+                <td style="text-align:center;"><strong>${m.code}</strong></td>
+                <td><strong>${m.name}</strong></td>
+                <td style="text-align:center; font-family:monospace; font-weight:bold;">${m.account_no}</td>
+                <td style="text-align:center;">${m.txCount}</td>
+                <td style="text-align:right;">${formatNumber(m.totalWeight)}</td>
+                <td style="text-align:right; font-weight:bold;">${formatNumber(m.totalAmount)}</td>
+              </tr>
+            `).join('')
+          }
+          <tr class="total-row">
+            <td colspan="5" style="text-align:right;">ยอดรวมสุทธิทั้งรอบที่ต้องโอน:</td>
+            <td style="text-align:right;">${formatNumber(grandTotalWeight)} กก.</td>
+            <td style="text-align:right; color:#000;">${formatNumber(grandTotalAmount)} บาท</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="signatures">
+        <div class="sig-box">
+          <div class="sig-role">ผู้สรุปรายงาน / ผู้จัดทำ</div>
+          <div class="sig-line"></div>
+          <div class="sig-name">(${round.closed_by_name || currentUser?.display_name || '...................................................'})</div>
+        </div>
+        <div class="sig-box">
+          <div class="sig-role">ประธานกรรมการ / ผู้ตรวจสอบอนุมัติ</div>
+          <div class="sig-line"></div>
+          <div class="sig-name">(${presidentName || '...................................................'})</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(htmlContent);
+  printWindow.document.close();
+
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 350);
 }
 
 function confirmDeleteRound(roundId) {
