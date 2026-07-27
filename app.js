@@ -902,8 +902,8 @@ async function exportRoundToExcel(roundId = null) {
 
     // Group transactions by member
     const memberSummary = {};
-    let totalWeight = 0;
-    let totalAmount = 0;
+    let grandTotalWeight = 0;
+    let grandTotalAmount = 0;
 
     transactions.forEach(t => {
       const code = t.member_code;
@@ -922,95 +922,122 @@ async function exportRoundToExcel(roundId = null) {
       }
       memberSummary[code].totalWeight += wt;
       memberSummary[code].totalAmount += amt;
-      totalWeight += wt;
-      totalAmount += amt;
+      grandTotalWeight += wt;
+      grandTotalAmount += amt;
     });
 
-    const rows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
+    const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
 
-    // Construct SheetJS worksheet manually for perfect number and text formatting
-    const ws = {};
-    const range = { s: { c: 0, r: 0 }, e: { c: 6, r: 0 } };
-
-    function setCell(r, c, value, type = 's', zFormat = null) {
-      const cellRef = XLSX.utils.encode_cell({ r, c });
-      if (r > range.e.r) range.e.r = r;
-      if (c > range.e.c) range.e.c = c;
-
-      const cell = { v: value, t: type };
-      if (zFormat) cell.z = zFormat;
-      ws[cellRef] = cell;
-    }
-
-    // Title rows (Header section)
-    setCell(0, 0, plantationName, 's');
-    setCell(1, 0, plantationAddress, 's');
-    setCell(2, 0, `เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)`, 's');
-    setCell(3, 0, `รอบส่งมอบยาง: ${round.title}   |   วันที่เริ่ม: ${formatDate(round.start_date)}   |   วันที่ปิดรอบ: ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}`, 's');
-
-    // Table Header Row (Row 5)
-    const headers = ['ลำดับ', 'รหัสสมาชิก', 'ชื่อ-นามสกุลสมาชิก', 'เลขที่บัญชีธนาคาร', 'น้ำหนักยางสุทธิ (กก.)', 'ราคาต่อ กก. (บาท)', 'จำนวนเงินที่ต้องโอน (บาท)'];
-    headers.forEach((h, colIdx) => {
-      setCell(5, colIdx, h, 's');
-    });
-
-    // Data Rows (Row 6+)
-    let currentRow = 6;
-    rows.forEach((m, idx) => {
-      const avgPrice = m.totalWeight > 0 ? (m.totalAmount / m.totalWeight) : m.pricePerKg;
-      
-      // ลำดับ
-      setCell(currentRow, 0, idx + 1, 'n');
-      
-      // รหัสสมาชิก (บังคับเป็นข้อความ text เสมอ เช่น "088", "089")
-      let memberCodeStr = String(m.code || '');
-      setCell(currentRow, 1, memberCodeStr, 's');
-      
-      // ชื่อสมาชิก
-      setCell(currentRow, 2, String(m.name || ''), 's');
-      
-      // เลขที่บัญชีธนาคาร (บังคับเป็นข้อความ text เสมอ)
-      setCell(currentRow, 3, String(m.account_no || '-'), 's');
-      
-      // น้ำหนักสุทธิ (กก.)
-      setCell(currentRow, 4, Number(m.totalWeight), 'n', '#,##0.00');
-      
-      // ราคาต่อ กก. (บาท)
-      setCell(currentRow, 5, Number(avgPrice.toFixed(2)), 'n', '#,##0.00');
-      
-      // จำนวนเงินที่ต้องโอน (บาท)
-      setCell(currentRow, 6, Number(m.totalAmount), 'n', '#,##0.00');
-      
-      currentRow++;
-    });
-
-    // Empty row
-    currentRow++;
-
-    // Total Row
-    setCell(currentRow, 2, 'ยอดรวมสุทธิทั้งรอบที่ต้องโอน:', 's');
-    setCell(currentRow, 4, Number(totalWeight), 'n', '#,##0.00');
-    setCell(currentRow, 6, Number(totalAmount), 'n', '#,##0.00');
-
-    ws['!ref'] = XLSX.utils.encode_range(range);
-
-    // Column widths for spacious professional look
-    ws['!cols'] = [
-      { wch: 10 }, // ลำดับ
-      { wch: 16 }, // รหัสสมาชิก
-      { wch: 35 }, // ชื่อ-นามสกุล
-      { wch: 30 }, // เลขบัญชีธนาคาร
-      { wch: 24 }, // น้ำหนักสุทธิ
-      { wch: 18 }, // ราคา/กก.
-      { wch: 28 }  // ยอดเงินที่ต้องโอน
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, ws, 'สรุปโอนเงินธนาคาร');
+    // Construct full MSO-styled Excel HTML Document
+    const excelHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>สรุปยอดโอนเงินธนาคาร</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          body { font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif; font-size: 13px; }
+          .title-header { font-size: 18px; font-weight: bold; color: #064e3b; text-align: center; height: 30px; }
+          .subtitle-header { font-size: 12px; color: #475569; text-align: center; height: 22px; }
+          .doc-title { font-size: 14px; font-weight: bold; color: #0f172a; text-align: center; background-color: #ecfdf5; height: 28px; border: 1px solid #10b981; }
+          .meta-info { font-size: 12px; color: #334155; height: 24px; text-align: center; }
+          
+          table { border-collapse: collapse; width: 100%; font-family: 'Sarabun', 'Segoe UI', sans-serif; }
+          th { background-color: #064e3b; color: #ffffff; font-weight: bold; font-size: 13px; text-align: center; border: 1px solid #000000; padding: 8px; height: 32px; }
+          td { border: 1px solid #cbd5e1; padding: 6px 10px; font-size: 12px; vertical-align: middle; }
+          
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .text-left { text-align: left; }
+          
+          .member-code { mso-number-format:"\\@"; text-align: center; font-weight: bold; background-color: #f1f5f9; }
+          .bank-acc { mso-number-format:"\\@"; text-align: center; font-family: monospace; font-weight: bold; }
+          .num-format { mso-number-format:"\\#\\,\\#\\#0\\.00"; text-align: right; }
+          
+          tr.even-row td { background-color: #f8fafc; }
+          tr.total-row td { background-color: #d1fae5; font-weight: bold; font-size: 14px; border-top: 2px solid #047857; border-bottom: 2px double #047857; height: 35px; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="7" class="title-header">${plantationName}</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="subtitle-header">${plantationAddress}</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="doc-title">เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="meta-info">
+              <b>รอบส่งมอบยาง:</b> ${round.title} &nbsp;&nbsp;|&nbsp;&nbsp; 
+              <b>วันที่เริ่ม:</b> ${formatDate(round.start_date)} &nbsp;&nbsp;|&nbsp;&nbsp; 
+              <b>วันที่ปิดรอบ:</b> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}
+            </td>
+          </tr>
+          <tr><td colspan="7"></td></tr>
+          <thead>
+            <tr>
+              <th style="width: 70px;">ลำดับ</th>
+              <th style="width: 120px;">รหัสสมาชิก</th>
+              <th style="width: 260px;">ชื่อ-นามสกุลสมาชิก</th>
+              <th style="width: 220px;">เลขที่บัญชีธนาคาร</th>
+              <th style="width: 160px;">น้ำหนักยางสุทธิ (กก.)</th>
+              <th style="width: 140px;">ราคา/กก. (บาท)</th>
+              <th style="width: 200px;">จำนวนเงินที่ต้องโอน (บาท)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${memberRows.map((m, idx) => {
+              const avgPrice = m.totalWeight > 0 ? (m.totalAmount / m.totalWeight) : m.pricePerKg;
+              const rowClass = idx % 2 === 1 ? 'class="even-row"' : '';
+              return `
+                <tr ${rowClass}>
+                  <td class="text-center">${idx + 1}</td>
+                  <td class="member-code">${m.code}</td>
+                  <td class="text-left"><b>${m.name}</b></td>
+                  <td class="bank-acc">${m.account_no}</td>
+                  <td class="num-format">${m.totalWeight.toFixed(2)}</td>
+                  <td class="num-format">${avgPrice.toFixed(2)}</td>
+                  <td class="num-format" style="font-weight:bold; color:#047857;">${m.totalAmount.toFixed(2)}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr class="total-row">
+              <td colspan="4" class="text-right"><b>ยอดรวมสุทธิทั้งรอบที่ต้องโอน:</b></td>
+              <td class="num-format" style="font-weight:bold;">${grandTotalWeight.toFixed(2)}</td>
+              <td></td>
+              <td class="num-format" style="font-weight:bold; color:#047857;">${grandTotalAmount.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
 
     const cleanTitle = round.title.replace(/[\/\s]/g, '_');
-    const fileName = `สรุปยอดโอนเงินธนาคาร_${cleanTitle}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+    const fileName = `สรุปยอดโอนเงินธนาคาร_${cleanTitle}.xls`;
+
+    const blob = new Blob(['\ufeff' + excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
     showToast('ดาวน์โหลดไฟล์ Excel สำหรับธนาคารสำเร็จ!');
   } catch (err) {
