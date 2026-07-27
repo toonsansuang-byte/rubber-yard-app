@@ -334,10 +334,58 @@ async function loadSettings() {
   }
 }
 
+let currentCustomLogoBase64 = null;
+
+function updatePlantationLogo() {
+  const logoUrl = currentCustomLogoBase64 !== null ? currentCustomLogoBase64 : (cachedSettings?.plantation_logo || localStorage.getItem('setting_plantation_logo'));
+  
+  const loginLogoEl = document.getElementById('login-logo-icon');
+  const sidebarLogoEl = document.getElementById('sidebar-logo-icon');
+  const previewLogoEl = document.getElementById('setting-logo-preview');
+
+  if (logoUrl) {
+    const imgHtml = `<img src="${logoUrl}" alt="Logo" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;">`;
+    if (loginLogoEl) loginLogoEl.innerHTML = imgHtml;
+    if (sidebarLogoEl) sidebarLogoEl.innerHTML = imgHtml;
+    if (previewLogoEl) previewLogoEl.innerHTML = imgHtml;
+  } else {
+    if (loginLogoEl) loginLogoEl.textContent = '🌿';
+    if (sidebarLogoEl) sidebarLogoEl.textContent = '🌿';
+    if (previewLogoEl) previewLogoEl.textContent = '🌿';
+  }
+}
+
+function handleLogoFileSelect(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.size > 3 * 1024 * 1024) {
+    showToast('ขนาดไฟล์รูปภาพใหญ่เกินไป (กรุณาใช้ไฟล์ภาพขนาดไม่เกิน 3MB)', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    currentCustomLogoBase64 = e.target.result;
+    updatePlantationLogo();
+    showToast('อัปโหลดรูปโลโก้เรียบร้อยแล้ว! (อย่าลืมกดปุ่ม "💾 บันทึกการตั้งค่า" ด้านล่าง)', 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeCustomLogo() {
+  currentCustomLogoBase64 = '';
+  localStorage.removeItem('setting_plantation_logo');
+  if (cachedSettings) cachedSettings.plantation_logo = '';
+  updatePlantationLogo();
+  showToast('คืนค่าโลโก้เป็นแบบเริ่มต้น (🌿) เรียบร้อยแล้ว!');
+}
+
 function updatePlantationName() {
   const name = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
   document.getElementById('sidebar-plantation-name').textContent = name;
   document.getElementById('login-plantation-name').textContent = name;
+  updatePlantationLogo();
 }
 
 function updatePurchaseDualModeUI() {
@@ -3874,6 +3922,8 @@ async function renderSettings() {
 
   const showPayerEl = document.getElementById('setting-show-payer-name');
   if (showPayerEl) showPayerEl.checked = s?.show_payer_name !== false;
+
+  updatePlantationLogo();
 }
 
 async function saveSettings() {
@@ -3888,13 +3938,21 @@ async function saveSettings() {
   const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
   const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
 
+  const logoVal = currentCustomLogoBase64 !== null ? currentCustomLogoBase64 : (cachedSettings?.plantation_logo || localStorage.getItem('setting_plantation_logo') || '');
+
   localStorage.setItem('setting_plantation_address', plantationAddress);
   localStorage.setItem('setting_auction_buyer', auctionBuyer);
+  if (logoVal) {
+    localStorage.setItem('setting_plantation_logo', logoVal);
+  } else {
+    localStorage.removeItem('setting_plantation_logo');
+  }
 
   const updateData = {
     plantation_name: plantationName,
     plantation_address: plantationAddress,
     auction_buyer: auctionBuyer,
+    plantation_logo: logoVal,
     price_cup: priceCup,
     price_sheet: priceCup,
     price_latex: priceCup,
@@ -3914,6 +3972,7 @@ async function saveSettings() {
       console.warn('Supabase update failed with new columns, executing fallback:', error.message);
       delete updateData.plantation_address;
       delete updateData.auction_buyer;
+      delete updateData.plantation_logo;
       delete updateData.dual_station_mode;
       delete updateData.show_payer_name;
       delete updateData.yard_fee;
@@ -3933,12 +3992,14 @@ async function saveSettings() {
       ...data[0],
       plantation_address: plantationAddress,
       auction_buyer: auctionBuyer,
+      plantation_logo: logoVal,
       dual_station_mode: dualStationMode,
       show_payer_name: showPayerName,
       yard_fee: yardFeeVal
     };
 
     updatePlantationName();
+    updatePlantationLogo();
     updatePurchaseDualModeUI();
     showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
     renderSettings();
@@ -4342,6 +4403,7 @@ async function forceSeedMembers() {
 
 // ========== INITIALIZATION ==========
 async function init() {
+  updatePlantationLogo();
   try {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch (err) {

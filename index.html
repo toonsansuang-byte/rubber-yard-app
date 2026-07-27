@@ -23,7 +23,7 @@
     <div class="login-container">
       <div class="login-card">
         <div class="login-logo">
-          <div class="logo-icon">🌿</div>
+          <div class="logo-icon" id="login-logo-icon">🌿</div>
           <h1 id="login-plantation-name">ลานยางพาราชุมชน</h1>
           <p>ระบบจัดการรับซื้อยางพารา</p>
         </div>
@@ -60,7 +60,7 @@
     <nav id="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-brand">
-          <div class="brand-icon">🌿</div>
+          <div class="brand-icon" id="sidebar-logo-icon">🌿</div>
           <div>
             <h2 id="sidebar-plantation-name">ลานยางพาราชุมชน</h2>
             <span class="brand-subtitle">ระบบจัดการรับซื้อยาง</span>
@@ -739,6 +739,22 @@
           <!-- Plantation Info -->
           <div class="glass-card">
             <div class="settings-section-title">🏠 ข้อมูลลานยาง & ชื่อผู้ประมูล (สำหรับใบเสร็จ)</div>
+            <div class="form-group mb-3">
+              <label class="form-label">🖼️ โลโก้ลานยาง (เปลี่ยนรูปหน้าล็อคอิน & เมนูแถบข้าง)</label>
+              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(255,255,255,0.02); padding:12px 14px; border-radius:var(--radius-md); border:1px solid var(--border);">
+                <div id="setting-logo-preview" style="width:54px; height:54px; border-radius:var(--radius-md); background:var(--primary-glow); display:flex; align-items:center; justify-content:center; font-size:1.8rem; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
+                  🌿
+                </div>
+                <div style="flex:1; min-width:200px;">
+                  <input type="file" id="setting-logo-file" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(event)">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('setting-logo-file').click()">📁 เลือกรูปภาพจากเครื่อง...</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="removeCustomLogo()">🗑️ คืนค่าโลโก้เริ่มต้น (🌿)</button>
+                  </div>
+                  <span style="font-size:0.78rem; color:var(--text-secondary);">รองรับรูปภาพ JPG, PNG, WebP (รูปสี่เหลี่ยมจัตุรัสจะสวยงามที่สุด)</span>
+                </div>
+              </div>
+            </div>
             <div class="form-group mb-3">
               <label class="form-label" for="setting-plantation-name">ชื่อกลุ่ม / ลานยาง</label>
               <input type="text" id="setting-plantation-name" class="form-input" placeholder="กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก">
