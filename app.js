@@ -2672,28 +2672,66 @@ function onPurchaseTruckSelect(val) {
   }
 }
 
-async function renderTruckWeights() {
+let currentTruckWeightsRoundId = null;
+
+async function renderTruckWeights(targetRoundId = null) {
   await loadCurrentRound();
   
   const titleEl = document.getElementById('tw-round-title');
   const tbody = document.getElementById('tw-table-body');
   const emptyState = document.getElementById('tw-empty-state');
-
-  if (!currentRound) {
-    if (titleEl) titleEl.textContent = '⏸️ ยังไม่มีรอบส่งมอบยางที่เปิดใช้งาน';
-    if (tbody) tbody.innerHTML = '';
-    if (emptyState) emptyState.style.display = 'block';
-    return;
-  }
-
-  if (titleEl) titleEl.textContent = `⚡ ข้อมูลน้ำหนักรถพ่วงประจำรอบ — ${currentRound.title}`;
+  const filterEl = document.getElementById('tw-round-filter');
 
   showLoading();
   try {
-    // 1. Query all transactions for current active round
-    const { data: roundTx, error: txErr } = await sb.from('transactions')
-      .select('*')
-      .eq('round_id', currentRound.id);
+    // 1. Load round options into dropdown
+    const { data: rounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false });
+    const roundsList = rounds || [];
+
+    let selectedRoundId = targetRoundId;
+    if (!selectedRoundId && filterEl && filterEl.value) {
+      selectedRoundId = filterEl.value;
+    }
+
+    if (filterEl) {
+      filterEl.innerHTML = `
+        ${roundsList.map(r => `<option value="${r.id}">${r.status === 'active' ? '🟢 (กำลังเปิด) ' : '🔒 (ปิดรอบแล้ว) '} ${r.title}</option>`).join('')}
+        <option value="all">📦 ทุกรอบส่งมอบยาง (รวมทั้งหมด)</option>
+      `;
+
+      if (selectedRoundId) {
+        filterEl.value = selectedRoundId;
+      } else if (currentRound) {
+        filterEl.value = currentRound.id;
+      } else if (roundsList.length > 0) {
+        filterEl.value = roundsList[0].id;
+      }
+      selectedRoundId = filterEl.value;
+    }
+
+    currentTruckWeightsRoundId = selectedRoundId;
+
+    // 2. Fetch the target round details
+    let activeRoundObj = null;
+    if (selectedRoundId && selectedRoundId !== 'all') {
+      activeRoundObj = (roundsList || []).find(r => String(r.id) === String(selectedRoundId));
+    }
+
+    if (titleEl) {
+      if (activeRoundObj) {
+        const statusTag = activeRoundObj.status === 'active' ? '🟢 กำลังเปิดรับซื้อ' : '🔒 ปิดรอบส่งมอบแล้ว';
+        titleEl.innerHTML = `⚡ ข้อมูลน้ำหนักรถพ่วงประจำรอบ — <strong>${activeRoundObj.title}</strong> <small style="font-size:0.85rem; font-weight:normal; opacity:0.9;">(${statusTag})</small>`;
+      } else {
+        titleEl.textContent = '⚡ ข้อมูลน้ำหนักรถพ่วง — สรุปรวมทุกรอบส่งมอบยาง';
+      }
+    }
+
+    // 3. Query all transactions for selected round or all
+    let query = sb.from('transactions').select('*');
+    if (selectedRoundId && selectedRoundId !== 'all') {
+      query = query.eq('round_id', selectedRoundId);
+    }
+    const { data: roundTx, error: txErr } = await query;
 
     if (txErr) throw txErr;
 
@@ -2801,53 +2839,59 @@ async function renderTruckWeights() {
 }
 
 function showTruckMembersModal(truckNum) {
-  if (!currentRound) return;
-  
   showLoading();
-  sb.from('transactions').select('*').eq('round_id', currentRound.id).eq('truck_number', truckNum).order('date', { ascending: false })
-    .then(({ data, error }) => {
-      hideLoading();
-      if (error) { showToast('โหลดข้อมูลไม่สำเร็จ: ' + error.message, 'error'); return; }
-      
-      const list = data || [];
-      const modal = document.getElementById('truck-members-modal');
-      const title = document.getElementById('truck-members-modal-title');
-      const body = document.getElementById('truck-members-modal-body');
+  let query = sb.from('transactions').select('*').eq('truck_number', truckNum).order('date', { ascending: false });
+  if (currentTruckWeightsRoundId && currentTruckWeightsRoundId !== 'all') {
+    query = query.eq('round_id', currentTruckWeightsRoundId);
+  }
 
-      if (title) title.textContent = `🚛 รายการสมาชิกใน ${truckNum} (รวม ${list.length} รายการ)`;
-      
-      if (body) {
-        body.innerHTML = `
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
+  query.then(({ data, error }) => {
+    hideLoading();
+    if (error) { showToast('โหลดข้อมูลไม่สำเร็จ: ' + error.message, 'error'); return; }
+    
+    const list = data || [];
+    const modal = document.getElementById('truck-members-modal');
+    const title = document.getElementById('truck-members-modal-title');
+    const body = document.getElementById('truck-members-modal-body');
+
+    if (title) title.textContent = `🚛 รายการสมาชิกใน ${truckNum} (รวม ${list.length} รายการ)`;
+    
+    if (body) {
+      body.innerHTML = `
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>วันเวลา</th>
+                <th>รหัสสมาชิก</th>
+                <th>ชื่อสมาชิก</th>
+                <th>ลักษณะพ่วง</th>
+                <th>น้ำหนักสุทธิ</th>
+                <th>ผู้บันทึก/ผู้ชั่ง</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(t => `
                 <tr>
-                  <th>วันเวลา</th>
-                  <th>รหัส</th>
-                  <th>ชื่อสมาชิก</th>
-                  <th>ลักษณะพ่วง</th>
-                  <th>น้ำหนักสุทธิ</th>
-                  <th>ผู้บันทึก</th>
+                  <td>${formatDateTime(t.date)}</td>
+                  <td><span class="badge badge-green">${t.member_code}</span></td>
+                  <td><strong>${t.member_name}</strong></td>
+                  <td>
+                    ${t.trailer_type === 'trailer' 
+                      ? '<span class="badge badge-warning" style="font-size:0.8rem;">🚚 ตัวลูก</span>' 
+                      : '<span class="badge badge-info" style="font-size:0.8rem;">🚛 ตัวแม่</span>'}
+                  </td>
+                  <td style="font-weight:700; color:var(--gold); font-size:0.95rem;">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
+                  <td>${t.created_by_name || 'ผู้ดูแลระบบ'}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${list.map(t => `
-                  <tr>
-                    <td>${formatDateTime(t.date)}</td>
-                    <td><span class="badge badge-green">${t.member_code}</span></td>
-                    <td><strong>${t.member_name}</strong></td>
-                    <td>${t.trailer_type === 'trailer' ? '🚚 ตัวลูก' : '🚛 ตัวแม่'}</td>
-                    <td style="font-weight:600; color:var(--gold);">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
-                    <td>${t.created_by_name || 'ผู้ดูแลระบบ'}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        `;
-      }
-      if (modal) modal.classList.add('show');
-    });
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+    if (modal) modal.classList.add('show');
+  });
 }
 
 function closeTruckMembersModal() {

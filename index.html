@@ -467,7 +467,13 @@
             <h2>🚚 ข้อมูลน้ำหนักรถพ่วง</h2>
             <p>บันทึกและจัดการน้ำหนักจัดส่งมอบยางขึ้นรถพ่วงแยกรายคัน (ตัวแม่ / ตัวลูก) ประจำรอบ</p>
           </div>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">📅 เลือกรอบ:</span>
+              <select id="tw-round-filter" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto; border-color:var(--gold);" onchange="renderTruckWeights(this.value)">
+                <!-- Rendered dynamically -->
+              </select>
+            </div>
             <button class="btn btn-gold btn-sm" onclick="printTruckWeightsReport()">🖨️ พิมพ์เอกสารสรุปน้ำหนักรถพ่วง</button>
             <button class="btn btn-secondary btn-sm" onclick="navigateTo('rounds')">🔄 ดูรอบส่งมอบยาง</button>
           </div>
