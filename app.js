@@ -240,10 +240,14 @@ function initRealtimeSubscriptions() {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'settings' },
-      async () => {
+      async (payload) => {
+        console.log('Realtime settings change detected:', payload);
         await loadSettings();
         updatePurchaseDualModeUI();
-        if (currentSection === 'settings') renderSettings();
+        renderSettings();
+        if (payload.eventType === 'UPDATE') {
+          showToast('⚡ มีการอัปเดตตั้งค่าลานยาง/ชื่อผู้ประมูลจากเครื่องอื่นแล้ว!', 'info');
+        }
       }
     )
     .subscribe((status) => {
@@ -2848,6 +2852,21 @@ function showTruckMembersModal(truckNum) {
 
 function closeTruckMembersModal() {
   const modal = document.getElementById('truck-members-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+function closeEditTruckDeliveryModal() {
+  const modal = document.getElementById('edit-truck-delivery-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+function saveEditTruckDelivery() {
+  showToast('ระบบรวบรวมน้ำหนักรถพ่วงแบบคำนวณให้อัตโนมัติ 100% จากใบเสร็จรับซื้อของสมาชิกแล้วครับ');
+  closeEditTruckDeliveryModal();
+}
+
+function closeTruckDetailModal() {
+  const modal = document.getElementById('truck-detail-modal');
   if (modal) modal.classList.remove('show');
 }
 
