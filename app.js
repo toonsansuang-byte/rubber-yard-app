@@ -69,6 +69,64 @@ async function hashPassword(text) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Toggle password visibility (Show/Hide) with SVG icons
+function togglePasswordVisibility() {
+  const pwdInput = document.getElementById('login-password');
+  const openEye = document.getElementById('eye-icon-open');
+  const closedEye = document.getElementById('eye-icon-closed');
+  if (!pwdInput) return;
+  if (pwdInput.type === 'password') {
+    pwdInput.type = 'text';
+    if (openEye) openEye.style.display = 'none';
+    if (closedEye) closedEye.style.display = 'block';
+  } else {
+    pwdInput.type = 'password';
+    if (openEye) openEye.style.display = 'block';
+    if (closedEye) closedEye.style.display = 'none';
+  }
+}
+window.togglePasswordVisibility = togglePasswordVisibility;
+
+// Save remembered credentials instantly on input/change
+function saveRememberedCredentials() {
+  try {
+    const remEl = document.getElementById('remember-me');
+    const userEl = document.getElementById('login-username');
+    const passEl = document.getElementById('login-password');
+    if (remEl && remEl.checked) {
+      const u = userEl ? userEl.value.trim() : '';
+      const p = passEl ? passEl.value : '';
+      if (u || p) {
+        localStorage.setItem('rb_remembered_credentials', JSON.stringify({ username: u, password: p }));
+      }
+    } else {
+      localStorage.removeItem('rb_remembered_credentials');
+    }
+  } catch (e) {
+    console.warn('Save remembered error:', e);
+  }
+}
+window.saveRememberedCredentials = saveRememberedCredentials;
+
+// Load remembered login credentials
+function loadRememberedCredentials() {
+  try {
+    const saved = localStorage.getItem('rb_remembered_credentials');
+    if (saved) {
+      const data = JSON.parse(saved);
+      const userEl = document.getElementById('login-username');
+      const passEl = document.getElementById('login-password');
+      const remEl = document.getElementById('remember-me');
+      if (userEl && data.username !== undefined) userEl.value = data.username;
+      if (passEl && data.password !== undefined) passEl.value = data.password;
+      if (remEl) remEl.checked = true;
+    }
+  } catch (e) {
+    console.warn('Load remembered credentials error:', e);
+  }
+}
+window.loadRememberedCredentials = loadRememberedCredentials;
+
 async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
@@ -133,6 +191,8 @@ async function handleLogin() {
     }
 
     if (loggedUser) {
+      saveRememberedCredentials();
+
       currentUser = {
         id: loggedUser.id,
         username: loggedUser.username,
@@ -161,8 +221,7 @@ function handleLogout() {
   currentUser = null;
   document.getElementById('app').classList.remove('active');
   document.getElementById('login-page').style.display = 'flex';
-  document.getElementById('login-username').value = '';
-  document.getElementById('login-password').value = '';
+  loadRememberedCredentials();
   document.getElementById('login-error').classList.remove('show');
 }
 
@@ -481,12 +540,18 @@ async function saveStartNewRound() {
   try {
     // If there is an active round, close it first
     if (currentRound) {
-      await sb.from('purchase_rounds').update({
+      let closePayload = {
         status: 'closed',
         end_date: new Date().toISOString(),
         closed_at: new Date().toISOString(),
-        closed_by_name: currentUser.display_name
-      }).eq('id', currentRound.id);
+        closed_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
+      };
+      let { error: closeErr } = await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
+      if (closeErr) {
+        delete closePayload.closed_at;
+        delete closePayload.closed_by_name;
+        await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
+      }
     }
 
     // Insert new open round
@@ -525,12 +590,21 @@ function confirmCloseRound(roundId) {
 async function closeRound(roundId) {
   showLoading();
   try {
-    const { error } = await sb.from('purchase_rounds').update({
+    let updatePayload = {
       status: 'closed',
       end_date: new Date().toISOString(),
       closed_at: new Date().toISOString(),
-      closed_by_name: currentUser.display_name
-    }).eq('id', roundId);
+      closed_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
+    };
+
+    let { error } = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
+    if (error) {
+      console.warn('closeRound update fallback executed:', error.message);
+      delete updatePayload.closed_at;
+      delete updatePayload.closed_by_name;
+      const res = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
+      error = res.error;
+    }
 
     if (error) throw error;
 
@@ -2238,6 +2312,7 @@ async function saveTransaction(confirmedOverride = false) {
         price_per_kg: netPricePerKg,
         total_price: totalPrice,
         trips: tripDetails,
+        trips_detail: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
         truck_number: truckNumber,
@@ -2250,6 +2325,20 @@ async function saveTransaction(confirmedOverride = false) {
       };
 
       let { data, error } = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+
+      if (error && error.message.includes('column')) {
+        delete pendingPayload.trips;
+        delete pendingPayload.cart_weight;
+        delete pendingPayload.auction_price;
+        delete pendingPayload.yard_fee;
+        let res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+        if (res.error && res.error.message.includes('column')) {
+          delete pendingPayload.trips_detail;
+          res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
+        }
+        data = res.data;
+        error = res.error;
+      }
 
       if (error) {
         if (error.message.includes('relation') || error.message.includes('pending_transactions')) {
@@ -2277,6 +2366,7 @@ async function saveTransaction(confirmedOverride = false) {
         price_per_kg: netPricePerKg,
         total_price: totalPrice,
         trips: tripDetails,
+        trips_detail: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
         truck_number: truckNumber,
@@ -2290,11 +2380,17 @@ async function saveTransaction(confirmedOverride = false) {
       let { data, error } = await sb.from('transactions').insert(payload).select().single();
 
       if (error && error.message.includes('column')) {
+        delete payload.trips;
+        delete payload.cart_weight;
         delete payload.auction_price;
         delete payload.yard_fee;
         delete payload.created_by_display_name;
         delete payload.confirmed_by_display_name;
-        const res = await sb.from('transactions').insert(payload).select().single();
+        let res = await sb.from('transactions').insert(payload).select().single();
+        if (res.error && res.error.message.includes('column')) {
+          delete payload.trips_detail;
+          res = await sb.from('transactions').insert(payload).select().single();
+        }
         data = res.data;
         error = res.error;
       }
@@ -4420,6 +4516,7 @@ async function init() {
   } else {
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app').classList.remove('active');
+    loadRememberedCredentials();
     try { await loadSettings(); } catch (e) { /* ignore */ }
   }
 }
