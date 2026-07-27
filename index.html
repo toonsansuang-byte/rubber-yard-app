@@ -35,12 +35,12 @@
         <form id="login-form" onsubmit="return false;">
           <div class="form-group">
             <label class="form-label" for="login-username">ชื่อผู้ใช้</label>
-            <input type="text" id="login-username" class="form-input" placeholder="กรอกชื่อผู้ใช้" autocomplete="username" required oninput="saveRememberedCredentials()">
+            <input type="text" id="login-username" class="form-input" placeholder="กรอกชื่อผู้ใช้" autocomplete="username" required>
           </div>
           <div class="form-group">
             <label class="form-label" for="login-password">รหัสผ่าน</label>
             <div style="position: relative;">
-              <input type="password" id="login-password" class="form-input" placeholder="กรอกรหัสผ่าน" autocomplete="current-password" required style="padding-right: 48px;" oninput="saveRememberedCredentials()">
+              <input type="password" id="login-password" class="form-input" placeholder="กรอกรหัสผ่าน" autocomplete="current-password" required style="padding-right: 48px;">
               <button type="button" id="toggle-password-btn" onclick="event.preventDefault(); event.stopPropagation(); togglePasswordVisibility();" title="แสดง/ซ่อน รหัสผ่าน" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.7); transition: color 0.2s;">
                 <svg id="eye-icon-open" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -52,12 +52,6 @@
                 </svg>
               </button>
             </div>
-          </div>
-          <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; font-size: 0.88rem;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--text-secondary);">
-              <input type="checkbox" id="remember-me" style="width: 17px; height: 17px; cursor: pointer; accent-color: #10b981;" onchange="saveRememberedCredentials()">
-              <span>จดจำชื่อผู้ใช้และรหัสผ่าน</span>
-            </label>
           </div>
           <button type="submit" class="btn btn-primary btn-block" id="login-btn" onclick="handleLogin()">
             🔐 เข้าสู่ระบบ

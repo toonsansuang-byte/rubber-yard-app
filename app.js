@@ -87,46 +87,6 @@ function togglePasswordVisibility() {
 }
 window.togglePasswordVisibility = togglePasswordVisibility;
 
-// Save remembered credentials instantly on input/change
-function saveRememberedCredentials() {
-  try {
-    const remEl = document.getElementById('remember-me');
-    const userEl = document.getElementById('login-username');
-    const passEl = document.getElementById('login-password');
-    if (remEl && remEl.checked) {
-      const u = userEl ? userEl.value.trim() : '';
-      const p = passEl ? passEl.value : '';
-      if (u || p) {
-        localStorage.setItem('rb_remembered_credentials', JSON.stringify({ username: u, password: p }));
-      }
-    } else {
-      localStorage.removeItem('rb_remembered_credentials');
-    }
-  } catch (e) {
-    console.warn('Save remembered error:', e);
-  }
-}
-window.saveRememberedCredentials = saveRememberedCredentials;
-
-// Load remembered login credentials
-function loadRememberedCredentials() {
-  try {
-    const saved = localStorage.getItem('rb_remembered_credentials');
-    if (saved) {
-      const data = JSON.parse(saved);
-      const userEl = document.getElementById('login-username');
-      const passEl = document.getElementById('login-password');
-      const remEl = document.getElementById('remember-me');
-      if (userEl && data.username !== undefined) userEl.value = data.username;
-      if (passEl && data.password !== undefined) passEl.value = data.password;
-      if (remEl) remEl.checked = true;
-    }
-  } catch (e) {
-    console.warn('Load remembered credentials error:', e);
-  }
-}
-window.loadRememberedCredentials = loadRememberedCredentials;
-
 async function handleLogin() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
@@ -191,8 +151,6 @@ async function handleLogin() {
     }
 
     if (loggedUser) {
-      saveRememberedCredentials();
-
       currentUser = {
         id: loggedUser.id,
         username: loggedUser.username,
@@ -221,7 +179,8 @@ function handleLogout() {
   currentUser = null;
   document.getElementById('app').classList.remove('active');
   document.getElementById('login-page').style.display = 'flex';
-  loadRememberedCredentials();
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
   document.getElementById('login-error').classList.remove('show');
 }
 
