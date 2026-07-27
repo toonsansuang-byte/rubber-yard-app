@@ -928,48 +928,85 @@ async function exportRoundToExcel(roundId = null) {
 
     const rows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
 
-    // Construct Excel Data Sheet
-    const excelRows = [
-      [plantationName],
-      [plantationAddress],
-      [`เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)`],
-      [`รอบส่งมอบยาง: ${round.title}`, `วันที่เริ่ม: ${formatDate(round.start_date)}`, `วันที่ปิดรอบ: ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}`],
-      [],
-      ['ลำดับ', 'รหัสสมาชิก', 'ชื่อ-นามสกุลสมาชิก', 'เลขที่บัญชีธนาคาร', 'น้ำหนักยางสุทธิ (กก.)', 'ราคาต่อ กก. (บาท)', 'จำนวนเงินที่ต้องโอน (บาท)']
-    ];
+    // Construct SheetJS worksheet manually for perfect number and text formatting
+    const ws = {};
+    const range = { s: { c: 0, r: 0 }, e: { c: 6, r: 0 } };
 
-    rows.forEach((m, idx) => {
-      const avgPrice = m.totalWeight > 0 ? (m.totalAmount / m.totalWeight) : m.pricePerKg;
-      excelRows.push([
-        idx + 1,
-        m.code,
-        m.name,
-        m.account_no,
-        m.totalWeight,
-        Number(avgPrice.toFixed(2)),
-        m.totalAmount
-      ]);
+    function setCell(r, c, value, type = 's', zFormat = null) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      if (r > range.e.r) range.e.r = r;
+      if (c > range.e.c) range.e.c = c;
+
+      const cell = { v: value, t: type };
+      if (zFormat) cell.z = zFormat;
+      ws[cellRef] = cell;
+    }
+
+    // Title rows (Header section)
+    setCell(0, 0, plantationName, 's');
+    setCell(1, 0, plantationAddress, 's');
+    setCell(2, 0, `เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)`, 's');
+    setCell(3, 0, `รอบส่งมอบยาง: ${round.title}   |   วันที่เริ่ม: ${formatDate(round.start_date)}   |   วันที่ปิดรอบ: ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}`, 's');
+
+    // Table Header Row (Row 5)
+    const headers = ['ลำดับ', 'รหัสสมาชิก', 'ชื่อ-นามสกุลสมาชิก', 'เลขที่บัญชีธนาคาร', 'น้ำหนักยางสุทธิ (กก.)', 'ราคาต่อ กก. (บาท)', 'จำนวนเงินที่ต้องโอน (บาท)'];
+    headers.forEach((h, colIdx) => {
+      setCell(5, colIdx, h, 's');
     });
 
-    // Summary Row
-    excelRows.push([]);
-    excelRows.push(['', '', 'ยอดรวมสุทธิทั้งรอบ:', '', totalWeight, '', totalAmount]);
+    // Data Rows (Row 6+)
+    let currentRow = 6;
+    rows.forEach((m, idx) => {
+      const avgPrice = m.totalWeight > 0 ? (m.totalAmount / m.totalWeight) : m.pricePerKg;
+      
+      // ลำดับ
+      setCell(currentRow, 0, idx + 1, 'n');
+      
+      // รหัสสมาชิก (บังคับเป็นข้อความ text เสมอ เช่น "088", "089")
+      let memberCodeStr = String(m.code || '');
+      setCell(currentRow, 1, memberCodeStr, 's');
+      
+      // ชื่อสมาชิก
+      setCell(currentRow, 2, String(m.name || ''), 's');
+      
+      // เลขที่บัญชีธนาคาร (บังคับเป็นข้อความ text เสมอ)
+      setCell(currentRow, 3, String(m.account_no || '-'), 's');
+      
+      // น้ำหนักสุทธิ (กก.)
+      setCell(currentRow, 4, Number(m.totalWeight), 'n', '#,##0.00');
+      
+      // ราคาต่อ กก. (บาท)
+      setCell(currentRow, 5, Number(avgPrice.toFixed(2)), 'n', '#,##0.00');
+      
+      // จำนวนเงินที่ต้องโอน (บาท)
+      setCell(currentRow, 6, Number(m.totalAmount), 'n', '#,##0.00');
+      
+      currentRow++;
+    });
 
-    const worksheet = XLSX.utils.aoa_to_sheet(excelRows);
-    
-    // Set column widths
-    worksheet['!cols'] = [
-      { wch: 8 },  // ลำดับ
-      { wch: 14 }, // รหัส
-      { wch: 28 }, // ชื่อ
-      { wch: 22 }, // เลขบัญชี
-      { wch: 20 }, // น้ำหนัก
-      { wch: 16 }, // ราคา
-      { wch: 24 }  // ยอดเงิน
+    // Empty row
+    currentRow++;
+
+    // Total Row
+    setCell(currentRow, 2, 'ยอดรวมสุทธิทั้งรอบที่ต้องโอน:', 's');
+    setCell(currentRow, 4, Number(totalWeight), 'n', '#,##0.00');
+    setCell(currentRow, 6, Number(totalAmount), 'n', '#,##0.00');
+
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    // Column widths for spacious professional look
+    ws['!cols'] = [
+      { wch: 10 }, // ลำดับ
+      { wch: 16 }, // รหัสสมาชิก
+      { wch: 35 }, // ชื่อ-นามสกุล
+      { wch: 30 }, // เลขบัญชีธนาคาร
+      { wch: 24 }, // น้ำหนักสุทธิ
+      { wch: 18 }, // ราคา/กก.
+      { wch: 28 }  // ยอดเงินที่ต้องโอน
     ];
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'สรุปโอนเงินธนาคาร');
+    XLSX.utils.book_append_sheet(workbook, ws, 'สรุปโอนเงินธนาคาร');
 
     const cleanTitle = round.title.replace(/[\/\s]/g, '_');
     const fileName = `สรุปยอดโอนเงินธนาคาร_${cleanTitle}.xlsx`;
@@ -1062,93 +1099,105 @@ async function printRoundReport(roundId = null) {
         body {
           font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
           font-size: 13px;
-          color: #000;
+          color: #0f172a;
           margin: 0;
           padding: 0;
           background: #fff;
         }
-        .header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 8px; }
-        .header h2 { margin: 0 0 4px 0; font-size: 18px; font-weight: bold; }
-        .header h3 { margin: 0 0 4px 0; font-size: 15px; font-weight: bold; }
-        .header p { margin: 0; font-size: 12px; color: #333; }
+        .header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+        .header h2 { margin: 0 0 4px 0; font-size: 20px; font-weight: bold; color: #064e3b; }
+        .header p { margin: 0 0 4px 0; font-size: 12px; color: #475569; }
+        .header h3 { margin: 6px 0 0 0; font-size: 16px; font-weight: bold; color: #0f172a; }
 
         .meta-grid {
           display: grid;
           grid-template-columns: 1fr 1fr 1fr 1fr;
-          gap: 8px;
+          gap: 10px;
           margin-bottom: 16px;
-          border: 1px solid #000;
-          padding: 10px 12px;
-          border-radius: 4px;
-          background: #fafafa;
+          border: 1px solid #cbd5e1;
+          padding: 10px 14px;
+          border-radius: 6px;
+          background: #f8fafc;
           font-size: 12px;
         }
-        .meta-item strong { display: block; font-size: 11px; color: #555; }
+        .meta-item strong { display: block; font-size: 11px; color: #64748b; margin-bottom: 2px; }
+        .meta-item span { font-size: 14px; font-weight: bold; color: #0f172a; }
 
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-        th, td { border: 1px solid #000; padding: 6px 8px; }
-        th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-        tr.total-row td { font-weight: bold; background-color: #f9f9f9; font-size: 13px; }
+        th, td { border: 1px solid #cbd5e1; padding: 7px 10px; }
+        th { background-color: #f1f5f9; text-align: center; font-weight: bold; color: #1e293b; }
+        tr:nth-child(even) td { background-color: #f8fafc; }
+        tr.total-row td { font-weight: bold; background-color: #ecfdf5; font-size: 13px; border-top: 2px solid #047857; border-bottom: 2px double #047857; }
+
+        .code-badge {
+          display: inline-block;
+          background: #e2e8f0;
+          color: #0f172a;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-family: monospace;
+          font-weight: bold;
+        }
 
         .signatures {
           margin-top: 35px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 30px;
+          gap: 40px;
           text-align: center;
           page-break-inside: avoid;
         }
-        .sig-box { border: 1px solid #ccc; padding: 12px; border-radius: 4px; }
-        .sig-line { margin-top: 35px; border-bottom: 1px dotted #000; display: inline-block; width: 75%; }
-        .sig-name { margin-top: 6px; font-size: 12px; }
-        .sig-role { font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+        .sig-box { border: 1px solid #cbd5e1; padding: 14px; border-radius: 6px; background: #fff; }
+        .sig-line { margin-top: 40px; border-bottom: 1px dotted #0f172a; display: inline-block; width: 75%; }
+        .sig-name { margin-top: 8px; font-size: 12px; color: #334155; }
+        .sig-role { font-size: 13px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
       </style>
     </head>
     <body>
       <div class="header">
         <h2>${plantationName}</h2>
         <p>${plantationAddress}</p>
-        <h3 style="margin-top:6px;">เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</h3>
-        <p><strong>รอบส่งมอบยาง:</strong> ${round.title} | <strong>วันที่เริ่ม:</strong> ${formatDate(round.start_date)} | <strong>วันที่ปิดรอบ:</strong> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}</p>
+        <h3>เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</h3>
+        <p style="margin-top:4px;"><strong>รอบส่งมอบยาง:</strong> ${round.title} &nbsp;|&nbsp; <strong>วันที่เริ่ม:</strong> ${formatDate(round.start_date)} &nbsp;|&nbsp; <strong>วันที่ปิดรอบ:</strong> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}</p>
       </div>
 
       <div class="meta-grid">
-        <div class="meta-item"><strong>จำนวนสมาชิกที่ขาย:</strong> ${memberRows.length} คน</div>
-        <div class="meta-item"><strong>จำนวนเที่ยวชั่งรวม:</strong> ${transactions.length} เที่ยว</div>
-        <div class="meta-item"><strong>น้ำหนักสุทธิรวม:</strong> ${formatNumber(grandTotalWeight)} กก.</div>
-        <div class="meta-item"><strong>ยอดเงินต้องโอนรวม:</strong> ${formatNumber(grandTotalAmount)} บาท</div>
+        <div class="meta-item"><strong>จำนวนสมาชิกที่ขาย:</strong> <span>${memberRows.length} คน</span></div>
+        <div class="meta-item"><strong>จำนวนเที่ยวชั่งรวม:</strong> <span>${transactions.length} เที่ยว</span></div>
+        <div class="meta-item"><strong>น้ำหนักสุทธิรวม:</strong> <span style="color:#047857;">${formatNumber(grandTotalWeight)} กก.</span></div>
+        <div class="meta-item"><strong>ยอดเงินต้องโอนรวม:</strong> <span style="color:#b45309;">${formatNumber(grandTotalAmount)} บาท</span></div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th style="width:40px;">ลำดับ</th>
-            <th style="width:70px;">รหัส</th>
+            <th style="width:45px;">ลำดับ</th>
+            <th style="width:80px;">รหัสสมาชิก</th>
             <th>ชื่อ-นามสกุลสมาชิก</th>
-            <th style="width:140px;">เลขที่บัญชีธนาคาร</th>
-            <th style="width:80px; text-align:center;">จำนวนเที่ยว</th>
-            <th style="width:110px; text-align:right;">น้ำหนักสุทธิ (กก.)</th>
-            <th style="width:120px; text-align:right;">ยอดเงินที่ต้องโอน (บาท)</th>
+            <th style="width:170px;">เลขที่บัญชีธนาคาร</th>
+            <th style="width:85px; text-align:center;">จำนวนเที่ยว</th>
+            <th style="width:120px; text-align:right;">น้ำหนักสุทธิ (กก.)</th>
+            <th style="width:140px; text-align:right;">ยอดเงินที่ต้องโอน (บาท)</th>
           </tr>
         </thead>
         <tbody>
-          ${memberRows.length === 0 ? '<tr><td colspan="7" style="text-align:center;">ไม่มีข้อมูลสมาชิกในรอบนี้</td></tr>' :
+          ${memberRows.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">ไม่มีข้อมูลสมาชิกในรอบนี้</td></tr>' :
             memberRows.map((m, idx) => `
               <tr>
                 <td style="text-align:center;">${idx + 1}</td>
-                <td style="text-align:center;"><strong>${m.code}</strong></td>
+                <td style="text-align:center;"><span class="code-badge">${m.code}</span></td>
                 <td><strong>${m.name}</strong></td>
-                <td style="text-align:center; font-family:monospace; font-weight:bold;">${m.account_no}</td>
+                <td style="text-align:center; font-family:monospace; font-weight:bold; font-size:13px; color:#1e293b;">${m.account_no}</td>
                 <td style="text-align:center;">${m.txCount}</td>
-                <td style="text-align:right;">${formatNumber(m.totalWeight)}</td>
-                <td style="text-align:right; font-weight:bold;">${formatNumber(m.totalAmount)}</td>
+                <td style="text-align:right; font-weight:600;">${formatNumber(m.totalWeight)}</td>
+                <td style="text-align:right; font-weight:bold; color:#047857; font-size:13px;">${formatNumber(m.totalAmount)}</td>
               </tr>
             `).join('')
           }
           <tr class="total-row">
             <td colspan="5" style="text-align:right;">ยอดรวมสุทธิทั้งรอบที่ต้องโอน:</td>
             <td style="text-align:right;">${formatNumber(grandTotalWeight)} กก.</td>
-            <td style="text-align:right; color:#000;">${formatNumber(grandTotalAmount)} บาท</td>
+            <td style="text-align:right; color:#047857; font-size:14px;">${formatNumber(grandTotalAmount)} บาท</td>
           </tr>
         </tbody>
       </table>
