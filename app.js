@@ -3638,20 +3638,23 @@ async function printTruckWeightsReport() {
 
     txArr.forEach(t => {
       const wt = Number(t.final_weight || t.net_weight || 0);
-      const truckNum = (t.truck_number || '').trim();
-      if (!truckNum || truckNum === '-- ไม่ระบุ --') {
+      const rawTruck = (t.truck_number || '').trim();
+      const decoded = decodeTripsFromTruckNumber(rawTruck);
+      const cleanTruckNum = decoded.cleanTruckNumber;
+
+      if (!cleanTruckNum || cleanTruckNum === '-- ไม่ระบุ --') {
         unassignedWeight += wt;
       } else {
-        if (!truckGroups[truckNum]) {
-          truckGroups[truckNum] = {
-            truck_number: truckNum,
+        if (!truckGroups[cleanTruckNum]) {
+          truckGroups[cleanTruckNum] = {
+            truck_number: cleanTruckNum,
             head_weight: 0,
             trailer_weight: 0,
             total_weight: 0,
             tx_count: 0
           };
         }
-        const grp = truckGroups[truckNum];
+        const grp = truckGroups[cleanTruckNum];
         if (t.trailer_type === 'trailer') {
           grp.trailer_weight += wt;
         } else {
@@ -3697,7 +3700,7 @@ async function printTruckWeightsReport() {
       : truckList.map((t, idx) => `
           <tr>
             <td style="text-align:center;">${idx + 1}</td>
-            <td><strong>${t.truck_number}</strong></td>
+            <td><strong>${escapeHTML(t.truck_number)}</strong></td>
             <td style="text-align:right;">${formatNumber(t.head_weight)} กก.</td>
             <td style="text-align:right;">${formatNumber(t.trailer_weight)} กก.</td>
             <td style="text-align:right; font-weight:bold;">${formatNumber(t.total_weight)} กก.</td>
