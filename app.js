@@ -45,6 +45,37 @@ function showToast(message, type = 'success') {
   }, 3500);
 }
 
+// ========== CROSS-DEVICE FAILSAFE TRIP ENCODING HELPER ==========
+function encodeTripsIntoTruckNumber(truckNum, tripDetails) {
+  const baseTruck = (truckNum || '').split('__TRIPS__')[0].trim();
+  if (Array.isArray(tripDetails) && tripDetails.length > 0) {
+    try {
+      const jsonStr = JSON.stringify(tripDetails);
+      return `${baseTruck}__TRIPS__:${jsonStr}`;
+    } catch (e) {
+      return baseTruck;
+    }
+  }
+  return baseTruck;
+}
+
+function decodeTripsFromTruckNumber(truckNumStr) {
+  if (!truckNumStr || typeof truckNumStr !== 'string') {
+    return { cleanTruckNumber: truckNumStr || '', extractedTrips: null };
+  }
+  if (truckNumStr.includes('__TRIPS__:')) {
+    const parts = truckNumStr.split('__TRIPS__:');
+    const cleanTruckNumber = parts[0].trim();
+    try {
+      const extractedTrips = JSON.parse(parts[1]);
+      return { cleanTruckNumber, extractedTrips };
+    } catch (e) {
+      return { cleanTruckNumber, extractedTrips: null };
+    }
+  }
+  return { cleanTruckNumber: truckNumStr, extractedTrips: null };
+}
+
 // ========== AUTH & USER SESSION ==========
 function checkAuth() {
   const isLogged = sessionStorage.getItem('rb_session') === 'logged_in';
@@ -2292,6 +2323,8 @@ async function saveTransaction(confirmedOverride = false) {
 
   const isDualMode = cachedSettings?.dual_station_mode === true;
 
+  const encodedTruckNumber = encodeTripsIntoTruckNumber(truckNumber, tripDetails);
+
   showLoading();
 
   try {
@@ -2315,7 +2348,7 @@ async function saveTransaction(confirmedOverride = false) {
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
-        truck_number: truckNumber,
+        truck_number: encodedTruckNumber,
         trailer_type: trailerType,
         status: 'pending',
         created_by_user_id: currentUser ? currentUser.id : null,
@@ -2382,7 +2415,7 @@ async function saveTransaction(confirmedOverride = false) {
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
         round_id: currentRound ? currentRound.id : null,
-        truck_number: truckNumber,
+        truck_number: encodedTruckNumber,
         trailer_type: trailerType,
         created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
         created_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
@@ -2632,6 +2665,15 @@ async function confirmPendingTransaction(pendingId) {
 
     let recoveredTrips = p.trips || p.trips_detail || p.trip_details;
     if (!recoveredTrips || (Array.isArray(recoveredTrips) && recoveredTrips.length === 0)) {
+      if (p.truck_number) {
+        const decoded = decodeTripsFromTruckNumber(p.truck_number);
+        if (Array.isArray(decoded.extractedTrips) && decoded.extractedTrips.length > 0) {
+          recoveredTrips = decoded.extractedTrips;
+        }
+      }
+    }
+
+    if (!recoveredTrips || (Array.isArray(recoveredTrips) && recoveredTrips.length === 0)) {
       try {
         const key1 = p.id ? localStorage.getItem('pending_trips_' + p.id) : null;
         const key2 = (p.member_code && p.gross_weight) ? localStorage.getItem('pending_trips_v2_' + p.member_code + '_' + p.gross_weight) : null;
@@ -2816,6 +2858,14 @@ function buildReceiptCopyHTML(tx, plantName) {
         const localV2 = localStorage.getItem('tx_trips_v2_' + tx.member_code + '_' + tx.gross_weight);
         if (localV2 && localV2.startsWith('[')) tripsArr = JSON.parse(localV2);
       } catch (e) {}
+    }
+
+    // Fallback 3: Extract trips embedded in truck_number column across devices
+    if ((!tripsArr || tripsArr.length === 0) && tx.truck_number) {
+      const decoded = decodeTripsFromTruckNumber(tx.truck_number);
+      if (Array.isArray(decoded.extractedTrips) && decoded.extractedTrips.length > 0) {
+        tripsArr = decoded.extractedTrips;
+      }
     }
   } catch (e) {
     tripsArr = [];
