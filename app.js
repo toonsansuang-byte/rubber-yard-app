@@ -2387,13 +2387,22 @@ async function saveTransaction(confirmedOverride = false) {
 
       if (error) throw error;
 
-      if (data && data.auction_price === undefined) {
-        data.auction_price = auctionPrice;
-        data.yard_fee = yardFee;
-      }
+      const receiptObj = {
+        ...(data || payload),
+        trips: tripDetails,
+        trips_detail: tripDetails,
+        gross_weight: totalGross,
+        cart_weight: totalCart,
+        net_weight: totalNet,
+        final_weight: finalWeight,
+        price_per_kg: netPricePerKg,
+        total_price: totalPrice,
+        auction_price: auctionPrice,
+        yard_fee: yardFee
+      };
 
       showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
-      showReceipt(data);
+      showReceipt(receiptObj);
       await initPurchase();
     }
   } catch (err) {
@@ -2625,17 +2634,18 @@ async function confirmPendingTransaction(pendingId) {
     if (txErr) throw txErr;
 
     // Delete or remove from pending_transactions
-    await sb.from('pending_transactions').delete().eq('id', pendingId);
-
-    if (newTx && newTx.auction_price === undefined) {
-      newTx.auction_price = p.auction_price;
-      newTx.yard_fee = p.yard_fee;
-    }
-    newTx.created_by_display_name = p.created_by_display_name;
-    newTx.confirmed_by_display_name = currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ';
+    const receiptObj = {
+      ...(newTx || txPayload),
+      trips: p.trips || p.trips_detail || [],
+      trips_detail: p.trips || p.trips_detail || [],
+      auction_price: p.auction_price !== undefined ? p.auction_price : (newTx?.auction_price),
+      yard_fee: p.yard_fee !== undefined ? p.yard_fee : (newTx?.yard_fee),
+      created_by_display_name: p.created_by_display_name,
+      confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
+    };
 
     showToast(`✅ ยืนยันรายการสำเร็จ! ออกใบเสร็จของคุณ${p.member_name}`);
-    showReceipt(newTx);
+    showReceipt(receiptObj);
     await renderPendingTransactions();
   } catch (err) {
     showToast('ยืนยันไม่สำเร็จ: ' + err.message, 'error');
@@ -2711,11 +2721,25 @@ function buildReceiptCopyHTML(tx, plantName) {
 
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
-  if (Array.isArray(tx.trips) && tx.trips.length > 0) {
-    tripsArr = tx.trips;
-  } else if (tx.trip_details && Array.isArray(tx.trip_details)) {
-    tripsArr = tx.trip_details;
-  } else {
+  try {
+    if (typeof tx.trips === 'string') {
+      tripsArr = JSON.parse(tx.trips);
+    } else if (Array.isArray(tx.trips) && tx.trips.length > 0) {
+      tripsArr = tx.trips;
+    } else if (typeof tx.trips_detail === 'string') {
+      tripsArr = JSON.parse(tx.trips_detail);
+    } else if (Array.isArray(tx.trips_detail) && tx.trips_detail.length > 0) {
+      tripsArr = tx.trips_detail;
+    } else if (typeof tx.trip_details === 'string') {
+      tripsArr = JSON.parse(tx.trip_details);
+    } else if (Array.isArray(tx.trip_details) && tx.trip_details.length > 0) {
+      tripsArr = tx.trip_details;
+    }
+  } catch (e) {
+    tripsArr = [];
+  }
+
+  if (!Array.isArray(tripsArr) || tripsArr.length === 0) {
     tripsArr = [{ gross_weight: tx.gross_weight || tx.net_weight, cart_weight: tx.cart_weight || 0, net_weight: tx.net_weight }];
   }
 
