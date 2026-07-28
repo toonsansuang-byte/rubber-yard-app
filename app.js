@@ -2420,6 +2420,9 @@ async function saveTransaction(confirmedOverride = false) {
       if (receiptObj.member_code && receiptObj.date) {
         window._transactionTripsCache[`${receiptObj.member_code}_${receiptObj.date}`] = tripDetails;
       }
+      if (receiptObj.member_code && receiptObj.gross_weight) {
+        try { localStorage.setItem('tx_trips_v2_' + receiptObj.member_code + '_' + receiptObj.gross_weight, JSON.stringify(tripDetails)); } catch (e) {}
+      }
 
       showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
       showReceipt(receiptObj);
@@ -2756,20 +2759,22 @@ function buildReceiptCopyHTML(tx, plantName) {
       tripsArr = JSON.parse(tx.trip_details);
     }
 
-    // Fallback to local memory / localStorage trip cache if DB record returned null trips
-    if ((!tripsArr || tripsArr.length === 0) && window._transactionTripsCache) {
-      const cached = (tx.id && window._transactionTripsCache[String(tx.id)]) ||
-                     (tx.member_code && window._transactionTripsCache[`${tx.member_code}_${tx.date}`]);
-      if (Array.isArray(cached) && cached.length > 0) {
-        tripsArr = cached;
-      }
+    // Fallback 1: Local memory / localStorage trip cache by ID
+    if ((!tripsArr || tripsArr.length === 0) && tx.id) {
+      try {
+        const cached = window._transactionTripsCache && window._transactionTripsCache[String(tx.id)];
+        const localStored = localStorage.getItem('tx_trips_' + tx.id);
+        if (Array.isArray(cached) && cached.length > 0) tripsArr = cached;
+        else if (localStored && localStored.startsWith('[')) tripsArr = JSON.parse(localStored);
+      } catch (e) {}
     }
 
-    if ((!tripsArr || tripsArr.length === 0) && tx.id) {
-      const localStored = localStorage.getItem('tx_trips_' + tx.id);
-      if (localStored && localStored.startsWith('[')) {
-        tripsArr = JSON.parse(localStored);
-      }
+    // Fallback 2: Local trip cache by member_code + gross_weight
+    if ((!tripsArr || tripsArr.length === 0) && tx.member_code && tx.gross_weight) {
+      try {
+        const localV2 = localStorage.getItem('tx_trips_v2_' + tx.member_code + '_' + tx.gross_weight);
+        if (localV2 && localV2.startsWith('[')) tripsArr = JSON.parse(localV2);
+      } catch (e) {}
     }
   } catch (e) {
     tripsArr = [];
