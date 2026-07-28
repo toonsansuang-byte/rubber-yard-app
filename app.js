@@ -2722,18 +2722,18 @@ function buildReceiptCopyHTML(tx, plantName) {
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
   try {
-    if (typeof tx.trips === 'string') {
-      tripsArr = JSON.parse(tx.trips);
-    } else if (Array.isArray(tx.trips) && tx.trips.length > 0) {
+    if (Array.isArray(tx.trips) && tx.trips.length > 0) {
       tripsArr = tx.trips;
-    } else if (typeof tx.trips_detail === 'string') {
-      tripsArr = JSON.parse(tx.trips_detail);
+    } else if (typeof tx.trips === 'string' && tx.trips.trim().startsWith('[')) {
+      tripsArr = JSON.parse(tx.trips);
     } else if (Array.isArray(tx.trips_detail) && tx.trips_detail.length > 0) {
       tripsArr = tx.trips_detail;
-    } else if (typeof tx.trip_details === 'string') {
-      tripsArr = JSON.parse(tx.trip_details);
+    } else if (typeof tx.trips_detail === 'string' && tx.trips_detail.trim().startsWith('[')) {
+      tripsArr = JSON.parse(tx.trips_detail);
     } else if (Array.isArray(tx.trip_details) && tx.trip_details.length > 0) {
       tripsArr = tx.trip_details;
+    } else if (typeof tx.trip_details === 'string' && tx.trip_details.trim().startsWith('[')) {
+      tripsArr = JSON.parse(tx.trip_details);
     }
   } catch (e) {
     tripsArr = [];
@@ -2747,7 +2747,17 @@ function buildReceiptCopyHTML(tx, plantName) {
   const maxBoxes = 8;
   for (let i = 0; i < maxBoxes; i++) {
     const trip = tripsArr[i];
-    const val = trip ? (trip.gross_weight || trip.gross || trip.net_weight) : undefined;
+    let val = undefined;
+    if (typeof trip === 'number') {
+      val = trip;
+    } else if (typeof trip === 'string' && !isNaN(parseFloat(trip))) {
+      val = parseFloat(trip);
+    } else if (trip && typeof trip === 'object') {
+      val = trip.gross_weight !== undefined ? trip.gross_weight :
+            (trip.grossWeight !== undefined ? trip.grossWeight :
+            (trip.gross !== undefined ? trip.gross :
+            (trip.net_weight !== undefined ? trip.net_weight : trip.netWeight)));
+    }
     const displayVal = (val !== undefined && Number(val) > 0) ? formatNumber(val) : '-';
     tripGridCellsHtml += `<td style="border:1px solid #000; padding:2px 1px; width:12.5%; text-align:center; font-size:11px;">${displayVal}</td>`;
   }
