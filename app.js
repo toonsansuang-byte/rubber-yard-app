@@ -2007,15 +2007,16 @@ async function initPurchase() {
         .eq('round_id', currentRound.id)
         .neq('truck_number', '');
 
-      const existingTrucks = Array.from(new Set((tData || []).map(t => t.truck_number).filter(Boolean)));
+      const existingTrucks = Array.from(new Set((tData || []).map(t => decodeTripsFromTruckNumber(t.truck_number).cleanTruckNumber).filter(Boolean)));
       const defaultSet = new Set(['คันที่ 1', 'คันที่ 2', 'คันที่ 3', ...existingTrucks]);
 
       if (savedTruck && savedTruck !== 'NEW') {
-        defaultSet.add(savedTruck);
+        const cleanSaved = decodeTripsFromTruckNumber(savedTruck).cleanTruckNumber;
+        defaultSet.add(cleanSaved);
       }
 
       truckSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>' +
-        Array.from(defaultSet).map(t => `<option value="${t}">${t}</option>`).join('') +
+        Array.from(defaultSet).map(t => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('') +
         '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
 
       if (savedTruck && savedTruck !== 'NEW') {
