@@ -2347,6 +2347,19 @@ async function saveTransaction(confirmedOverride = false) {
         throw error;
       }
 
+      // Save to local trips cache for Dual Station pending item
+      if (!window._transactionTripsCache) window._transactionTripsCache = {};
+      const pendingCacheKey = `${pendingPayload.member_code}_${pendingPayload.gross_weight}`;
+      window._transactionTripsCache[pendingCacheKey] = tripDetails;
+      try {
+        localStorage.setItem('pending_trips_v2_' + pendingCacheKey, JSON.stringify(tripDetails));
+        localStorage.setItem('tx_trips_v2_' + pendingCacheKey, JSON.stringify(tripDetails));
+        if (data && data.id) {
+          localStorage.setItem('pending_trips_' + data.id, JSON.stringify(tripDetails));
+          window._transactionTripsCache[String(data.id)] = tripDetails;
+        }
+      } catch (e) {}
+
       showToast(`📤 ส่งข้อมูลของ ${selectedMember.name} (${formatNumber(finalWeight)} กก. ยอด ${formatNumber(totalPrice)} ฿) ไปสถานีออกใบเสร็จเรียบร้อยแล้ว!`);
       await initPurchase();
     } else {
@@ -2617,6 +2630,20 @@ async function confirmPendingTransaction(pendingId) {
     const { data: p, error: fetchErr } = await sb.from('pending_transactions').select('*').eq('id', pendingId).single();
     if (fetchErr || !p) throw new Error('ไม่พบข้อมูลรายการรอยืนยัน');
 
+    let recoveredTrips = p.trips || p.trips_detail || p.trip_details;
+    if (!recoveredTrips || (Array.isArray(recoveredTrips) && recoveredTrips.length === 0)) {
+      try {
+        const key1 = p.id ? localStorage.getItem('pending_trips_' + p.id) : null;
+        const key2 = (p.member_code && p.gross_weight) ? localStorage.getItem('pending_trips_v2_' + p.member_code + '_' + p.gross_weight) : null;
+        const key3 = (p.member_code && p.gross_weight) ? localStorage.getItem('tx_trips_v2_' + p.member_code + '_' + p.gross_weight) : null;
+        const memCache = window._transactionTripsCache && window._transactionTripsCache[`${p.member_code}_${p.gross_weight}`];
+        
+        const rawStr = key1 || key2 || key3;
+        if (Array.isArray(memCache) && memCache.length > 0) recoveredTrips = memCache;
+        else if (rawStr && rawStr.startsWith('[')) recoveredTrips = JSON.parse(rawStr);
+      } catch (e) {}
+    }
+
     const txPayload = {
       member_code: p.member_code,
       member_name: p.member_name,
@@ -2631,7 +2658,8 @@ async function confirmPendingTransaction(pendingId) {
       yard_fee: p.yard_fee,
       price_per_kg: p.price_per_kg,
       total_price: p.total_price,
-      trips: p.trips,
+      trips: recoveredTrips,
+      trips_detail: recoveredTrips,
       trip_count: p.trip_count,
       round_id: p.round_id,
       truck_number: p.truck_number || '',
@@ -2649,6 +2677,8 @@ async function confirmPendingTransaction(pendingId) {
       delete txPayload.yard_fee;
       delete txPayload.created_by_display_name;
       delete txPayload.confirmed_by_display_name;
+      delete txPayload.trips;
+      delete txPayload.trips_detail;
       const res = await sb.from('transactions').insert(txPayload).select().single();
       newTx = res.data;
       txErr = res.error;
@@ -2657,15 +2687,26 @@ async function confirmPendingTransaction(pendingId) {
     if (txErr) throw txErr;
 
     // Delete or remove from pending_transactions
+    await sb.from('pending_transactions').delete().eq('id', pendingId);
+
     const receiptObj = {
       ...(newTx || txPayload),
-      trips: p.trips || p.trips_detail || [],
-      trips_detail: p.trips || p.trips_detail || [],
+      trips: recoveredTrips,
+      trips_detail: recoveredTrips,
+      gross_weight: p.gross_weight,
+      cart_weight: p.cart_weight,
+      net_weight: p.net_weight,
+      final_weight: p.final_weight,
       auction_price: p.auction_price !== undefined ? p.auction_price : (newTx?.auction_price),
       yard_fee: p.yard_fee !== undefined ? p.yard_fee : (newTx?.yard_fee),
       created_by_display_name: p.created_by_display_name,
       confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
     };
+
+    // Save to local trips cache for confirmed tx
+    if (receiptObj.id && recoveredTrips) {
+      try { localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(recoveredTrips)); } catch (e) {}
+    }
 
     showToast(`✅ ยืนยันรายการสำเร็จ! ออกใบเสร็จของคุณ${p.member_name}`);
     showReceipt(receiptObj);
