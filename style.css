@@ -1846,3 +1846,34 @@ input:checked + .slider:before {
   box-shadow: 0 0 12px rgba(2, 132, 199, 0.4);
 }
 
+/* ===== PRINT STYLES ===== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #receipt-modal, #receipt-modal * {
+    visibility: visible;
+  }
+  #receipt-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+  .modal-overlay {
+    background: transparent !important;
+  }
+  .modal-close-btn, .modal-actions, .btn, nav, .sidebar, .navbar, .header, #loading-overlay, .toast-container {
+    display: none !important;
+  }
+  .receipt-copy {
+    page-break-inside: avoid;
+  }
+}
+

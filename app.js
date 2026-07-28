@@ -3421,13 +3421,16 @@ async function renderTruckWeights(targetRoundId = null) {
 
     txArr.forEach(t => {
       const wt = Number(t.final_weight || t.net_weight || 0);
-      const truckNum = (t.truck_number || '').trim();
-      if (!truckNum || truckNum === '-- ไม่ระบุ --') {
+      const rawTruck = (t.truck_number || '').trim();
+      const decoded = decodeTripsFromTruckNumber(rawTruck);
+      const cleanTruckNum = decoded.cleanTruckNumber;
+
+      if (!cleanTruckNum || cleanTruckNum === '-- ไม่ระบุ --') {
         unassignedWeight += wt;
       } else {
-        if (!truckGroups[truckNum]) {
-          truckGroups[truckNum] = {
-            truck_number: truckNum,
+        if (!truckGroups[cleanTruckNum]) {
+          truckGroups[cleanTruckNum] = {
+            truck_number: cleanTruckNum,
             head_weight: 0,
             trailer_weight: 0,
             total_weight: 0,
@@ -3436,7 +3439,7 @@ async function renderTruckWeights(targetRoundId = null) {
             tx_list: []
           };
         }
-        const grp = truckGroups[truckNum];
+        const grp = truckGroups[cleanTruckNum];
         const trailer = t.trailer_type || 'head';
         if (trailer === 'trailer') {
           grp.trailer_weight += wt;
@@ -3496,13 +3499,13 @@ async function renderTruckWeights(targetRoundId = null) {
       if (tbody) {
         tbody.innerHTML = truckList.map(t => `
           <tr>
-            <td><strong style="color:var(--gold); font-size:1rem;">🚛 ${t.truck_number}</strong></td>
+            <td><strong style="color:var(--gold); font-size:1rem;">🚛 ${escapeHTML(t.truck_number)}</strong></td>
             <td>${formatNumber(t.head_weight)} กก.</td>
             <td>${formatNumber(t.trailer_weight)} กก.</td>
             <td style="font-weight:700; color:var(--green); font-size:1rem;">${formatNumber(t.total_weight)} กก.</td>
             <td><span class="badge badge-info">${t.tx_count} เที่ยว (${t.members.size} ราย)</span></td>
             <td>
-              <button class="btn btn-secondary btn-sm" onclick="showTruckMembersModal('${t.truck_number}')">🔍 ดูรายชื่อสมาชิกในรถคันนี้</button>
+              <button class="btn btn-secondary btn-sm" onclick="showTruckMembersModal('${escapeHTML(t.truck_number)}')">🔍 ดูรายชื่อสมาชิกในรถคันนี้</button>
             </td>
           </tr>
         `).join('');
@@ -3515,8 +3518,9 @@ async function renderTruckWeights(targetRoundId = null) {
 }
 
 function showTruckMembersModal(truckNum) {
+  const cleanTruckNum = decodeTripsFromTruckNumber(truckNum).cleanTruckNumber;
   showLoading();
-  let query = sb.from('transactions').select('*').eq('truck_number', truckNum).order('date', { ascending: false });
+  let query = sb.from('transactions').select('*').ilike('truck_number', `${cleanTruckNum}%`).order('date', { ascending: false });
   if (currentTruckWeightsRoundId && currentTruckWeightsRoundId !== 'all') {
     query = query.eq('round_id', currentTruckWeightsRoundId);
   }
@@ -3530,7 +3534,7 @@ function showTruckMembersModal(truckNum) {
     const title = document.getElementById('truck-members-modal-title');
     const body = document.getElementById('truck-members-modal-body');
 
-    if (title) title.textContent = `🚛 รายการสมาชิกใน ${truckNum} (รวม ${list.length} รายการ)`;
+    if (title) title.textContent = `🚛 รายการสมาชิกใน ${cleanTruckNum} (รวม ${list.length} รายการ)`;
     
     if (body) {
       body.innerHTML = `
@@ -3550,15 +3554,15 @@ function showTruckMembersModal(truckNum) {
               ${list.map(t => `
                 <tr>
                   <td>${formatDateTime(t.date)}</td>
-                  <td><span class="badge badge-green">${t.member_code}</span></td>
-                  <td><strong>${t.member_name}</strong></td>
+                  <td><span class="badge badge-green">${escapeHTML(t.member_code)}</span></td>
+                  <td><strong>${escapeHTML(t.member_name)}</strong></td>
                   <td>
                     ${t.trailer_type === 'trailer' 
                       ? '<span class="badge badge-warning" style="font-size:0.8rem;">🚚 ตัวลูก</span>' 
                       : '<span class="badge badge-info" style="font-size:0.8rem;">🚛 ตัวแม่</span>'}
                   </td>
                   <td style="font-weight:700; color:var(--gold); font-size:0.95rem;">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
-                  <td>${t.created_by_name || 'ผู้ดูแลระบบ'}</td>
+                  <td>${escapeHTML(t.created_by_name || 'ผู้ดูแลระบบ')}</td>
                 </tr>
               `).join('')}
             </tbody>
