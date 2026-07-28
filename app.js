@@ -3032,15 +3032,15 @@ function buildReceiptCopyHTML(tx, plantName) {
       <!-- Signatures Footer -->
       <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; text-align:center; font-size:10px;">
         <div>
-          <div style="border-bottom:1px solid #000; height:16px; font-size:9px; display:flex; align-items:flex-end; justify-content:center;">${creatorName}</div>
+          <div style="border-bottom:1px solid #000; height:16px;"></div>
           <div style="font-weight:bold; margin-top:1px;">ผู้จัดทำ</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:16px; font-size:9px; display:flex; align-items:flex-end; justify-content:center;">${payerName}</div>
+          <div style="border-bottom:1px solid #000; height:16px;"></div>
           <div style="font-weight:bold; margin-top:1px;">ผู้จ่ายเงิน</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:16px; font-size:9px;"></div>
+          <div style="border-bottom:1px solid #000; height:16px;"></div>
           <div style="font-weight:bold; margin-top:1px;">ผู้รับเงิน</div>
         </div>
       </div>
