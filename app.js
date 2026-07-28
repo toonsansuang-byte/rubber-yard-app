@@ -2223,7 +2223,17 @@ async function saveTransaction(confirmedOverride = false) {
   const rubberType = document.getElementById('rubber-type').value;
   const deductionPercent = cachedSettings?.deduction_percent || 0;
 
-  const activeTrips = trips.filter(t => t.grossWeight > 0);
+  // Direct DOM trip input reading to guarantee all on-screen trip boxes are captured
+  const tripInputEls = document.querySelectorAll('.trip-gross-input');
+  const domTrips = [];
+  tripInputEls.forEach((inputEl) => {
+    const val = parseFloat(inputEl.value) || 0;
+    if (val > 0) {
+      domTrips.push({ grossWeight: val });
+    }
+  });
+
+  const activeTrips = domTrips.length > 0 ? domTrips : trips.filter(t => t.grossWeight > 0);
   if (activeTrips.length === 0) { showToast('กรุณากรอกน้ำหนักอย่างน้อย 1 เที่ยว', 'error'); return; }
   if (auctionPrice <= 0) { showToast('กรุณากรอกราคาประมูลต่อ กก.', 'error'); return; }
 
@@ -2747,7 +2757,7 @@ function buildReceiptCopyHTML(tx, plantName) {
     }
 
     // Fallback to local memory / localStorage trip cache if DB record returned null trips
-    if ((!tripsArr || tripsArr.length <= 1) && window._transactionTripsCache) {
+    if ((!tripsArr || tripsArr.length === 0) && window._transactionTripsCache) {
       const cached = (tx.id && window._transactionTripsCache[String(tx.id)]) ||
                      (tx.member_code && window._transactionTripsCache[`${tx.member_code}_${tx.date}`]);
       if (Array.isArray(cached) && cached.length > 0) {
@@ -2755,7 +2765,7 @@ function buildReceiptCopyHTML(tx, plantName) {
       }
     }
 
-    if ((!tripsArr || tripsArr.length <= 1) && tx.id) {
+    if ((!tripsArr || tripsArr.length === 0) && tx.id) {
       const localStored = localStorage.getItem('tx_trips_' + tx.id);
       if (localStored && localStored.startsWith('[')) {
         tripsArr = JSON.parse(localStored);
