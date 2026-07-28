@@ -2401,6 +2401,16 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee
       };
 
+      // Save to local trips cache
+      if (!window._transactionTripsCache) window._transactionTripsCache = {};
+      if (receiptObj.id) {
+        window._transactionTripsCache[String(receiptObj.id)] = tripDetails;
+        try { localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(tripDetails)); } catch (e) {}
+      }
+      if (receiptObj.member_code && receiptObj.date) {
+        window._transactionTripsCache[`${receiptObj.member_code}_${receiptObj.date}`] = tripDetails;
+      }
+
       showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
       showReceipt(receiptObj);
       await initPurchase();
@@ -2734,6 +2744,22 @@ function buildReceiptCopyHTML(tx, plantName) {
       tripsArr = tx.trip_details;
     } else if (typeof tx.trip_details === 'string' && tx.trip_details.trim().startsWith('[')) {
       tripsArr = JSON.parse(tx.trip_details);
+    }
+
+    // Fallback to local memory / localStorage trip cache if DB record returned null trips
+    if ((!tripsArr || tripsArr.length <= 1) && window._transactionTripsCache) {
+      const cached = (tx.id && window._transactionTripsCache[String(tx.id)]) ||
+                     (tx.member_code && window._transactionTripsCache[`${tx.member_code}_${tx.date}`]);
+      if (Array.isArray(cached) && cached.length > 0) {
+        tripsArr = cached;
+      }
+    }
+
+    if ((!tripsArr || tripsArr.length <= 1) && tx.id) {
+      const localStored = localStorage.getItem('tx_trips_' + tx.id);
+      if (localStored && localStored.startsWith('[')) {
+        tripsArr = JSON.parse(localStored);
+      }
     }
   } catch (e) {
     tripsArr = [];
