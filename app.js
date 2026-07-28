@@ -43,6 +43,14 @@ function showToast(message, type = 'success') {
     toast.classList.add('fade-out');
     setTimeout(() => toast.remove(), 400);
   }, 3500);
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // ========== CROSS-DEVICE FAILSAFE TRIP ENCODING HELPER ==========
