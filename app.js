@@ -43,6 +43,8 @@ function showToast(message, type = 'success') {
     toast.classList.add('fade-out');
     setTimeout(() => toast.remove(), 400);
   }, 3500);
+}
+
 function escapeHTML(str) {
   if (str === null || str === undefined) return '';
   return String(str)
