@@ -2338,6 +2338,8 @@ async function saveTransaction(confirmedOverride = false) {
 
   showLoading();
 
+  const currentAuctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+
   try {
     if (isDualMode) {
       // Station 1: Submit data to pending_transactions table
@@ -2355,6 +2357,8 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee,
         price_per_kg: netPricePerKg,
         total_price: totalPrice,
+        buyer_name: currentAuctionBuyer,
+        auction_buyer: currentAuctionBuyer,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2375,6 +2379,8 @@ async function saveTransaction(confirmedOverride = false) {
         delete pendingPayload.cart_weight;
         delete pendingPayload.auction_price;
         delete pendingPayload.yard_fee;
+        delete pendingPayload.buyer_name;
+        delete pendingPayload.auction_buyer;
         let res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
         if (res.error && res.error.message.includes('column')) {
           delete pendingPayload.trips_detail;
@@ -2400,6 +2406,7 @@ async function saveTransaction(confirmedOverride = false) {
         localStorage.setItem('tx_trips_v2_' + pendingCacheKey, JSON.stringify(tripDetails));
         if (data && data.id) {
           localStorage.setItem('pending_trips_' + data.id, JSON.stringify(tripDetails));
+          localStorage.setItem('tx_buyer_' + data.id, currentAuctionBuyer);
           window._transactionTripsCache[String(data.id)] = tripDetails;
         }
       } catch (e) {}
@@ -2422,6 +2429,8 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee,
         price_per_kg: netPricePerKg,
         total_price: totalPrice,
+        buyer_name: currentAuctionBuyer,
+        auction_buyer: currentAuctionBuyer,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2443,6 +2452,8 @@ async function saveTransaction(confirmedOverride = false) {
         delete payload.yard_fee;
         delete payload.created_by_display_name;
         delete payload.confirmed_by_display_name;
+        delete payload.buyer_name;
+        delete payload.auction_buyer;
         let res = await sb.from('transactions').insert(payload).select().single();
         if (res.error && res.error.message.includes('column')) {
           delete payload.trips_detail;
@@ -2456,6 +2467,8 @@ async function saveTransaction(confirmedOverride = false) {
 
       const receiptObj = {
         ...(data || payload),
+        buyer_name: currentAuctionBuyer,
+        auction_buyer: currentAuctionBuyer,
         trips: tripDetails,
         trips_detail: tripDetails,
         gross_weight: totalGross,
@@ -2468,11 +2481,14 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee
       };
 
-      // Save to local trips cache
+      // Save to local trips cache & buyer cache
       if (!window._transactionTripsCache) window._transactionTripsCache = {};
       if (receiptObj.id) {
         window._transactionTripsCache[String(receiptObj.id)] = tripDetails;
-        try { localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(tripDetails)); } catch (e) {}
+        try {
+          localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(tripDetails));
+          localStorage.setItem('tx_buyer_' + receiptObj.id, currentAuctionBuyer);
+        } catch (e) {}
       }
       if (receiptObj.member_code && receiptObj.date) {
         window._transactionTripsCache[`${receiptObj.member_code}_${receiptObj.date}`] = tripDetails;
@@ -2697,6 +2713,8 @@ async function confirmPendingTransaction(pendingId) {
       } catch (e) {}
     }
 
+    const frozenBuyerName = p.buyer_name || p.auction_buyer || (p.id ? localStorage.getItem('tx_buyer_' + p.id) : null) || cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+
     const txPayload = {
       member_code: p.member_code,
       member_name: p.member_name,
@@ -2711,6 +2729,8 @@ async function confirmPendingTransaction(pendingId) {
       yard_fee: p.yard_fee,
       price_per_kg: p.price_per_kg,
       total_price: p.total_price,
+      buyer_name: frozenBuyerName,
+      auction_buyer: frozenBuyerName,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       trip_count: p.trip_count,
@@ -2732,6 +2752,8 @@ async function confirmPendingTransaction(pendingId) {
       delete txPayload.confirmed_by_display_name;
       delete txPayload.trips;
       delete txPayload.trips_detail;
+      delete txPayload.buyer_name;
+      delete txPayload.auction_buyer;
       const res = await sb.from('transactions').insert(txPayload).select().single();
       newTx = res.data;
       txErr = res.error;
@@ -2744,6 +2766,8 @@ async function confirmPendingTransaction(pendingId) {
 
     const receiptObj = {
       ...(newTx || txPayload),
+      buyer_name: frozenBuyerName,
+      auction_buyer: frozenBuyerName,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       gross_weight: p.gross_weight,
@@ -2816,7 +2840,19 @@ function closeWeightWarningModal() {
 // ========== RECEIPT (100% IDENTICAL DUAL COPIES ON SINGLE PAGE) ==========
 function buildReceiptCopyHTML(tx, plantName) {
   const plantAddress = cachedSettings?.plantation_address || localStorage.getItem('setting_plantation_address') || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
-  const auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+  
+  let auctionBuyer = tx.buyer_name || tx.auction_buyer;
+  if (!auctionBuyer && tx.id) {
+    try {
+      auctionBuyer = localStorage.getItem('tx_buyer_' + tx.id);
+    } catch (e) {}
+  }
+  if (!auctionBuyer) {
+    auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+    if (tx.id) {
+      try { localStorage.setItem('tx_buyer_' + tx.id, auctionBuyer); } catch (e) {}
+    }
+  }
 
   // Format date: e.g. "9 มิ.ย. 69"
   const d = new Date(tx.date || Date.now());
