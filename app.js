@@ -2937,7 +2937,7 @@ function buildReceiptCopyHTML(tx, plantName) {
   if (!sequenceNo) {
     sequenceNo = 1;
   }
-  const queueNo = (tx.queue_no !== undefined && tx.queue_no !== 0) ? tx.queue_no : sequenceNo;
+  const queueNo = tx.queue_no !== undefined ? tx.queue_no : 0;
 
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
