@@ -2340,6 +2340,17 @@ async function saveTransaction(confirmedOverride = false) {
 
   const currentAuctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
 
+  let nextSeqNo = 1;
+  try {
+    const targetRoundId = currentRound ? currentRound.id : null;
+    let seqQuery = sb.from('transactions').select('id', { count: 'exact', head: true });
+    if (targetRoundId) seqQuery = seqQuery.eq('round_id', targetRoundId);
+    const { count } = await seqQuery;
+    nextSeqNo = (count || 0) + 1;
+  } catch (e) {
+    nextSeqNo = 1;
+  }
+
   try {
     if (isDualMode) {
       // Station 1: Submit data to pending_transactions table
@@ -2359,6 +2370,9 @@ async function saveTransaction(confirmedOverride = false) {
         total_price: totalPrice,
         buyer_name: currentAuctionBuyer,
         auction_buyer: currentAuctionBuyer,
+        sequence_no: nextSeqNo,
+        seq_no: nextSeqNo,
+        queue_no: nextSeqNo,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2381,6 +2395,9 @@ async function saveTransaction(confirmedOverride = false) {
         delete pendingPayload.yard_fee;
         delete pendingPayload.buyer_name;
         delete pendingPayload.auction_buyer;
+        delete pendingPayload.sequence_no;
+        delete pendingPayload.seq_no;
+        delete pendingPayload.queue_no;
         let res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
         if (res.error && res.error.message.includes('column')) {
           delete pendingPayload.trips_detail;
@@ -2407,6 +2424,7 @@ async function saveTransaction(confirmedOverride = false) {
         if (data && data.id) {
           localStorage.setItem('pending_trips_' + data.id, JSON.stringify(tripDetails));
           localStorage.setItem('tx_buyer_' + data.id, currentAuctionBuyer);
+          localStorage.setItem('tx_seq_' + data.id, nextSeqNo);
           window._transactionTripsCache[String(data.id)] = tripDetails;
         }
       } catch (e) {}
@@ -2431,6 +2449,9 @@ async function saveTransaction(confirmedOverride = false) {
         total_price: totalPrice,
         buyer_name: currentAuctionBuyer,
         auction_buyer: currentAuctionBuyer,
+        sequence_no: nextSeqNo,
+        seq_no: nextSeqNo,
+        queue_no: nextSeqNo,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2454,6 +2475,9 @@ async function saveTransaction(confirmedOverride = false) {
         delete payload.confirmed_by_display_name;
         delete payload.buyer_name;
         delete payload.auction_buyer;
+        delete payload.sequence_no;
+        delete payload.seq_no;
+        delete payload.queue_no;
         let res = await sb.from('transactions').insert(payload).select().single();
         if (res.error && res.error.message.includes('column')) {
           delete payload.trips_detail;
@@ -2469,6 +2493,9 @@ async function saveTransaction(confirmedOverride = false) {
         ...(data || payload),
         buyer_name: currentAuctionBuyer,
         auction_buyer: currentAuctionBuyer,
+        sequence_no: nextSeqNo,
+        seq_no: nextSeqNo,
+        queue_no: nextSeqNo,
         trips: tripDetails,
         trips_detail: tripDetails,
         gross_weight: totalGross,
@@ -2481,13 +2508,14 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee
       };
 
-      // Save to local trips cache & buyer cache
+      // Save to local trips cache & buyer cache & seq cache
       if (!window._transactionTripsCache) window._transactionTripsCache = {};
       if (receiptObj.id) {
         window._transactionTripsCache[String(receiptObj.id)] = tripDetails;
         try {
           localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(tripDetails));
           localStorage.setItem('tx_buyer_' + receiptObj.id, currentAuctionBuyer);
+          localStorage.setItem('tx_seq_' + receiptObj.id, nextSeqNo);
         } catch (e) {}
       }
       if (receiptObj.member_code && receiptObj.date) {
@@ -2715,6 +2743,18 @@ async function confirmPendingTransaction(pendingId) {
 
     const frozenBuyerName = p.buyer_name || p.auction_buyer || (p.id ? localStorage.getItem('tx_buyer_' + p.id) : null) || cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
 
+    let nextSeqNo = p.sequence_no || p.seq_no || p.queue_no;
+    if (!nextSeqNo) {
+      try {
+        let seqQuery = sb.from('transactions').select('id', { count: 'exact', head: true });
+        if (p.round_id) seqQuery = seqQuery.eq('round_id', p.round_id);
+        const { count } = await seqQuery;
+        nextSeqNo = (count || 0) + 1;
+      } catch (e) {
+        nextSeqNo = 1;
+      }
+    }
+
     const txPayload = {
       member_code: p.member_code,
       member_name: p.member_name,
@@ -2731,6 +2771,9 @@ async function confirmPendingTransaction(pendingId) {
       total_price: p.total_price,
       buyer_name: frozenBuyerName,
       auction_buyer: frozenBuyerName,
+      sequence_no: nextSeqNo,
+      seq_no: nextSeqNo,
+      queue_no: nextSeqNo,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       trip_count: p.trip_count,
@@ -2754,6 +2797,9 @@ async function confirmPendingTransaction(pendingId) {
       delete txPayload.trips_detail;
       delete txPayload.buyer_name;
       delete txPayload.auction_buyer;
+      delete txPayload.sequence_no;
+      delete txPayload.seq_no;
+      delete txPayload.queue_no;
       const res = await sb.from('transactions').insert(txPayload).select().single();
       newTx = res.data;
       txErr = res.error;
@@ -2768,6 +2814,9 @@ async function confirmPendingTransaction(pendingId) {
       ...(newTx || txPayload),
       buyer_name: frozenBuyerName,
       auction_buyer: frozenBuyerName,
+      sequence_no: nextSeqNo,
+      seq_no: nextSeqNo,
+      queue_no: nextSeqNo,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       gross_weight: p.gross_weight,
@@ -2868,9 +2917,27 @@ function buildReceiptCopyHTML(tx, plantName) {
     memberCodeFormatted = 'ก' + memberCodeFormatted.padStart(5, '0');
   }
 
-  // Sequence No & Queue No
-  const sequenceNo = tx.sequence_no || tx.seq_no || tx.queue_no || 1;
-  const queueNo = tx.queue_no !== undefined ? tx.queue_no : 0;
+  // Sequence No & Queue No (Per round sequence)
+  let sequenceNo = tx.sequence_no || tx.seq_no || tx.queue_no || tx.sequence_number;
+  if (!sequenceNo && tx.id) {
+    try {
+      const savedSeq = localStorage.getItem('tx_seq_' + tx.id);
+      if (savedSeq) sequenceNo = parseInt(savedSeq, 10);
+    } catch (e) {}
+  }
+  if (!sequenceNo && typeof currentFilteredHistory !== 'undefined' && Array.isArray(currentFilteredHistory) && currentFilteredHistory.length > 0) {
+    const sameRoundTxs = currentFilteredHistory
+      .filter(t => String(t.round_id || '') === String(tx.round_id || ''))
+      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const idx = sameRoundTxs.findIndex(t => String(t.id) === String(tx.id));
+    if (idx !== -1) {
+      sequenceNo = idx + 1;
+    }
+  }
+  if (!sequenceNo) {
+    sequenceNo = 1;
+  }
+  const queueNo = (tx.queue_no !== undefined && tx.queue_no !== 0) ? tx.queue_no : sequenceNo;
 
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
