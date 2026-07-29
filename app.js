@@ -2372,7 +2372,7 @@ async function saveTransaction(confirmedOverride = false) {
         auction_buyer: currentAuctionBuyer,
         sequence_no: nextSeqNo,
         seq_no: nextSeqNo,
-        queue_no: nextSeqNo,
+        queue_no: 0,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2451,7 +2451,7 @@ async function saveTransaction(confirmedOverride = false) {
         auction_buyer: currentAuctionBuyer,
         sequence_no: nextSeqNo,
         seq_no: nextSeqNo,
-        queue_no: nextSeqNo,
+        queue_no: 0,
         trips: tripDetails,
         trips_detail: tripDetails,
         trip_count: tripDetails.length,
@@ -2495,7 +2495,7 @@ async function saveTransaction(confirmedOverride = false) {
         auction_buyer: currentAuctionBuyer,
         sequence_no: nextSeqNo,
         seq_no: nextSeqNo,
-        queue_no: nextSeqNo,
+        queue_no: 0,
         trips: tripDetails,
         trips_detail: tripDetails,
         gross_weight: totalGross,
@@ -2773,7 +2773,7 @@ async function confirmPendingTransaction(pendingId) {
       auction_buyer: frozenBuyerName,
       sequence_no: nextSeqNo,
       seq_no: nextSeqNo,
-      queue_no: nextSeqNo,
+      queue_no: 0,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       trip_count: p.trip_count,
@@ -2816,7 +2816,7 @@ async function confirmPendingTransaction(pendingId) {
       auction_buyer: frozenBuyerName,
       sequence_no: nextSeqNo,
       seq_no: nextSeqNo,
-      queue_no: nextSeqNo,
+      queue_no: 0,
       trips: recoveredTrips,
       trips_detail: recoveredTrips,
       gross_weight: p.gross_weight,
@@ -2937,7 +2937,7 @@ function buildReceiptCopyHTML(tx, plantName) {
   if (!sequenceNo) {
     sequenceNo = 1;
   }
-  const queueNo = tx.queue_no !== undefined ? tx.queue_no : 0;
+  const queueNo = 0;
 
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
