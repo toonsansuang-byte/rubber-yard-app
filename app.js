@@ -1181,9 +1181,12 @@ async function fetchMemberPortalAnnouncements() {
       announcements = localData.filter(a => a.is_active);
     }
 
+    const memberCode = currentMemberUser ? currentMemberUser.code : 'guest';
+    const dismissKey = `dismissed_announcements_${memberCode}_v1`;
+
     let dismissedMap = {};
     try {
-      dismissedMap = JSON.parse(localStorage.getItem('dismissed_announcements_v1') || '{}');
+      dismissedMap = JSON.parse(localStorage.getItem(dismissKey) || '{}');
     } catch (e) {}
 
     const visibleAnnouncements = announcements.filter(a => {
@@ -1221,13 +1224,16 @@ async function fetchMemberPortalAnnouncements() {
 
 function dismissMemberAnnouncement(id, updatedAt) {
   try {
+    const memberCode = currentMemberUser ? currentMemberUser.code : 'guest';
+    const dismissKey = `dismissed_announcements_${memberCode}_v1`;
+
     let dismissedMap = {};
     try {
-      dismissedMap = JSON.parse(localStorage.getItem('dismissed_announcements_v1') || '{}');
+      dismissedMap = JSON.parse(localStorage.getItem(dismissKey) || '{}');
     } catch (e) {}
 
     dismissedMap[id] = updatedAt || new Date().toISOString();
-    localStorage.setItem('dismissed_announcements_v1', JSON.stringify(dismissedMap));
+    localStorage.setItem(dismissKey, JSON.stringify(dismissedMap));
 
     const card = document.getElementById('announcement-card-' + id);
     if (card) {
