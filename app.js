@@ -1172,10 +1172,12 @@ async function fetchMemberPortalAnnouncements() {
       .eq('is_active', true)
       .order('updated_at', { ascending: false });
 
-    if (!error) {
-      announcements = sbData || [];
+    const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+    if (!error && sbData) {
+      const sbIds = new Set(sbData.map(a => String(a.id)));
+      const extraLocal = localData.filter(a => a.is_active && !sbIds.has(String(a.id)));
+      announcements = [...sbData, ...extraLocal];
     } else {
-      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
       announcements = localData.filter(a => a.is_active);
     }
 
@@ -1258,10 +1260,13 @@ async function renderAnnouncements() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error) {
-      announcements = sbData || [];
+    const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+
+    if (!error && sbData) {
+      const sbIds = new Set(sbData.map(a => String(a.id)));
+      const extraLocal = localData.filter(a => !sbIds.has(String(a.id)));
+      announcements = [...sbData, ...extraLocal];
     } else {
-      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
       announcements = localData;
     }
 
