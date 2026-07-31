@@ -28,13 +28,24 @@
           <p>ระบบจัดการรับซื้อยางพารา</p>
         </div>
 
+        <!-- Role Switcher Tabs -->
+        <div class="login-role-tabs mb-3" style="display: flex; gap: 6px; background: rgba(0,0,0,0.25); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 20px;">
+          <button type="button" class="btn btn-sm login-role-btn active" id="role-btn-staff" onclick="switchLoginRole('staff')" style="flex: 1; padding: 10px 8px; font-weight: 600; font-size: 0.85rem;">
+            🔑 เจ้าหน้าที่ / แอดมิน
+          </button>
+          <button type="button" class="btn btn-sm login-role-btn" id="role-btn-member" onclick="switchLoginRole('member')" style="flex: 1; padding: 10px 8px; font-weight: 600; font-size: 0.85rem;">
+            🍃 สมาชิกสวนยาง
+          </button>
+        </div>
+
         <div class="login-error" id="login-error">
           ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง
         </div>
 
+        <!-- Staff / Admin Login Form -->
         <form id="login-form" onsubmit="return false;">
           <div class="form-group">
-            <label class="form-label" for="login-username">ชื่อผู้ใช้</label>
+            <label class="form-label" for="login-username">ชื่อผู้ใช้ (Username)</label>
             <input type="text" id="login-username" class="form-input" placeholder="กรอกชื่อผู้ใช้" autocomplete="username" required>
           </div>
           <div class="form-group">
@@ -54,7 +65,30 @@
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-block" id="login-btn" onclick="handleLogin()">
-            🔐 เข้าสู่ระบบ
+            🔐 เข้าสู่ระบบพนักงาน
+          </button>
+        </form>
+
+        <!-- Member Portal Login Form -->
+        <form id="member-login-form" style="display:none;" onsubmit="return false;">
+          <div class="form-group">
+            <label class="form-label" for="member-login-code">รหัสสมาชิก (เช่น 089 หรือ 89)</label>
+            <input type="text" id="member-login-code" class="form-input" placeholder="กรอกรหัสสมาชิก (ตัวเลข 3 หลัก)" inputmode="numeric" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="member-login-password">รหัสผ่าน หรือ เบอร์โทรศัพท์</label>
+            <div style="position: relative;">
+              <input type="password" id="member-login-password" class="form-input" placeholder="รหัสผ่านเริ่มต้นคือรหัสสมาชิก (เช่น 089)" required style="padding-right: 48px;">
+              <button type="button" onclick="toggleMemberPasswordVisibility()" title="แสดง/ซ่อน รหัสผ่าน" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.7);">
+                👁️
+              </button>
+            </div>
+            <small style="color:var(--text-muted); font-size:0.78rem; display:block; margin-top:4px;">
+              💡 รหัสผ่านเริ่มต้นคือ <strong>รหัสสมาชิกของคุณเอง</strong> (เช่น สมาชิก 089 ใช้รหัสผ่าน 089)
+            </small>
+          </div>
+          <button type="submit" class="btn btn-gold btn-block" id="member-login-btn" onclick="handleMemberLogin()">
+            🍃 เข้าสู่ระบบสมาชิก
           </button>
         </form>
       </div>
@@ -847,6 +881,99 @@
     </main>
   </div>
 
+  <!-- ===== MEMBER PORTAL PAGE ===== -->
+  <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-dark);">
+    <header class="member-header" style="background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px);">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-size: 1.8rem; background: var(--gradient-green); width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">🌿</div>
+        <div>
+          <h2 id="mp-plantation-name" style="font-size: 1.1rem; font-weight: 700; margin: 0; color: #fff;">ลานยางพาราชุมชน</h2>
+          <span style="font-size: 0.78rem; color: var(--text-secondary);">🍃 ระบบตรวจสอบรายการขายสำหรับสมาชิกสวนยาง</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="text-align: right; display: none; sm-display: block;" id="mp-header-user-box">
+          <div id="mp-header-name" style="font-size: 0.9rem; font-weight: 600; color: #fff;">-</div>
+          <span class="badge badge-green" id="mp-header-code" style="font-size: 0.75rem;">ก00000</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="handleMemberLogout()" style="padding: 8px 14px;">🚪 ออกจากระบบ</button>
+      </div>
+    </header>
+
+    <main style="max-width: 1100px; margin: 0 auto; padding: 24px 16px;">
+      <!-- Member Profile Header Card -->
+      <div class="glass-card mb-4" style="padding: 20px 24px; border-left: 5px solid var(--primary-light); margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div id="mp-avatar" style="width: 60px; height: 60px; border-radius: 50%; background: var(--gradient-green); color: #fff; font-size: 1.6rem; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(16,185,129,0.3); flex-shrink: 0;">?</div>
+          <div style="flex: 1; min-width: 240px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+              <span class="badge badge-green" id="mp-code-badge" style="font-size: 0.85rem; padding: 4px 10px;">ก00089</span>
+              <span class="badge badge-gold" style="font-size: 0.8rem; padding: 3px 8px;">🌱 สมาชิกสวนยาง</span>
+            </div>
+            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2px 0 6px 0;">-</h2>
+            <p style="font-size: 0.9rem; color: var(--text-secondary); margin: 0;">
+              💳 <strong>เลขที่บัญชีธนาคาร:</strong> <span id="mp-account-no" style="font-family: monospace; font-weight: 600; color: var(--text-primary);">-</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Summary Cards -->
+      <div class="stats-grid mb-4" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="glass-card summary-card" style="padding: 18px 20px;">
+          <div class="card-title">⚖️ น้ำหนักสุทธิรวมทั้งหมด</div>
+          <div class="card-value" id="mp-total-weight" style="font-size: 1.6rem;">0 <span class="unit">กก.</span></div>
+        </div>
+        <div class="glass-card summary-card" style="padding: 18px 20px;">
+          <div class="card-title">💰 ยอดเงินขายยางรวมทั้งหมด</div>
+          <div class="card-value" id="mp-total-amount" style="font-size: 1.6rem; color: var(--gold);">0 <span class="unit">บาท</span></div>
+        </div>
+        <div class="glass-card summary-card" style="padding: 18px 20px;">
+          <div class="card-title">🚛 จำนวนครั้งที่ขายยาง</div>
+          <div class="card-value" id="mp-total-trips" style="font-size: 1.6rem;">0 <span class="unit">ครั้ง</span></div>
+        </div>
+      </div>
+
+      <!-- Sales History Card -->
+      <div class="glass-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0;">📜 ประวัติการขายยางของคุณ</h3>
+            <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 2px 0 0 0;">รายการขายยางทั้งหมดของคุณ เรียงลำดับจากล่าสุดไปเก่าสุด</p>
+          </div>
+          <!-- Period Filter Buttons -->
+          <div style="display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+            <button class="btn btn-sm mp-period-btn active" id="mp-btn-all" onclick="setMemberPortalPeriod('all')" style="padding: 6px 14px; font-size: 0.8rem;">ทั้งหมด</button>
+            <button class="btn btn-sm mp-period-btn" id="mp-btn-month" onclick="setMemberPortalPeriod('month')" style="padding: 6px 14px; font-size: 0.8rem;">เดือนนี้</button>
+            <button class="btn btn-sm mp-period-btn" id="mp-btn-round" onclick="setMemberPortalPeriod('round')" style="padding: 6px 14px; font-size: 0.8rem;">รอบปัจจุบัน</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>วันเวลา</th>
+                <th>รอบการรับซื้อ</th>
+                <th>ประเภท</th>
+                <th>เที่ยว</th>
+                <th>สุทธิ</th>
+                <th>ราคา/กก.</th>
+                <th>ยอดเงินรวม</th>
+                <th>ใบเสร็จ</th>
+              </tr>
+            </thead>
+            <tbody id="mp-history-table-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="mp-history-empty" style="display:none; padding: 40px 20px;">
+          <div class="empty-icon">📭</div>
+          <p>ยังไม่มีประวัติการขายยางในตัวกรองนี้</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
   <!-- ===== USER MODAL (ADMIN ONLY) ===== -->
   <div class="modal-overlay" id="user-modal">
     <div class="modal-content">
@@ -934,6 +1061,13 @@
         <div class="form-group">
           <label class="form-label" for="member-account">เลขที่บัญชีธนาคาร</label>
           <input type="text" id="member-account" class="form-input" placeholder="เช่น 123-4-56789-0" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="member-password">รหัสผ่านสมาชิก (สำหรับล็อกอิน)</label>
+          <input type="text" id="member-password" class="form-input" placeholder="ปล่อยว่างหากต้องการใช้รหัสสมาชิกเป็นรหัสผ่าน">
+          <small style="color:var(--text-muted); font-size:0.78rem; display:block; margin-top:4px;">
+            💡 หากปล่อยว่าง ระบบจะใช้ <strong>รหัสสมาชิก</strong> เป็นรหัสผ่านเริ่มต้นโดยอัตโนมัติ
+          </small>
         </div>
       </div>
       <div class="modal-footer">

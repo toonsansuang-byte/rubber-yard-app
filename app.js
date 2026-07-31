@@ -219,6 +219,8 @@ function handleLogout() {
   sessionStorage.removeItem('rb_user');
   currentUser = null;
   document.getElementById('app').classList.remove('active');
+  const mpPage = document.getElementById('member-portal-page');
+  if (mpPage) mpPage.style.display = 'none';
   document.getElementById('login-page').style.display = 'flex';
   document.getElementById('login-username').value = '';
   document.getElementById('login-password').value = '';
@@ -227,12 +229,307 @@ function handleLogout() {
 
 async function showApp() {
   document.getElementById('login-page').style.display = 'none';
+  const mpPage = document.getElementById('member-portal-page');
+  if (mpPage) mpPage.style.display = 'none';
   document.getElementById('app').classList.add('active');
   updateUserSidebarUI();
   await loadSettings();
   await loadCurrentRound();
   initRealtimeSubscriptions();
   navigateTo('dashboard');
+}
+
+// ========== MEMBER PORTAL AUTH & SYSTEM ==========
+let currentMemberUser = null;
+let currentMemberPortalPeriod = 'all';
+let currentMemberPortalTxList = [];
+
+function checkMemberAuth() {
+  const isMemberLogged = sessionStorage.getItem('rb_member_session') === 'logged_in';
+  const storedMember = sessionStorage.getItem('rb_member_user');
+  if (isMemberLogged && storedMember) {
+    try {
+      currentMemberUser = JSON.parse(storedMember);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function switchLoginRole(role) {
+  const staffBtn = document.getElementById('role-btn-staff');
+  const memberBtn = document.getElementById('role-btn-member');
+  const staffForm = document.getElementById('login-form');
+  const memberForm = document.getElementById('member-login-form');
+  const errorEl = document.getElementById('login-error');
+
+  if (errorEl) errorEl.classList.remove('show');
+
+  if (role === 'member') {
+    if (staffBtn) staffBtn.classList.remove('active');
+    if (memberBtn) memberBtn.classList.add('active');
+    if (staffForm) staffForm.style.display = 'none';
+    if (memberForm) memberForm.style.display = 'block';
+  } else {
+    if (memberBtn) memberBtn.classList.remove('active');
+    if (staffBtn) staffBtn.classList.add('active');
+    if (memberForm) memberForm.style.display = 'none';
+    if (staffForm) staffForm.style.display = 'block';
+  }
+}
+
+function toggleMemberPasswordVisibility() {
+  const pwdInput = document.getElementById('member-login-password');
+  if (!pwdInput) return;
+  pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
+}
+
+function normalizeMemberCodeStr(codeRaw) {
+  if (!codeRaw) return '';
+  let str = String(codeRaw).trim();
+  const digits = str.replace(/\D/g, '');
+  if (digits) {
+    return digits.padStart(3, '0');
+  }
+  return str;
+}
+
+async function handleMemberLogin() {
+  const rawCode = document.getElementById('member-login-code').value.trim();
+  const rawPassword = document.getElementById('member-login-password').value.trim();
+  const errorEl = document.getElementById('login-error');
+
+  if (!rawCode || !rawPassword) {
+    errorEl.textContent = 'กรุณากรอกรหัสสมาชิกและรหัสผ่าน';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  showLoading();
+  try {
+    const codeNormalized = normalizeMemberCodeStr(rawCode);
+    
+    // Fetch member from Supabase members table
+    let memberMatch = null;
+    try {
+      const { data: members, error } = await sb.from('members')
+        .select('*')
+        .or(`code.eq.${codeNormalized},code.eq.${rawCode}`);
+
+      if (!error && members && members.length > 0) {
+        memberMatch = members[0];
+      }
+    } catch (e) {
+      console.warn('Members table query error:', e);
+    }
+
+    // Fallback: check SEED_MEMBERS array if table query returned nothing
+    if (!memberMatch && typeof SEED_MEMBERS !== 'undefined') {
+      const seedFound = SEED_MEMBERS.find(m => normalizeMemberCodeStr(m.code) === codeNormalized || m.code === rawCode);
+      if (seedFound) {
+        memberMatch = { ...seedFound, phone: '', account_no: '', password: '' };
+      }
+    }
+
+    if (!memberMatch) {
+      errorEl.textContent = `ไม่พบรหัสสมาชิก "${rawCode}" ในระบบ`;
+      errorEl.classList.add('show');
+      hideLoading();
+      return;
+    }
+
+    const passInputNorm = normalizeMemberCodeStr(rawPassword);
+    const codeNorm = normalizeMemberCodeStr(memberMatch.code);
+
+    let isPasswordValid = false;
+
+    if (memberMatch.password && (memberMatch.password === rawPassword || memberMatch.password === passInputNorm)) {
+      isPasswordValid = true;
+    } else if (memberMatch.phone && memberMatch.phone.trim() === rawPassword) {
+      isPasswordValid = true;
+    } else if (rawPassword === memberMatch.code || passInputNorm === codeNorm || rawPassword === codeNorm) {
+      isPasswordValid = true;
+    }
+
+    if (isPasswordValid) {
+      currentMemberUser = {
+        code: memberMatch.code,
+        name: memberMatch.name,
+        account_no: memberMatch.account_no || '',
+        phone: memberMatch.phone || ''
+      };
+
+      sessionStorage.setItem('rb_member_session', 'logged_in');
+      sessionStorage.setItem('rb_member_user', JSON.stringify(currentMemberUser));
+      errorEl.classList.remove('show');
+
+      await showMemberPortalApp();
+      showToast(`ยินดีต้อนรับ คุณ${currentMemberUser.name}!`);
+    } else {
+      errorEl.textContent = 'รหัสผ่านไม่ถูกต้อง (รหัสผ่านเริ่มต้นคือ รหัสสมาชิกของคุณ)';
+      errorEl.classList.add('show');
+    }
+  } catch (err) {
+    errorEl.textContent = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + (err.message || err);
+    errorEl.classList.add('show');
+  }
+  hideLoading();
+}
+
+function handleMemberLogout() {
+  sessionStorage.removeItem('rb_member_session');
+  sessionStorage.removeItem('rb_member_user');
+  currentMemberUser = null;
+  const mpPage = document.getElementById('member-portal-page');
+  if (mpPage) mpPage.style.display = 'none';
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('login-page').style.display = 'flex';
+  const codeIn = document.getElementById('member-login-code');
+  const passIn = document.getElementById('member-login-password');
+  if (codeIn) codeIn.value = '';
+  if (passIn) passIn.value = '';
+  const errorEl = document.getElementById('login-error');
+  if (errorEl) errorEl.classList.remove('show');
+}
+
+async function showMemberPortalApp() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').classList.remove('active');
+  const mpPage = document.getElementById('member-portal-page');
+  if (mpPage) mpPage.style.display = 'block';
+
+  const plantName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
+  const titleEl = document.getElementById('mp-plantation-name');
+  if (titleEl) titleEl.textContent = plantName;
+
+  if (currentMemberUser) {
+    let formattedCode = String(currentMemberUser.code || '');
+    if (!formattedCode.startsWith('ก')) {
+      formattedCode = 'ก' + formattedCode.padStart(5, '0');
+    }
+
+    const headerName = document.getElementById('mp-header-name');
+    const headerCode = document.getElementById('mp-header-code');
+    const fullName = document.getElementById('mp-full-name');
+    const codeBadge = document.getElementById('mp-code-badge');
+    const accountNo = document.getElementById('mp-account-no');
+    const avatar = document.getElementById('mp-avatar');
+
+    if (headerName) headerName.textContent = currentMemberUser.name;
+    if (headerCode) headerCode.textContent = formattedCode;
+    if (fullName) fullName.textContent = currentMemberUser.name;
+    if (codeBadge) codeBadge.textContent = formattedCode;
+    if (accountNo) accountNo.textContent = currentMemberUser.account_no || 'ยังไม่ได้ระบุ';
+    if (avatar) avatar.textContent = (currentMemberUser.name || 'M')[0];
+  }
+
+  await loadCurrentRound();
+  await fetchMemberPortalTransactions();
+}
+
+async function fetchMemberPortalTransactions() {
+  if (!currentMemberUser || !currentMemberUser.code) return;
+
+  const code = currentMemberUser.code;
+  const codeNorm = normalizeMemberCodeStr(code);
+
+  showLoading();
+  try {
+    const { data: txs, error } = await sb.from('transactions')
+      .select('*')
+      .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+
+    currentMemberPortalTxList = txs || [];
+    renderMemberPortalTable();
+  } catch (err) {
+    showToast('ไม่สามารถโหลดประวัติการขายยางได้: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function setMemberPortalPeriod(period) {
+  currentMemberPortalPeriod = period;
+  ['all', 'month', 'round'].forEach(p => {
+    const btn = document.getElementById('mp-btn-' + p);
+    if (btn) {
+      if (p === period) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+  });
+  renderMemberPortalTable();
+}
+
+function renderMemberPortalTable() {
+  let filtered = [...currentMemberPortalTxList];
+
+  const now = new Date();
+  const currentMonthYearStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  if (currentMemberPortalPeriod === 'month') {
+    filtered = filtered.filter(t => (t.date || '').startsWith(currentMonthYearStr));
+  } else if (currentMemberPortalPeriod === 'round') {
+    if (currentRound && currentRound.id) {
+      filtered = filtered.filter(t => String(t.round_id || '') === String(currentRound.id));
+    }
+  }
+
+  let totalWeight = 0;
+  let totalAmount = 0;
+  let totalTrips = filtered.length;
+
+  filtered.forEach(t => {
+    totalWeight += Number(t.final_weight || t.net_weight || 0);
+    totalAmount += Number(t.total_price || 0);
+  });
+
+  const wEl = document.getElementById('mp-total-weight');
+  const aEl = document.getElementById('mp-total-amount');
+  const tEl = document.getElementById('mp-total-trips');
+
+  if (wEl) wEl.innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
+  if (aEl) aEl.innerHTML = `${formatNumber(totalAmount)} <span class="unit">บาท</span>`;
+  if (tEl) tEl.innerHTML = `${totalTrips} <span class="unit">ครั้ง</span>`;
+
+  const tbody = document.getElementById('mp-history-table-body');
+  const emptyState = document.getElementById('mp-history-empty');
+
+  if (!tbody) return;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    if (emptyState) emptyState.style.display = 'block';
+    if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'none';
+  } else {
+    if (emptyState) emptyState.style.display = 'none';
+    if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'block';
+
+    tbody.innerHTML = filtered.map(t => `
+      <tr>
+        <td>${formatDateTime(t.date)}</td>
+        <td><span class="badge badge-green">${t.round_title || (currentRound && currentRound.id === t.round_id ? currentRound.title : 'นอกรอบ')}</span></td>
+        <td>${getRubberTypeBadge(t.rubber_type)}</td>
+        <td>${t.trip_count || 1}</td>
+        <td>${formatNumber(t.final_weight || t.net_weight)} กก.</td>
+        <td>${formatNumber(t.price_per_kg)}</td>
+        <td style="font-weight:600; color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
+        <td>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromMemberPortal('${t.id}')" title="ดูใบเสร็จ">🧾</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+}
+
+function showReceiptFromMemberPortal(txId) {
+  const tx = currentMemberPortalTxList.find(t => String(t.id) === String(txId));
+  if (tx) {
+    showReceipt(tx);
+  }
 }
 
 // ========== REALTIME SUBSCRIPTIONS & AUTO RECONNECT ==========
@@ -1883,6 +2180,7 @@ async function openMemberModal(id = null) {
   const nameInput = document.getElementById('member-name');
   const phoneInput = document.getElementById('member-phone');
   const accountInput = document.getElementById('member-account');
+  const passwordInput = document.getElementById('member-password');
   const hiddenId = document.getElementById('member-id-hidden');
 
   if (id) {
@@ -1894,12 +2192,14 @@ async function openMemberModal(id = null) {
     nameInput.value = member.name;
     phoneInput.value = member.phone || '';
     accountInput.value = member.account_no || '';
+    if (passwordInput) passwordInput.value = member.password || '';
   } else {
     titleEl.textContent = 'เพิ่มสมาชิกใหม่';
     hiddenId.value = '';
     nameInput.value = '';
     phoneInput.value = '';
     accountInput.value = '';
+    if (passwordInput) passwordInput.value = '';
 
     // Auto-suggest next code
     const { data: members } = await sb.from('members').select('code').order('code', { ascending: false }).limit(1);
@@ -1925,6 +2225,8 @@ async function saveMember() {
   const name = document.getElementById('member-name').value.trim();
   const phone = document.getElementById('member-phone').value.trim();
   const account_no = document.getElementById('member-account').value.trim();
+  const passwordInput = document.getElementById('member-password');
+  const password = passwordInput ? passwordInput.value.trim() : '';
 
   if (!code) { showToast('กรุณากรอกรหัสสมาชิก', 'error'); return; }
   if (!name) { showToast('กรุณากรอกชื่อ-นามสกุล', 'error'); return; }
@@ -1939,12 +2241,25 @@ async function saveMember() {
 
   showLoading();
   try {
+    const payload = { code, name, phone, account_no };
+    if (password) payload.password = password;
+
     if (hiddenId) {
-      const { error } = await sb.from('members').update({ code, name, phone, account_no }).eq('id', hiddenId);
+      let { error } = await sb.from('members').update(payload).eq('id', hiddenId);
+      if (error && error.message.includes('column')) {
+        delete payload.password;
+        const res = await sb.from('members').update(payload).eq('id', hiddenId);
+        error = res.error;
+      }
       if (error) throw error;
       showToast('แก้ไขข้อมูลสมาชิกสำเร็จ!');
     } else {
-      const { error } = await sb.from('members').insert({ code, name, phone, account_no });
+      let { error } = await sb.from('members').insert(payload);
+      if (error && error.message.includes('column')) {
+        delete payload.password;
+        const res = await sb.from('members').insert(payload);
+        error = res.error;
+      }
       if (error) throw error;
       showToast('เพิ่มสมาชิกใหม่สำเร็จ!');
     }
@@ -4800,9 +5115,15 @@ async function init() {
     await seedInitialMembers();
     await showApp();
     hideLoading();
+  } else if (checkMemberAuth()) {
+    showLoading();
+    await showMemberPortalApp();
+    hideLoading();
   } else {
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app').classList.remove('active');
+    const mpPage = document.getElementById('member-portal-page');
+    if (mpPage) mpPage.style.display = 'none';
     loadRememberedCredentials();
     try { await loadSettings(); } catch (e) { /* ignore */ }
   }
