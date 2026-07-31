@@ -235,6 +235,7 @@ async function showApp() {
   updateUserSidebarUI();
   await loadSettings();
   await loadCurrentRound();
+  await fetchAdminPendingBankRequestsCount();
   initRealtimeSubscriptions();
   navigateTo('dashboard');
 }
@@ -415,6 +416,7 @@ async function showMemberPortalApp() {
     const fullName = document.getElementById('mp-full-name');
     const codeBadge = document.getElementById('mp-code-badge');
     const accountNo = document.getElementById('mp-account-no');
+    const phoneNo = document.getElementById('mp-phone-no');
     const avatar = document.getElementById('mp-avatar');
 
     if (headerName) headerName.textContent = currentMemberUser.name;
@@ -422,11 +424,13 @@ async function showMemberPortalApp() {
     if (fullName) fullName.textContent = currentMemberUser.name;
     if (codeBadge) codeBadge.textContent = formattedCode;
     if (accountNo) accountNo.textContent = currentMemberUser.account_no || 'ยังไม่ได้ระบุ';
+    if (phoneNo) phoneNo.textContent = currentMemberUser.phone || 'ยังไม่ได้ระบุ';
     if (avatar) avatar.textContent = (currentMemberUser.name || 'M')[0];
   }
 
   await loadCurrentRound();
   await fetchMemberPortalTransactions();
+  await fetchMemberBankRequestStatus();
 }
 
 async function fetchMemberPortalTransactions() {
@@ -530,6 +534,389 @@ function showReceiptFromMemberPortal(txId) {
   if (tx) {
     showReceipt(tx);
   }
+}
+
+// ========== MEMBER PORTAL PROFILE EDIT & BANK APPROVAL SYSTEM ==========
+
+// 1. Edit Phone (Low Risk - Instant Self-Service)
+function openMemberEditPhoneModal() {
+  if (!currentMemberUser) return;
+  const modal = document.getElementById('mp-edit-phone-modal');
+  const input = document.getElementById('mp-new-phone');
+  if (input) input.value = currentMemberUser.phone || '';
+  if (modal) modal.classList.add('show');
+}
+
+function closeMemberEditPhoneModal() {
+  const modal = document.getElementById('mp-edit-phone-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function saveMemberPhone() {
+  if (!currentMemberUser || !currentMemberUser.code) return;
+  const input = document.getElementById('mp-new-phone');
+  const newPhone = input ? input.value.trim() : '';
+
+  if (!newPhone) {
+    showToast('กรุณากรอกเบอร์โทรศัพท์', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const code = currentMemberUser.code;
+    const codeNorm = normalizeMemberCodeStr(code);
+
+    const { error } = await sb.from('members')
+      .update({ phone: newPhone })
+      .or(`code.eq.${code},code.eq.${codeNorm}`);
+
+    if (error) throw error;
+
+    // Update in session state
+    currentMemberUser.phone = newPhone;
+    sessionStorage.setItem('rb_member_user', JSON.stringify(currentMemberUser));
+
+    const phoneNoEl = document.getElementById('mp-phone-no');
+    if (phoneNoEl) phoneNoEl.textContent = newPhone;
+
+    closeMemberEditPhoneModal();
+    showToast('📱 อัปเดตเบอร์โทรศัพท์เรียบร้อยแล้ว!');
+  } catch (err) {
+    showToast('อัปเดตเบอร์โทรไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// 2. Request Bank Account Change (High Risk - Requires Admin Approval)
+function openMemberRequestBankModal() {
+  if (!currentMemberUser) return;
+  const modal = document.getElementById('mp-request-bank-modal');
+  const input = document.getElementById('mp-new-account-no');
+  if (input) input.value = '';
+  if (modal) modal.classList.add('show');
+}
+
+function closeMemberRequestBankModal() {
+  const modal = document.getElementById('mp-request-bank-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function submitBankChangeRequest() {
+  if (!currentMemberUser || !currentMemberUser.code) return;
+
+  const bankName = document.getElementById('mp-bank-name')?.value || 'ธกส.';
+  const newAccNo = document.getElementById('mp-new-account-no')?.value.trim();
+
+  if (!newAccNo) {
+    showToast('กรุณากรอกเลขที่บัญชีธนาคารใหม่', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const code = currentMemberUser.code;
+    const reqPayload = {
+      member_code: code,
+      member_name: currentMemberUser.name,
+      old_account_no: currentMemberUser.account_no || 'ยังไม่ได้ระบุ',
+      new_account_no: newAccNo,
+      bank_name: bankName,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    let { data, error } = await sb.from('account_update_requests').insert(reqPayload).select().single();
+
+    if (error && (error.message.includes('relation') || error.message.includes('table'))) {
+      // Fallback: local storage cache if table missing in Supabase
+      const reqsKey = 'bank_reqs_cache_v1';
+      let existingReqs = [];
+      try { existingReqs = JSON.parse(localStorage.getItem(reqsKey) || '[]'); } catch (e) {}
+      const fallbackReq = { id: 'req_' + Date.now(), ...reqPayload };
+      existingReqs.unshift(fallbackReq);
+      localStorage.setItem(reqsKey, JSON.stringify(existingReqs));
+      data = fallbackReq;
+      error = null;
+    } else if (error) {
+      throw error;
+    }
+
+    closeMemberRequestBankModal();
+    showToast('📤 ส่งคำขอแก้ไขเลขที่บัญชีแล้ว! แอดมินจะทำการตรวจสอบและอนุมัติในระบบ');
+    await fetchMemberBankRequestStatus();
+  } catch (err) {
+    showToast('ส่งคำขอไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function fetchMemberBankRequestStatus() {
+  if (!currentMemberUser || !currentMemberUser.code) return;
+
+  const statusBox = document.getElementById('mp-bank-request-status-box');
+  if (!statusBox) return;
+
+  const code = currentMemberUser.code;
+  const codeNorm = normalizeMemberCodeStr(code);
+
+  try {
+    let latestReq = null;
+    const { data: reqs, error } = await sb.from('account_update_requests')
+      .select('*')
+      .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!error && reqs && reqs.length > 0) {
+      latestReq = reqs[0];
+    } else {
+      // Fallback check localStorage
+      try {
+        const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+        latestReq = localReqs.find(r => r.member_code === code || r.member_code === codeNorm);
+      } catch (e) {}
+    }
+
+    if (latestReq) {
+      statusBox.style.display = 'block';
+      if (latestReq.status === 'pending') {
+        statusBox.innerHTML = `
+          <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.82rem; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+            <span>🟡</span>
+            <div>
+              <strong>อยู่ระหว่างรอแอดมินตรวจสอบคำขอเปลี่ยนเลขบัญชี:</strong><br>
+              ${escapeHTML(latestReq.bank_name)} เลขบัญชี: <span style="font-family:monospace; font-weight:bold;">${escapeHTML(latestReq.new_account_no)}</span>
+            </div>
+          </div>
+        `;
+      } else if (latestReq.status === 'approved') {
+        statusBox.innerHTML = `
+          <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.82rem; color: #10b981; display: flex; align-items: center; gap: 8px;">
+            <span>✅</span>
+            <div><strong>อนุมัติการเปลี่ยนเลขบัญชีเรียบร้อยแล้ว</strong></div>
+          </div>
+        `;
+      } else if (latestReq.status === 'rejected') {
+        statusBox.innerHTML = `
+          <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.82rem; color: #ef4444; display: flex; align-items: center; gap: 8px;">
+            <span>❌</span>
+            <div>
+              <strong>คำขอเปลี่ยนเลขบัญชีถูกปฏิเสธ:</strong> ${escapeHTML(latestReq.rejection_note || 'ข้อมูลไม่ถูกต้อง')}
+            </div>
+          </div>
+        `;
+      }
+    } else {
+      statusBox.style.display = 'none';
+    }
+  } catch (e) {
+    statusBox.style.display = 'none';
+  }
+}
+
+// 3. Admin Bank Account Change Requests Approval Workflow
+let currentAdminBankFilter = 'pending';
+
+async function fetchAdminPendingBankRequestsCount() {
+  const badgeEl = document.getElementById('admin-pending-bank-count');
+  if (!badgeEl) return;
+
+  try {
+    const { count, error } = await sb.from('account_update_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    if (!error) {
+      badgeEl.textContent = count || 0;
+    } else {
+      // Local storage check fallback
+      const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+      const pendingCount = localReqs.filter(r => r.status === 'pending').length;
+      badgeEl.textContent = pendingCount;
+    }
+  } catch (e) {
+    badgeEl.textContent = '0';
+  }
+}
+
+function openAdminBankRequestsModal() {
+  const modal = document.getElementById('admin-bank-requests-modal');
+  if (modal) modal.classList.add('show');
+  setAdminBankRequestFilter('pending');
+}
+
+function closeAdminBankRequestsModal() {
+  const modal = document.getElementById('admin-bank-requests-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+function setAdminBankRequestFilter(filter) {
+  currentAdminBankFilter = filter;
+  ['pending', 'approved', 'rejected'].forEach(f => {
+    const btn = document.getElementById('abr-filter-' + f);
+    if (btn) {
+      if (f === filter) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+  });
+  renderAdminBankRequests();
+}
+
+async function renderAdminBankRequests() {
+  const tbody = document.getElementById('admin-bank-requests-tbody');
+  const emptyState = document.getElementById('admin-bank-requests-empty');
+  if (!tbody) return;
+
+  showLoading();
+  try {
+    let requests = [];
+    const { data: sbReqs, error } = await sb.from('account_update_requests')
+      .select('*')
+      .eq('status', currentAdminBankFilter)
+      .order('created_at', { ascending: false });
+
+    if (!error) {
+      requests = sbReqs || [];
+    } else {
+      // Fallback local storage
+      const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+      requests = localReqs.filter(r => r.status === currentAdminBankFilter);
+    }
+
+    if (requests.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.style.display = 'block';
+      if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'none';
+    } else {
+      if (emptyState) emptyState.style.display = 'none';
+      if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'block';
+
+      tbody.innerHTML = requests.map(r => `
+        <tr>
+          <td>${formatDateTime(r.created_at)}</td>
+          <td>
+            <span class="badge badge-green">${escapeHTML(r.member_code)}</span>
+            <strong>${escapeHTML(r.member_name)}</strong>
+          </td>
+          <td>${escapeHTML(r.bank_name)}</td>
+          <td style="font-family:monospace; color:var(--text-muted);">${escapeHTML(r.old_account_no || '-')}</td>
+          <td style="font-family:monospace; font-weight:bold; color:var(--gold);">${escapeHTML(r.new_account_no)}</td>
+          <td>
+            ${r.status === 'pending' ? '<span class="badge badge-warning">🟡 รออนุมัติ</span>' :
+              r.status === 'approved' ? '<span class="badge badge-green">✅ อนุมัติแล้ว</span>' :
+              '<span class="badge badge-danger">❌ ปฏิเสธแล้ว</span>'}
+          </td>
+          <td>
+            ${r.status === 'pending' ? `
+              <button class="btn btn-primary btn-sm" onclick="approveBankChangeRequest('${r.id}')">✅ อนุมัติ</button>
+              <button class="btn btn-danger btn-sm" onclick="rejectBankChangeRequest('${r.id}')" style="margin-left:4px;">❌ ปฏิเสธ</button>
+            ` : `
+              <small style="color:var(--text-muted);">${r.reviewed_by_name ? 'โดย ' + escapeHTML(r.reviewed_by_name) : '-'}</small>
+            `}
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    showToast('โหลดรายการคำขอไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function approveBankChangeRequest(reqId) {
+  showLoading();
+  try {
+    let targetReq = null;
+    const { data: sbReq } = await sb.from('account_update_requests').select('*').eq('id', reqId).maybeSingle();
+    if (sbReq) {
+      targetReq = sbReq;
+    } else {
+      const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+      targetReq = localReqs.find(r => String(r.id) === String(reqId));
+    }
+
+    if (!targetReq) throw new Error('ไม่พบข้อมูลคำขอ');
+
+    const memberCode = targetReq.member_code;
+    const codeNorm = normalizeMemberCodeStr(memberCode);
+    const newAccNo = targetReq.new_account_no;
+
+    // 1. Update member account_no in members table
+    const { error: memErr } = await sb.from('members')
+      .update({ account_no: newAccNo })
+      .or(`code.eq.${memberCode},code.eq.${codeNorm}`);
+
+    if (memErr) throw memErr;
+
+    // 2. Update request status to 'approved'
+    const adminName = currentUser?.display_name || 'ผู้ดูแลระบบ';
+    const { error: reqErr } = await sb.from('account_update_requests')
+      .update({
+        status: 'approved',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by_name: adminName
+      })
+      .eq('id', reqId);
+
+    if (reqErr) {
+      // Local storage fallback update
+      const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+      const item = localReqs.find(r => String(r.id) === String(reqId));
+      if (item) {
+        item.status = 'approved';
+        item.reviewed_at = new Date().toISOString();
+        item.reviewed_by_name = adminName;
+        localStorage.setItem('bank_reqs_cache_v1', JSON.stringify(localReqs));
+      }
+    }
+
+    showToast(`✅ อนุมัติการเปลี่ยนเลขบัญชีของ ${targetReq.member_name} (${newAccNo}) เรียบร้อยแล้ว!`);
+    await renderAdminBankRequests();
+    await fetchAdminPendingBankRequestsCount();
+    if (typeof renderMembers === 'function') await renderMembers();
+  } catch (err) {
+    showToast('อนุมัติไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function rejectBankChangeRequest(reqId) {
+  const note = window.prompt('กรุณาระบุเหตุผลการปฏิเสธคำขอ (ไม่บังคับ):', 'ข้อมูลเลขบัญชีไม่ถูกต้อง');
+  if (note === null) return; // user cancelled
+
+  showLoading();
+  try {
+    const adminName = currentUser?.display_name || 'ผู้ดูแลระบบ';
+    const { error } = await sb.from('account_update_requests')
+      .update({
+        status: 'rejected',
+        rejection_note: note || 'ข้อมูลไม่ถูกต้อง',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by_name: adminName
+      })
+      .eq('id', reqId);
+
+    if (error) {
+      // Local storage fallback
+      const localReqs = JSON.parse(localStorage.getItem('bank_reqs_cache_v1') || '[]');
+      const item = localReqs.find(r => String(r.id) === String(reqId));
+      if (item) {
+        item.status = 'rejected';
+        item.rejection_note = note || 'ข้อมูลไม่ถูกต้อง';
+        item.reviewed_at = new Date().toISOString();
+        item.reviewed_by_name = adminName;
+        localStorage.setItem('bank_reqs_cache_v1', JSON.stringify(localReqs));
+      }
+    }
+
+    showToast('❌ ปฏิเสธคำขอเปลี่ยนเลขบัญชีเรียบร้อยแล้ว');
+    await renderAdminBankRequests();
+    await fetchAdminPendingBankRequestsCount();
+  } catch (err) {
+    showToast('ปฏิเสธไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
 }
 
 // ========== REALTIME SUBSCRIPTIONS & AUTO RECONNECT ==========

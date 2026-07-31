@@ -265,6 +265,9 @@
           <button class="btn btn-secondary" onclick="openImportMemberModal()" id="btn-import-members">
             📥 นำเข้าจากไฟล์ (Excel/CSV)
           </button>
+          <button class="btn btn-warning" onclick="openAdminBankRequestsModal()" id="btn-admin-bank-requests">
+            💳 คำขอเปลี่ยนเลขบัญชี (<span id="admin-pending-bank-count">0</span>)
+          </button>
           <button class="btn btn-primary" onclick="openMemberModal()">
             ➕ เพิ่มสมาชิก
           </button>
@@ -904,16 +907,27 @@
       <!-- Member Profile Header Card -->
       <div class="glass-card mb-4" style="padding: 20px 24px; border-left: 5px solid var(--primary-light); margin-bottom: 24px;">
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-          <div id="mp-avatar" style="width: 60px; height: 60px; border-radius: 50%; background: var(--gradient-green); color: #fff; font-size: 1.6rem; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(16,185,129,0.3); flex-shrink: 0;">?</div>
+          <div id="mp-avatar" style="width: 64px; height: 64px; border-radius: 50%; background: var(--gradient-green); color: #fff; font-size: 1.8rem; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(16,185,129,0.3); flex-shrink: 0;">?</div>
           <div style="flex: 1; min-width: 240px;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
               <span class="badge badge-green" id="mp-code-badge" style="font-size: 0.85rem; padding: 4px 10px;">ก00089</span>
               <span class="badge badge-gold" style="font-size: 0.8rem; padding: 3px 8px;">🌱 สมาชิกสวนยาง</span>
             </div>
-            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2px 0 6px 0;">-</h2>
-            <p style="font-size: 0.9rem; color: var(--text-secondary); margin: 0;">
-              💳 <strong>เลขที่บัญชีธนาคาร:</strong> <span id="mp-account-no" style="font-family: monospace; font-weight: 600; color: var(--text-primary);">-</span>
-            </p>
+            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2px 0 8px 0;">-</h2>
+
+            <!-- Contact & Bank Info Rows -->
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; color: var(--text-secondary);">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: #fff; font-weight: 600;">ยังไม่ได้ระบุ</span></span>
+                <button class="btn btn-secondary btn-sm" onclick="openMemberEditPhoneModal()" style="padding: 2px 8px; font-size: 0.75rem;">✏️ แก้ไขเบอร์โทร</button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span>💳 <strong>เลขที่บัญชีธนาคาร:</strong> <span id="mp-account-no" style="font-family: monospace; font-weight: 600; color: var(--text-primary);">-</span></span>
+                <button class="btn btn-gold btn-sm" onclick="openMemberRequestBankModal()" style="padding: 2px 8px; font-size: 0.75rem;">💳 ขอแก้ไขเลขบัญชี</button>
+              </div>
+              <!-- Status Badge Container for Bank Change Requests -->
+              <div id="mp-bank-request-status-box" style="margin-top: 4px; display: none;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1378,6 +1392,114 @@
       <div class="modal-body" id="truck-detail-body" style="max-height: 70vh; overflow-y: auto;"></div>
       <div class="modal-footer" style="justify-content: flex-end;">
         <button class="btn btn-secondary" onclick="closeTruckDetailModal()">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MEMBER EDIT PHONE MODAL ===== -->
+  <div class="modal-overlay" id="mp-edit-phone-modal">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3>✏️ แก้ไขเบอร์โทรศัพท์</h3>
+        <button class="modal-close" onclick="closeMemberEditPhoneModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-new-phone">เบอร์โทรศัพท์ใหม่ (10 หลัก)</label>
+          <input type="tel" id="mp-new-phone" class="form-input" placeholder="เช่น 0812345678" pattern="[0-9]*" inputmode="numeric">
+          <small style="color:var(--text-muted); font-size:0.78rem; display:block; margin-top:4px;">
+            💡 เบอร์โทรศัพท์จะถูกอัปเดตเข้าโปรไฟล์ของคุณโดยอัตโนมัติทันที
+          </small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeMemberEditPhoneModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveMemberPhone()">💾 บันทึกเบอร์โทรศัพท์</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MEMBER REQUEST BANK ACCOUNT CHANGE MODAL ===== -->
+  <div class="modal-overlay" id="mp-request-bank-modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3>💳 ขอแก้ไขเลขที่บัญชีธนาคาร</h3>
+        <button class="modal-close" onclick="closeMemberRequestBankModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
+          ⚠️ การเปลี่ยนเลขบัญชีมีความสำคัญสูง คำขอจะถูกส่งไปให้ **แอดมินลานยาง** ตรวจสอบและกดอนุมัติก่อนอัปเดตจริงในระบบ
+        </p>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-bank-name">ชื่อธนาคาร</label>
+          <select id="mp-bank-name" class="form-input">
+            <option value="ธกส. (ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร)">ธกส. (ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร)</option>
+            <option value="กสิกรไทย (KBANK)">กสิกรไทย (KBANK)</option>
+            <option value="กรุงไทย (KTB)">กรุงไทย (KTB)</option>
+            <option value="ไทยพาณิชย์ (SCB)">ไทยพาณิชย์ (SCB)</option>
+            <option value="กรุงเทพ (BBL)">กรุงเทพ (BBL)</option>
+            <option value="ออมสิน (GSB)">ออมสิน (GSB)</option>
+            <option value="กรุงศรีอยุธยา (BAY)">กรุงศรีอยุธยา (BAY)</option>
+            <option value="ทีเอ็มบีธนชาต (ttb)">ทีเอ็มบีธนชาต (ttb)</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-new-account-no">เลขที่บัญชีธนาคารใหม่</label>
+          <input type="text" id="mp-new-account-no" class="form-input" placeholder="เช่น 123-4-56789-0" inputmode="numeric">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeMemberRequestBankModal()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitBankChangeRequest()">📤 ส่งคำขอแก้ไขเลขบัญชี</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN BANK ACCOUNT CHANGE REQUESTS MODAL ===== -->
+  <div class="modal-overlay" id="admin-bank-requests-modal">
+    <div class="modal-content" style="max-width: 820px;">
+      <div class="modal-header">
+        <h3>💳 คำขอแก้ไขเลขที่บัญชีธนาคารของสมาชิก</h3>
+        <button class="modal-close" onclick="closeAdminBankRequestsModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
+            ตรวจสอบคำขอเปลี่ยนเลขบัญชีจากสมาชิก แล้วกดอนุมัติเพื่ออัปเดตเข้าข้อมูลจริง
+          </p>
+          <div style="display:flex; gap:6px; background:rgba(0,0,0,0.3); padding:4px; border-radius:var(--radius-md); border:1px solid var(--border);">
+            <button class="btn btn-sm mp-period-btn active" id="abr-filter-pending" onclick="setAdminBankRequestFilter('pending')" style="padding:6px 14px; font-size:0.8rem;">🟡 รออนุมัติ</button>
+            <button class="btn btn-sm mp-period-btn" id="abr-filter-approved" onclick="setAdminBankRequestFilter('approved')" style="padding:6px 14px; font-size:0.8rem;">✅ อนุมัติแล้ว</button>
+            <button class="btn btn-sm mp-period-btn" id="abr-filter-rejected" onclick="setAdminBankRequestFilter('rejected')" style="padding:6px 14px; font-size:0.8rem;">❌ ปฏิเสธแล้ว</button>
+          </div>
+        </div>
+
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>วันเวลาที่ขอ</th>
+                <th>สมาชิก</th>
+                <th>ธนาคาร</th>
+                <th>เลขบัญชีเดิม</th>
+                <th>เลขบัญชีใหม่ที่ขอ</th>
+                <th>สถานะ</th>
+                <th>ดำเนินการ</th>
+              </tr>
+            </thead>
+            <tbody id="admin-bank-requests-tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="admin-bank-requests-empty" style="display:none; padding:40px 20px;">
+          <div class="empty-icon">📭</div>
+          <p>ไม่มีคำขอแก้ไขเลขบัญชีในหมวดหมู่นี้</p>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button class="btn btn-secondary" onclick="closeAdminBankRequestsModal()">ปิดหน้าต่าง</button>
       </div>
     </div>
   </div>
