@@ -433,6 +433,7 @@ async function showMemberPortalApp() {
   }
 
   await loadCurrentRound();
+  await fetchMemberPortalAnnouncements();
   await fetchMemberPortalTransactions();
   await fetchMemberBankRequestStatus();
 }
@@ -1153,6 +1154,290 @@ async function confirmAdminResetMemberPassword() {
     if (typeof renderMembers === 'function') await renderMembers();
   } catch (err) {
     showToast('รีเซ็ตรหัสผ่านไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// ========== ANNOUNCEMENT SYSTEM (MEMBER PORTAL & ADMIN) ==========
+
+// 1. Member Side: Fetch & Render Active Announcements Box
+async function fetchMemberPortalAnnouncements() {
+  const container = document.getElementById('mp-announcements-container');
+  if (!container) return;
+
+  try {
+    let announcements = [];
+    const { data: sbData, error } = await sb.from('announcements')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false });
+
+    if (!error) {
+      announcements = sbData || [];
+    } else {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      announcements = localData.filter(a => a.is_active);
+    }
+
+    let dismissedMap = {};
+    try {
+      dismissedMap = JSON.parse(localStorage.getItem('dismissed_announcements_v1') || '{}');
+    } catch (e) {}
+
+    const visibleAnnouncements = announcements.filter(a => {
+      const dismissedUpdatedAt = dismissedMap[a.id];
+      if (!dismissedUpdatedAt) return true;
+      return new Date(a.updated_at || a.created_at) > new Date(dismissedUpdatedAt);
+    });
+
+    if (visibleAnnouncements.length === 0) {
+      container.innerHTML = '';
+      container.style.display = 'none';
+    } else {
+      container.style.display = 'block';
+      container.innerHTML = visibleAnnouncements.map(a => `
+        <div class="glass-card mb-3 announcement-card" id="announcement-card-${a.id}" style="padding: 16px 20px; border-left: 5px solid var(--gold); background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(212, 168, 67, 0.1)); border-radius: var(--radius-lg); position: relative; animation: fadeIn 0.3s ease;">
+          <button onclick="dismissMemberAnnouncement('${a.id}', '${a.updated_at || a.created_at}')" style="position: absolute; right: 14px; top: 14px; background: rgba(255,255,255,0.1); border: none; color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="ปิดประกาศนี้">✕</button>
+          <div style="display: flex; align-items: flex-start; gap: 12px; padding-right: 32px;">
+            <div style="font-size: 1.5rem; flex-shrink: 0; line-height: 1;">📢</div>
+            <div>
+              ${a.title ? `<h3 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0 0 6px 0;">${escapeHTML(a.title)}</h3>` : ''}
+              <div style="font-size: 0.92rem; color: #e2e8f0; line-height: 1.6; white-space: pre-wrap;">${escapeHTML(a.content)}</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;">
+                🕒 ประกาศเมื่อ: ${formatDateTime(a.updated_at || a.created_at)} ${a.created_by_name ? 'โดย ' + escapeHTML(a.created_by_name) : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (e) {
+    console.warn('Fetch announcements error:', e);
+    container.style.display = 'none';
+  }
+}
+
+function dismissMemberAnnouncement(id, updatedAt) {
+  try {
+    let dismissedMap = {};
+    try {
+      dismissedMap = JSON.parse(localStorage.getItem('dismissed_announcements_v1') || '{}');
+    } catch (e) {}
+
+    dismissedMap[id] = updatedAt || new Date().toISOString();
+    localStorage.setItem('dismissed_announcements_v1', JSON.stringify(dismissedMap));
+
+    const card = document.getElementById('announcement-card-' + id);
+    if (card) {
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(-10px)';
+      card.style.transition = 'all 0.3s ease';
+      setTimeout(() => {
+        card.remove();
+        const container = document.getElementById('mp-announcements-container');
+        if (container && container.children.length === 0) {
+          container.style.display = 'none';
+        }
+      }, 300);
+    }
+  } catch (e) {
+    console.error('Dismiss announcement error:', e);
+  }
+}
+
+// 2. Admin Side: Manage Announcements CRUD & Toggles
+async function renderAnnouncements() {
+  const tbody = document.getElementById('announcements-table-body');
+  const emptyState = document.getElementById('announcements-empty');
+  if (!tbody) return;
+
+  showLoading();
+  try {
+    let announcements = [];
+    const { data: sbData, error } = await sb.from('announcements')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error) {
+      announcements = sbData || [];
+    } else {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      announcements = localData;
+    }
+
+    if (announcements.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyState) emptyState.style.display = 'block';
+      if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'none';
+    } else {
+      if (emptyState) emptyState.style.display = 'none';
+      if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'block';
+
+      tbody.innerHTML = announcements.map(a => `
+        <tr>
+          <td>${formatDateTime(a.updated_at || a.created_at)}</td>
+          <td><strong>${escapeHTML(a.title || 'ไม่มีหัวข้อ')}</strong></td>
+          <td style="max-width:320px; white-space:pre-wrap; font-size:0.88rem;">${escapeHTML(a.content)}</td>
+          <td><small style="color:var(--text-muted);">${escapeHTML(a.created_by_name || '-')}</small></td>
+          <td>
+            ${a.is_active ? `
+              <button class="btn btn-sm btn-gold" onclick="toggleAnnouncementStatus('${a.id}', false)" style="padding:3px 10px; font-size:0.78rem;">🟢 เปิดใช้งานอยู่</button>
+            ` : `
+              <button class="btn btn-sm btn-secondary" onclick="toggleAnnouncementStatus('${a.id}', true)" style="padding:3px 10px; font-size:0.78rem;">⚪ ปิดใช้งาน</button>
+            `}
+          </td>
+          <td>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAnnouncementModal('${a.id}')" title="แก้ไข">✏️</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteAnnouncement('${a.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    showToast('โหลดข้อมูลประกาศไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function openAnnouncementModal(id = null) {
+  const modal = document.getElementById('announcement-modal');
+  const titleHeader = document.getElementById('announcement-modal-title');
+  const hiddenId = document.getElementById('announcement-id-hidden');
+  const titleIn = document.getElementById('announcement-title');
+  const contentIn = document.getElementById('announcement-content');
+  const statusIn = document.getElementById('announcement-status');
+
+  if (id) {
+    let item = null;
+    try {
+      const { data } = await sb.from('announcements').select('*').eq('id', id).single();
+      item = data;
+    } catch (e) {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      item = localData.find(a => String(a.id) === String(id));
+    }
+
+    if (!item) return;
+
+    if (titleHeader) titleHeader.textContent = '✏️ แก้ไขข้อความประกาศ';
+    if (hiddenId) hiddenId.value = item.id;
+    if (titleIn) titleIn.value = item.title || '';
+    if (contentIn) contentIn.value = item.content || '';
+    if (statusIn) statusIn.value = item.is_active ? 'true' : 'false';
+  } else {
+    if (titleHeader) titleHeader.textContent = '📢 เขียนประกาศข่าวสารใหม่';
+    if (hiddenId) hiddenId.value = '';
+    if (titleIn) titleIn.value = '';
+    if (contentIn) contentIn.value = '';
+    if (statusIn) statusIn.value = 'true';
+  }
+
+  if (modal) modal.classList.add('show');
+}
+
+function closeAnnouncementModal() {
+  const modal = document.getElementById('announcement-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function saveAnnouncement() {
+  const hiddenId = document.getElementById('announcement-id-hidden')?.value;
+  const title = document.getElementById('announcement-title')?.value.trim();
+  const content = document.getElementById('announcement-content')?.value.trim();
+  const isActive = document.getElementById('announcement-status')?.value === 'true';
+
+  if (!content) {
+    showToast('กรุณากรอกรายละเอียดข้อความประกาศ', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const creatorName = currentUser?.display_name || currentUser?.username || 'ผู้ดูแลระบบ';
+    const nowIso = new Date().toISOString();
+
+    const payload = {
+      title,
+      content,
+      is_active: isActive,
+      updated_at: nowIso,
+      created_by_name: creatorName
+    };
+
+    if (hiddenId) {
+      // Update existing
+      let { error } = await sb.from('announcements').update(payload).eq('id', hiddenId);
+      if (error) {
+        const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+        const idx = localData.findIndex(a => String(a.id) === String(hiddenId));
+        if (idx !== -1) {
+          localData[idx] = { ...localData[idx], ...payload };
+          localStorage.setItem('announcements_cache_v1', JSON.stringify(localData));
+        }
+      }
+      showToast('✏️ แก้ไขประกาศข่าวสารเรียบร้อยแล้ว!');
+    } else {
+      // Create new
+      payload.created_at = nowIso;
+      let { error } = await sb.from('announcements').insert(payload);
+      if (error) {
+        const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+        const newItem = { id: 'anc_' + Date.now(), ...payload };
+        localData.unshift(newItem);
+        localStorage.setItem('announcements_cache_v1', JSON.stringify(localData));
+      }
+      showToast('📢 เพิ่มประกาศข่าวสารเรียบร้อยแล้ว!');
+    }
+
+    closeAnnouncementModal();
+    await renderAnnouncements();
+  } catch (err) {
+    showToast('บันทึกประกาศไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function toggleAnnouncementStatus(id, newStatus) {
+  showLoading();
+  try {
+    const nowIso = new Date().toISOString();
+    let { error } = await sb.from('announcements')
+      .update({ is_active: newStatus, updated_at: nowIso })
+      .eq('id', id);
+
+    if (error) {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      const item = localData.find(a => String(a.id) === String(id));
+      if (item) {
+        item.is_active = newStatus;
+        item.updated_at = nowIso;
+        localStorage.setItem('announcements_cache_v1', JSON.stringify(localData));
+      }
+    }
+
+    showToast(newStatus ? '🟢 เปิดใช้งานประกาศเรียบร้อยแล้ว!' : '⚪ ปิดใช้งานประกาศเรียบร้อยแล้ว');
+    await renderAnnouncements();
+  } catch (err) {
+    showToast('สลับสถานะประกาศไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function confirmDeleteAnnouncement(id) {
+  if (!window.confirm('คุณต้องการลบข้อความประกาศนี้ใช่หรือไม่?')) return;
+
+  showLoading();
+  try {
+    let { error } = await sb.from('announcements').delete().eq('id', id);
+    if (error) {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      const filtered = localData.filter(a => String(a.id) !== String(id));
+      localStorage.setItem('announcements_cache_v1', JSON.stringify(filtered));
+    }
+    showToast('🗑️ ลบข้อความประกาศเรียบร้อยแล้ว');
+    await renderAnnouncements();
+  } catch (err) {
+    showToast('ลบประกาศไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
 }
@@ -2624,6 +2909,7 @@ function navigateTo(section) {
   switch (section) {
     case 'dashboard': renderDashboard(); break;
     case 'members': renderMembers(); break;
+    case 'announcements': renderAnnouncements(); break;
     case 'purchase': initPurchase(); break;
     case 'pending': renderPendingTransactions(); break;
     case 'rounds': renderRounds(); break;

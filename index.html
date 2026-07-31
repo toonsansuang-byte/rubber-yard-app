@@ -141,6 +141,9 @@
         <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
           <span class="nav-icon">👥</span> สมาชิก
         </a>
+        <a class="sidebar-link" onclick="navigateTo('announcements')" id="nav-announcements">
+          <span class="nav-icon">📢</span> จัดการประกาศ
+        </a>
 
         <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
         <a class="sidebar-link" onclick="navigateTo('profile')" id="nav-profile">
@@ -296,6 +299,42 @@
           <div class="empty-state" id="members-empty" style="display:none;">
             <div class="empty-icon">👤</div>
             <p>ยังไม่มีสมาชิก กดปุ่ม "เพิ่มสมาชิก" เพื่อเริ่มต้น</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ANNOUNCEMENTS MANAGEMENT ===== -->
+      <div class="section" id="section-announcements">
+        <div class="section-header">
+          <h2>📢 จัดการประกาศ / ข่าวสารสมาชิก</h2>
+          <p>เขียนข้อความประกาศเพื่อแสดงบนหน้า Member Portal ของสมาชิกทุกคน</p>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary" onclick="openAnnouncementModal()">
+            ➕ เขียนประกาศใหม่
+          </button>
+        </div>
+
+        <div class="glass-card">
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>วันที่สร้าง/แก้ไข</th>
+                  <th>หัวข้อประกาศ</th>
+                  <th>รายละเอียดประกาศ</th>
+                  <th>ผู้สร้าง</th>
+                  <th>สถานะ</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="announcements-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="announcements-empty" style="display:none;">
+            <div class="empty-icon">📢</div>
+            <p>ยังไม่มีข้อความประกาศ กดปุ่ม "เขียนประกาศใหม่" เพื่อเริ่มต้น</p>
           </div>
         </div>
       </div>
@@ -907,6 +946,9 @@
     </header>
 
     <main style="max-width: 1100px; margin: 0 auto; padding: 24px 16px;">
+      <!-- Member Announcements Container (Top Notice Box) -->
+      <div id="mp-announcements-container" style="margin-bottom: 20px;"></div>
+
       <!-- Member Profile Header Card -->
       <div class="glass-card mb-4" style="padding: 20px 24px; border-left: 5px solid var(--primary-light); margin-bottom: 24px;">
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
@@ -1566,6 +1608,41 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAdminResetMemberPasswordModal()">ยกเลิก</button>
         <button class="btn btn-warning" onclick="confirmAdminResetMemberPassword()">🔑 บันทึกรีเซ็ตรหัสผ่าน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ANNOUNCEMENT MODAL ===== -->
+  <div class="modal-overlay" id="announcement-modal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 id="announcement-modal-title">📢 เขียนประกาศข่าวสารใหม่</h3>
+        <button class="modal-close" onclick="closeAnnouncementModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="announcement-id-hidden">
+        
+        <div class="form-group mb-3">
+          <label class="form-label" for="announcement-title">หัวข้อประกาศ (ไม่บังคับ)</label>
+          <input type="text" id="announcement-title" class="form-input" placeholder="เช่น แจ้งปิดรับซื้อยางพาราช่วงเทศกาล">
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="announcement-content">รายละเอียดข้อความประกาศ *</label>
+          <textarea id="announcement-content" class="form-input" rows="4" placeholder="กรอกข้อความที่ต้องการแจ้งแก่สมาชิก (รองรับหลายบรรทัด)..." required style="resize:vertical;"></textarea>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="announcement-status">สถานะการแสดงผล</label>
+          <select id="announcement-status" class="form-input">
+            <option value="true">🟢 เปิดใช้งาน (แสดงบนหน้า Member Portal)</option>
+            <option value="false">⚪ ปิดใช้งาน (ซ่อนไว้ชั่วคราว)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAnnouncementModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveAnnouncement()">💾 บันทึกประกาศ</button>
       </div>
     </div>
   </div>
