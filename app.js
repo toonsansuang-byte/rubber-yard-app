@@ -1160,6 +1160,14 @@ async function confirmAdminResetMemberPassword() {
 
 // ========== ANNOUNCEMENT SYSTEM (MEMBER PORTAL & ADMIN) ==========
 
+function getMemberDismissKey() {
+  if (currentMemberUser && currentMemberUser.code) {
+    const code = normalizeMemberCodeStr(currentMemberUser.code) || currentMemberUser.code;
+    return `dismissed_announcements_${code}_v1`;
+  }
+  return 'dismissed_announcements_guest_v1';
+}
+
 // 1. Member Side: Fetch & Render Active Announcements Box
 async function fetchMemberPortalAnnouncements() {
   const container = document.getElementById('mp-announcements-container');
@@ -1181,8 +1189,7 @@ async function fetchMemberPortalAnnouncements() {
       announcements = localData.filter(a => a.is_active);
     }
 
-    const memberCode = currentMemberUser ? currentMemberUser.code : 'guest';
-    const dismissKey = `dismissed_announcements_${memberCode}_v1`;
+    const dismissKey = getMemberDismissKey();
 
     let dismissedMap = {};
     try {
@@ -1224,8 +1231,7 @@ async function fetchMemberPortalAnnouncements() {
 
 function dismissMemberAnnouncement(id, updatedAt) {
   try {
-    const memberCode = currentMemberUser ? currentMemberUser.code : 'guest';
-    const dismissKey = `dismissed_announcements_${memberCode}_v1`;
+    const dismissKey = getMemberDismissKey();
 
     let dismissedMap = {};
     try {
@@ -1298,14 +1304,41 @@ async function renderAnnouncements() {
             `}
           </td>
           <td>
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAnnouncementModal('${a.id}')" title="แก้ไข">✏️</button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteAnnouncement('${a.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAnnouncementModal('${a.id}')" title="แก้ไขประกาศ">✏️</button>
+            <button class="btn btn-gold btn-sm btn-icon" onclick="resendAnnouncementNotice('${a.id}')" title="ส่งการแจ้งเตือนใหม่หาทุกคน" style="margin-left:4px;">🔔</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteAnnouncement('${a.id}')" title="ลบประกาศ" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
       `).join('');
     }
   } catch (err) {
     showToast('โหลดข้อมูลประกาศไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+async function resendAnnouncementNotice(id) {
+  showLoading();
+  try {
+    const nowIso = new Date().toISOString();
+    let { error } = await sb.from('announcements')
+      .update({ is_active: true, updated_at: nowIso })
+      .eq('id', id);
+
+    if (error) {
+      const localData = JSON.parse(localStorage.getItem('announcements_cache_v1') || '[]');
+      const item = localData.find(a => String(a.id) === String(id));
+      if (item) {
+        item.is_active = true;
+        item.updated_at = nowIso;
+        localStorage.setItem('announcements_cache_v1', JSON.stringify(localData));
+      }
+    }
+
+    showToast('🔔 ส่งการแจ้งเตือนประกาศนี้ให้สมาชิกทุกคนอีกครั้งเรียบร้อยแล้ว!');
+    await renderAnnouncements();
+  } catch (err) {
+    showToast('ส่งการแจ้งเตือนไม่สำเร็จ: ' + err.message, 'error');
   }
   hideLoading();
 }
