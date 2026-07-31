@@ -90,6 +90,9 @@
           <button type="submit" class="btn btn-gold btn-block" id="member-login-btn" onclick="handleMemberLogin()">
             🍃 เข้าสู่ระบบสมาชิก
           </button>
+          <small style="color:var(--text-muted); font-size:0.78rem; display:block; margin-top:10px; text-align:center;">
+            ❓ ลืมรหัสผ่าน? กรุณาติดต่อเจ้าหน้าที่ลานยางพาราเพื่อขอรีเซ็ตรหัสผ่านใหม่
+          </small>
         </form>
       </div>
     </div>
@@ -920,6 +923,7 @@
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: #fff; font-weight: 600;">ยังไม่ได้ระบุ</span></span>
                 <button class="btn btn-secondary btn-sm" onclick="openMemberEditPhoneModal()" style="padding: 2px 8px; font-size: 0.75rem;">✏️ แก้ไขเบอร์โทร</button>
+                <button class="btn btn-secondary btn-sm" onclick="openMemberChangePasswordModal()" style="padding: 2px 8px; font-size: 0.75rem; border-color: rgba(255,255,255,0.2);">🔐 เปลี่ยนรหัสผ่าน</button>
               </div>
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span>💳 <strong>เลขที่บัญชีธนาคาร:</strong> <span id="mp-account-no" style="font-family: monospace; font-weight: 600; color: var(--text-primary);">-</span></span>
@@ -1500,6 +1504,68 @@
       </div>
       <div class="modal-footer" style="justify-content: flex-end;">
         <button class="btn btn-secondary" onclick="closeAdminBankRequestsModal()">ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MEMBER CHANGE PASSWORD MODAL ===== -->
+  <div class="modal-overlay" id="mp-change-password-modal">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3>🔐 เปลี่ยนรหัสผ่านเข้าใช้งาน</h3>
+        <button class="modal-close" onclick="closeMemberChangePasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-old-pwd">รหัสผ่านปัจจุบัน</label>
+          <input type="password" id="mp-old-pwd" class="form-input" placeholder="กรอกรหัสผ่านที่ใช้อยู่ในปัจจุบัน" required>
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-new-pwd">รหัสผ่านใหม่</label>
+          <input type="password" id="mp-new-pwd" class="form-input" placeholder="กรอกรหัสผ่านใหม่" required>
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label" for="mp-confirm-pwd">ยืนยันรหัสผ่านใหม่</label>
+          <input type="password" id="mp-confirm-pwd" class="form-input" placeholder="กรอกรหัสผ่านใหม่อีกครั้ง" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeMemberChangePasswordModal()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveMemberNewPassword()">💾 บันทึกรหัสผ่านใหม่</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN RESET MEMBER PASSWORD MODAL ===== -->
+  <div class="modal-overlay" id="admin-reset-member-pwd-modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3>🔑 รีเซ็ตรหัสผ่านสมาชิก</h3>
+        <button class="modal-close" onclick="closeAdminResetMemberPasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="glass-card mb-3" style="padding:12px 16px; background:rgba(16,185,129,0.08); border-color:rgba(16,185,129,0.3);">
+          <div style="font-size:0.85rem; color:var(--text-secondary);">สมาชิกที่ต้องการรีเซ็ต:</div>
+          <div style="font-size:1.1rem; font-weight:bold; color:#fff;" id="armp-member-title">-</div>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label">ตัวเลือกการรีเซ็ตรหัสผ่าน</label>
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <button type="button" class="btn btn-gold btn-sm" onclick="generateRandomPassword6Digits()" style="flex:1;">
+              🎲 สุ่มรหัสผ่าน 6 หลัก
+            </button>
+          </div>
+          <label class="form-label" for="armp-new-pwd">รหัสผ่านใหม่ที่ต้องการกำหนด</label>
+          <input type="text" id="armp-new-pwd" class="form-input" placeholder="เช่น 583920 หรือ รหัสผ่านที่สมาชิกขอตั้ง" required>
+          <small style="color:var(--text-muted); font-size:0.78rem; display:block; margin-top:4px;">
+            💡 รหัสผ่านใหม่จะถูกเข้ารหัส SHA-256 ก่อนบันทึกลงฐานข้อมูลเพื่อความปลอดภัย
+          </small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAdminResetMemberPasswordModal()">ยกเลิก</button>
+        <button class="btn btn-warning" onclick="confirmAdminResetMemberPassword()">🔑 บันทึกรีเซ็ตรหัสผ่าน</button>
       </div>
     </div>
   </div>

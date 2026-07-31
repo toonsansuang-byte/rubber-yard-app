@@ -919,6 +919,196 @@ async function rejectBankChangeRequest(reqId) {
   hideLoading();
 }
 
+// ========== MEMBER PASSWORD CHANGE & ADMIN RESET WORKFLOW ==========
+
+// 1. Member Self-Service Password Change
+function openMemberChangePasswordModal() {
+  if (!currentMemberUser) return;
+  const modal = document.getElementById('mp-change-password-modal');
+  const oldPwd = document.getElementById('mp-old-pwd');
+  const newPwd = document.getElementById('mp-new-pwd');
+  const confirmPwd = document.getElementById('mp-confirm-pwd');
+  if (oldPwd) oldPwd.value = '';
+  if (newPwd) newPwd.value = '';
+  if (confirmPwd) confirmPwd.value = '';
+  if (modal) modal.classList.add('show');
+}
+
+function closeMemberChangePasswordModal() {
+  const modal = document.getElementById('mp-change-password-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function saveMemberNewPassword() {
+  if (!currentMemberUser || !currentMemberUser.code) return;
+
+  const oldPwd = document.getElementById('mp-old-pwd')?.value.trim();
+  const newPwd = document.getElementById('mp-new-pwd')?.value.trim();
+  const confirmPwd = document.getElementById('mp-confirm-pwd')?.value.trim();
+
+  if (!oldPwd || !newPwd || !confirmPwd) {
+    showToast('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง', 'error');
+    return;
+  }
+
+  if (newPwd !== confirmPwd) {
+    showToast('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน', 'error');
+    return;
+  }
+
+  if (newPwd.length < 3) {
+    showToast('รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 3 ตัวอักษร', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const code = currentMemberUser.code;
+    const codeNorm = normalizeMemberCodeStr(code);
+
+    const { data: member, error: fetchErr } = await sb.from('members')
+      .select('*')
+      .or(`code.eq.${code},code.eq.${codeNorm}`)
+      .maybeSingle();
+
+    if (fetchErr || !member) {
+      throw new Error('ไม่พบข้อมูลสมาชิกในระบบ');
+    }
+
+    const hashedOldInput = await hashPassword(oldPwd);
+    const passInputNorm = normalizeMemberCodeStr(oldPwd);
+    const codeNormTarget = normalizeMemberCodeStr(member.code);
+
+    let isOldValid = false;
+    if (member.password && (member.password === hashedOldInput || member.password === oldPwd || member.password === passInputNorm)) {
+      isOldValid = true;
+    } else if (member.phone && member.phone.trim() === oldPwd) {
+      isOldValid = true;
+    } else if (oldPwd === member.code || passInputNorm === codeNormTarget || oldPwd === codeNormTarget) {
+      isOldValid = true;
+    }
+
+    if (!isOldValid) {
+      showToast('รหัสผ่านปัจจุบันไม่ถูกต้อง', 'error');
+      hideLoading();
+      return;
+    }
+
+    const hashedNewPwd = await hashPassword(newPwd);
+
+    const { error: updateErr } = await sb.from('members')
+      .update({ password: hashedNewPwd })
+      .or(`code.eq.${code},code.eq.${codeNorm}`);
+
+    if (updateErr) throw updateErr;
+
+    closeMemberChangePasswordModal();
+    showToast('🔐 เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว! กรุณาใช้รหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไป');
+  } catch (err) {
+    showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+// 2. Admin Reset Password Workflow
+let currentResetTargetMember = null;
+
+async function openAdminResetMemberPasswordModal(memberIdOrCode) {
+  if (!memberIdOrCode) return;
+  showLoading();
+  try {
+    const { data: member } = await sb.from('members')
+      .select('*')
+      .or(`id.eq.${memberIdOrCode},code.eq.${memberIdOrCode}`)
+      .maybeSingle();
+
+    if (!member) {
+      showToast('ไม่พบข้อมูลสมาชิก', 'error');
+      hideLoading();
+      return;
+    }
+
+    currentResetTargetMember = member;
+
+    const titleEl = document.getElementById('armp-member-title');
+    if (titleEl) {
+      titleEl.textContent = `รหัส ${member.code} - ${member.name}`;
+    }
+
+    const input = document.getElementById('armp-new-pwd');
+    if (input) input.value = '';
+
+    const modal = document.getElementById('admin-reset-member-pwd-modal');
+    if (modal) modal.classList.add('show');
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+function closeAdminResetMemberPasswordModal() {
+  const modal = document.getElementById('admin-reset-member-pwd-modal');
+  if (modal) modal.classList.remove('show');
+  currentResetTargetMember = null;
+}
+
+function generateRandomPassword6Digits() {
+  const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const input = document.getElementById('armp-new-pwd');
+  if (input) input.value = randomCode;
+}
+
+async function confirmAdminResetMemberPassword() {
+  if (!currentResetTargetMember) return;
+
+  const newPwdPlain = document.getElementById('armp-new-pwd')?.value.trim();
+
+  if (!newPwdPlain) {
+    showToast('กรุณากรอกหรือกดสุ่มรหัสผ่านใหม่', 'error');
+    return;
+  }
+
+  showLoading();
+  try {
+    const member = currentResetTargetMember;
+    const hashedPwd = await hashPassword(newPwdPlain);
+
+    const { error: updateErr } = await sb.from('members')
+      .update({ password: hashedPwd })
+      .eq('id', member.id);
+
+    if (updateErr) throw updateErr;
+
+    const staffName = currentUser?.display_name || currentUser?.username || 'เจ้าหน้าที่';
+    try {
+      await sb.from('activity_logs').insert({
+        action: 'reset_member_password',
+        user_name: staffName,
+        details: `รีเซ็ตรหัสผ่านสมาชิก ${member.code} (${member.name})`,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      const logs = JSON.parse(localStorage.getItem('audit_logs_cache') || '[]');
+      logs.unshift({
+        action: 'reset_member_password',
+        staff: staffName,
+        target_member: `${member.code} - ${member.name}`,
+        reset_at: new Date().toISOString()
+      });
+      localStorage.setItem('audit_logs_cache', JSON.stringify(logs));
+    }
+
+    closeAdminResetMemberPasswordModal();
+
+    alert(`🔑 รีเซ็ตรหัสผ่านให้คุณ ${member.name} (รหัส ${member.code}) เรียบร้อยแล้ว!\n\nรหัสผ่านใหม่คือ: ${newPwdPlain}\n\nกรุณาแจ้งรหัสผ่านใหม่นี้แก่สมาชิก และแนะนำให้สมาชิกเปลี่ยนรหัสผ่านเองอีกครั้งหลังเข้าสู่ระบบ`);
+
+    if (typeof renderMembers === 'function') await renderMembers();
+  } catch (err) {
+    showToast('รีเซ็ตรหัสผ่านไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
 // ========== REALTIME SUBSCRIPTIONS & AUTO RECONNECT ==========
 let realtimeChannel = null;
 
@@ -2542,8 +2732,9 @@ async function renderMembers(filter = '') {
           </td>
           <td>${formatDate(m.created_at)}</td>
           <td>
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="openMemberModal('${m.id}')" title="แก้ไข">✏️</button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMember('${m.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openMemberModal('${m.id}')" title="แก้ไขข้อมูล">✏️</button>
+            <button class="btn btn-warning btn-sm btn-icon" onclick="openAdminResetMemberPasswordModal('${m.id}')" title="รีเซ็ตรหัสผ่าน" style="margin-left:4px;">🔑</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMember('${m.id}')" title="ลบสมาชิก" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
       `).join('');
