@@ -3312,6 +3312,13 @@ async function initPurchase() {
     trailerSelect.value = savedTrailer;
   }
 
+  // Attach keyboard event listener to member search input if needed
+  const searchInput = document.getElementById('purchase-member-search');
+  if (searchInput && !searchInput.dataset.hasKeydownListener) {
+    searchInput.dataset.hasKeydownListener = 'true';
+    searchInput.addEventListener('keydown', handlePurchaseMemberKeydown);
+  }
+
   // Start with one trip
   trips = [{ grossWeight: 0 }];
   renderTrips();
@@ -3359,7 +3366,10 @@ function addTrip() {
   calculatePrice();
   setTimeout(() => {
     const inputs = document.querySelectorAll('.trip-gross-input');
-    if (inputs.length > 0) inputs[inputs.length - 1].focus();
+    if (inputs.length > 0) {
+      inputs[inputs.length - 1].focus();
+      inputs[inputs.length - 1].select();
+    }
   }, 100);
 }
 
@@ -3368,6 +3378,21 @@ function removeTrip(index) {
   trips.splice(index, 1);
   renderTrips();
   calculatePrice();
+}
+
+function onTripGrossKeydown(e, index) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (index === trips.length - 1) {
+      addTrip();
+    } else {
+      const inputs = document.querySelectorAll('.trip-gross-input');
+      if (inputs[index + 1]) {
+        inputs[index + 1].focus();
+        inputs[index + 1].select();
+      }
+    }
+  }
 }
 
 function renderTrips() {
@@ -3389,7 +3414,8 @@ function renderTrips() {
             <input type="number" class="form-input trip-gross-input" data-index="${i}"
                    placeholder="น้ำหนักชั่งได้ (กก.)" step="0.01" min="0"
                    value="${trip.grossWeight || ''}"
-                   oninput="onTripInput(${i}, this.value)">
+                   oninput="onTripInput(${i}, this.value)"
+                   onkeydown="onTripGrossKeydown(event, ${i})">
           </div>
           <div class="trip-net ${isDirectRubber ? 'direct-net' : ''}" id="trip-net-${i}">
             ${isDirectRubber 
@@ -3412,8 +3438,14 @@ function onTripInput(index, value) {
   calculatePrice();
 }
 
+let currentSearchMembersResults = [];
+let focusedMemberIndex = -1;
+
 async function searchPurchaseMember(query) {
   const listEl = document.getElementById('purchase-member-list');
+  focusedMemberIndex = -1;
+  currentSearchMembersResults = [];
+
   if (!query.trim()) { listEl.innerHTML = ''; return; }
 
   try {
@@ -3424,13 +3456,17 @@ async function searchPurchaseMember(query) {
       .limit(8);
 
     const members = data || [];
+    currentSearchMembersResults = members;
+
     if (members.length === 0) {
       listEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.85rem;">ไม่พบสมาชิก</div>';
       return;
     }
 
-    listEl.innerHTML = members.map(m => `
-      <div class="member-search-item" onclick='selectPurchaseMember(${JSON.stringify(m).replace(/'/g, "&#39;")})'>
+    focusedMemberIndex = 0; // Default highlight first candidate!
+
+    listEl.innerHTML = members.map((m, idx) => `
+      <div class="member-search-item ${idx === 0 ? 'keyboard-focused' : ''}" data-index="${idx}" onclick='selectPurchaseMember(${JSON.stringify(m).replace(/'/g, "&#39;")})'>
         <span class="member-code-badge">${m.code}</span>
         <span>${m.name}</span>
       </div>
@@ -3440,16 +3476,67 @@ async function searchPurchaseMember(query) {
   }
 }
 
+function handlePurchaseMemberKeydown(e) {
+  const listEl = document.getElementById('purchase-member-list');
+  const items = listEl ? listEl.querySelectorAll('.member-search-item') : [];
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (items.length === 0) return;
+    focusedMemberIndex = (focusedMemberIndex + 1) % items.length;
+    updateMemberKeyboardFocus(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (items.length === 0) return;
+    focusedMemberIndex = (focusedMemberIndex - 1 + items.length) % items.length;
+    updateMemberKeyboardFocus(items);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (currentSearchMembersResults.length === 0) return;
+
+    const targetIndex = (focusedMemberIndex >= 0 && focusedMemberIndex < currentSearchMembersResults.length)
+      ? focusedMemberIndex
+      : 0;
+
+    selectPurchaseMember(currentSearchMembersResults[targetIndex]);
+  } else if (e.key === 'Escape') {
+    listEl.innerHTML = '';
+    focusedMemberIndex = -1;
+  }
+}
+
+function updateMemberKeyboardFocus(items) {
+  items.forEach((item, idx) => {
+    if (idx === focusedMemberIndex) {
+      item.classList.add('keyboard-focused');
+      item.scrollIntoView({ block: 'nearest' });
+    } else {
+      item.classList.remove('keyboard-focused');
+    }
+  });
+}
+
 function selectPurchaseMember(member) {
   selectedMember = member;
   document.getElementById('purchase-member-search').value = '';
   document.getElementById('purchase-member-list').innerHTML = '';
+  currentSearchMembersResults = [];
+  focusedMemberIndex = -1;
 
   const card = document.getElementById('selected-member-info');
   card.classList.add('show');
   document.getElementById('selected-member-avatar').textContent = member.name.charAt(0);
   document.getElementById('selected-member-name').textContent = member.name;
   document.getElementById('selected-member-code').textContent = `รหัส: ${member.code}`;
+
+  // AUTO FOCUS TRANSFER: Focus on weight input immediately!
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.trip-gross-input');
+    if (inputs.length > 0) {
+      inputs[0].focus();
+      inputs[0].select();
+    }
+  }, 100);
 }
 
 function clearSelectedMember() {
@@ -6086,3 +6173,14 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Global shortcut: Ctrl + Enter to save transaction on Purchase page
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if (typeof currentSection !== 'undefined' && currentSection === 'purchase') {
+      e.preventDefault();
+      saveTransaction();
+    }
+  }
+});
+
