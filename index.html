@@ -383,12 +383,12 @@
           </div>
         </div>
 
-        <!-- Purchase 2-Column Master Grid -->
+        <!-- Purchase 2-Column Grid -->
         <div class="purchase-grid">
-          <!-- Left Column: Member Selection & Trips -->
-          <div>
-            <!-- Member Selection -->
-            <div class="glass-card" style="margin-bottom: 20px;">
+          <!-- Left Column: Form Inputs in Original Stacked Order -->
+          <div class="purchase-left-col">
+            <!-- 1. Member Selection -->
+            <div class="glass-card">
               <h3 style="margin-bottom: 12px; font-size: 1rem;">👤 เลือกสมาชิก</h3>
               <div class="search-box" style="margin-bottom: 8px;">
                 <input type="text" id="purchase-member-search" placeholder="พิมพ์รหัสหรือชื่อสมาชิก (กด Enter เพื่อเลือก)..." oninput="searchPurchaseMember(this.value)">
@@ -404,7 +404,60 @@
               </div>
             </div>
 
-            <!-- Multi-Trip Weighing -->
+            <!-- 2. Rubber Type & Settings -->
+            <div class="glass-card">
+              <h3 style="margin-bottom: 16px; font-size: 1rem;">⚖️ ข้อมูลยาง</h3>
+              <div class="form-group">
+                <label class="form-label">ประเภทยาง</label>
+                <input type="text" class="form-input" value="ยางก้อนถ้วย" readonly disabled style="opacity: 0.9; font-weight: 600; color: var(--gold);">
+                <input type="hidden" id="rubber-type" value="cup">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="cart-weight">น้ำหนักรถเข็น (กก.) — หักทุกเที่ยว</label>
+                <input type="number" id="cart-weight" class="form-input" placeholder="0.00" step="0.01" min="0" oninput="renderTrips(); calculatePrice();">
+              </div>
+              <div class="form-group mb-0">
+                <label class="form-label" for="price-per-kg">ราคาประมูล ต่อ กก. (บาท)</label>
+                <input type="number" id="price-per-kg" class="form-input" placeholder="0.00" step="0.01" min="0" style="font-weight:bold;" oninput="calculatePrice()">
+                <div id="net-price-hint" style="font-size: 0.85rem; color: var(--gold); margin-top: 6px; font-weight: 500;">
+                  ราคาหลังหักค่าบริหารจัดการ: 0.00 บาท/กก. (หัก -0.50 บาท)
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Truck Auto-Tagging -->
+            <div class="glass-card" style="border-left: 4px solid var(--gold);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                <h3 style="font-size: 1rem; margin:0; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ (คำนวณอัตโนมัติ)</h3>
+                <div id="purchase-truck-indicator">
+                  <span class="badge badge-warning" style="font-size:0.8rem; padding:4px 10px;">⚠️ ยังไม่ได้เลือกรถ</span>
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                <div class="form-group mb-0">
+                  <label class="form-label" style="font-size:0.85rem;" for="purchase-truck-number">รถคันที่ / ทะเบียน</label>
+                  <select id="purchase-truck-number" class="form-input" style="font-size:0.9rem;" onchange="onPurchaseTruckSelect(this.value); updatePurchaseTruckIndicator();">
+                    <option value="">-- ไม่ระบุ --</option>
+                    <option value="คันที่ 1">คันที่ 1</option>
+                    <option value="คันที่ 2">คันที่ 2</option>
+                    <option value="คันที่ 3">คันที่ 3</option>
+                    <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
+                  </select>
+                </div>
+                <div class="form-group mb-0">
+                  <label class="form-label" style="font-size:0.85rem;" for="purchase-trailer-type">ลักษณะพ่วง</label>
+                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.9rem;" onchange="updatePurchaseTruckIndicator();">
+                    <option value="head">🚛 ตัวแม่</option>
+                    <option value="trailer">🚚 ตัวลูก</option>
+                  </select>
+                </div>
+              </div>
+              <div style="font-size:0.78rem; color:var(--gold); margin-top:8px;">
+                📌 ระบบจะจำค่ารถคันนี้สำหรับสมาชิกรายถัดไปให้อัตโนมัติ (เปลี่ยนเฉพาะเมื่อย้ายรถ)
+              </div>
+            </div>
+
+            <!-- 4. Multi-Trip Weighing -->
             <div class="glass-card mb-0">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <div>
@@ -419,88 +472,43 @@
             </div>
           </div>
 
-          <!-- Right Column: Rubber & Truck Info, Calculation Result, Save Button -->
-          <div>
-            <!-- Rubber Type, Price & Truck Auto-Tagging -->
-            <div class="glass-card" style="margin-bottom: 20px;">
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div class="form-group mb-0">
-                  <label class="form-label" style="font-size:0.85rem;">ประเภทยาง</label>
-                  <input type="text" class="form-input" value="ยางก้อนถ้วย" readonly disabled style="opacity: 0.9; font-weight: 600; color: var(--gold); font-size:0.9rem;">
-                  <input type="hidden" id="rubber-type" value="cup">
+          <!-- Right Column: Calculation Result (Positioned at Bottom beside Trips Box) -->
+          <div class="purchase-right-col">
+            <div class="calc-result-wrapper">
+              <div class="calc-result">
+                <h3>🧮 ผลลัพธ์การคำนวณ</h3>
+
+                <div id="calc-trips-detail">
+                  <!-- Dynamic trip calculation details -->
                 </div>
-                <div class="form-group mb-0">
-                  <label class="form-label" style="font-size:0.85rem;" for="cart-weight">หักรถเข็น (กก./เที่ยว)</label>
-                  <input type="number" id="cart-weight" class="form-input" placeholder="0.00" step="0.01" min="0" style="font-size:0.9rem;" oninput="renderTrips(); calculatePrice();">
+
+                <div class="calc-row" style="border-top: 2px solid var(--accent-light); padding-top: 12px; margin-top: 8px;">
+                  <span class="label" style="font-weight:600;">น้ำหนักสุทธิรวม</span>
+                  <span class="value" style="color: var(--text-accent);" id="calc-total-net">0.00 กก.</span>
+                </div>
+                <div class="calc-row" id="calc-deduction-row">
+                  <span class="label">หักเปอร์เซ็นต์ (<span id="calc-deduction-pct">0</span>%)</span>
+                  <span class="value" style="color: var(--danger);" id="calc-deduction-amount">- 0.00 กก.</span>
+                </div>
+                <div class="calc-row">
+                  <span class="label">น้ำหนักหลังหัก</span>
+                  <span class="value" style="color: var(--text-accent); font-weight:700;" id="calc-final-weight">0.00 กก.</span>
+                </div>
+                <div class="calc-row">
+                  <span class="label">ราคาต่อ กก.</span>
+                  <span class="value" id="calc-price-per-kg">0.00 บาท</span>
+                </div>
+
+                <div class="calc-total">
+                  <span class="label">💰 ราคารวม</span>
+                  <span class="value" id="calc-total-price">0.00 บาท</span>
                 </div>
               </div>
 
-              <div class="form-group mb-2">
-                <label class="form-label" style="font-size:0.85rem;" for="price-per-kg">ราคาประมูล ต่อ กก. (บาท)</label>
-                <input type="number" id="price-per-kg" class="form-input" placeholder="0.00" step="0.01" min="0" style="font-size:0.95rem; font-weight:bold;" oninput="calculatePrice()">
-                <div id="net-price-hint" style="font-size: 0.8rem; color: var(--gold); margin-top: 4px; font-weight: 500;">
-                  ราคาหลังหักค่าบริหารจัดการ: 0.00 บาท/กก. (หัก -0.50 บาท)
-                </div>
-              </div>
-
-              <!-- Truck Auto-Tagging Inline -->
-              <div style="background: rgba(212, 168, 67, 0.06); border: 1px solid rgba(212, 168, 67, 0.3); padding: 8px 12px; border-radius: var(--radius-md);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                  <span style="font-size: 0.82rem; font-weight:bold; color:var(--gold);">🚚 จัดขึ้นรถพ่วงประจำรอบ</span>
-                  <div id="purchase-truck-indicator">
-                    <span class="badge badge-warning" style="font-size:0.75rem; padding:2px 8px;">⚠️ ไม่ระบุ</span>
-                  </div>
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-                  <select id="purchase-truck-number" class="form-input" style="font-size:0.82rem; padding:4px 8px;" onchange="onPurchaseTruckSelect(this.value); updatePurchaseTruckIndicator();">
-                    <option value="">-- ไม่ระบุ --</option>
-                    <option value="คันที่ 1">คันที่ 1</option>
-                    <option value="คันที่ 2">คันที่ 2</option>
-                    <option value="คันที่ 3">คันที่ 3</option>
-                    <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
-                  </select>
-                  <select id="purchase-trailer-type" class="form-input" style="font-size:0.82rem; padding:4px 8px;" onchange="updatePurchaseTruckIndicator();">
-                    <option value="head">🚛 ตัวแม่</option>
-                    <option value="trailer">🚚 ตัวลูก</option>
-                  </select>
-                </div>
-              </div>
+              <button class="btn btn-gold btn-block" style="margin-top: 16px; padding: 16px; font-size: 1.15rem; font-weight: 700; box-shadow: 0 4px 16px rgba(212,168,67,0.3);" onclick="saveTransaction()" id="save-transaction-btn">
+                💾 บันทึกธุรกรรม (Ctrl+Enter)
+              </button>
             </div>
-
-            <!-- Calculation Result & Save Button -->
-            <div class="calc-result">
-              <h3>🧮 ผลลัพธ์การคำนวณ</h3>
-
-              <div id="calc-trips-detail">
-                <!-- Dynamic trip calculation details -->
-              </div>
-
-              <div class="calc-row" style="border-top: 2px solid var(--accent-light); padding-top: 12px; margin-top: 8px;">
-                <span class="label" style="font-weight:600;">น้ำหนักสุทธิรวม</span>
-                <span class="value" style="color: var(--text-accent);" id="calc-total-net">0.00 กก.</span>
-              </div>
-              <div class="calc-row" id="calc-deduction-row">
-                <span class="label">หักเปอร์เซ็นต์ (<span id="calc-deduction-pct">0</span>%)</span>
-                <span class="value" style="color: var(--danger);" id="calc-deduction-amount">- 0.00 กก.</span>
-              </div>
-              <div class="calc-row">
-                <span class="label">น้ำหนักหลังหัก</span>
-                <span class="value" style="color: var(--text-accent); font-weight:700;" id="calc-final-weight">0.00 กก.</span>
-              </div>
-              <div class="calc-row">
-                <span class="label">ราคาต่อ กก.</span>
-                <span class="value" id="calc-price-per-kg">0.00 บาท</span>
-              </div>
-
-              <div class="calc-total">
-                <span class="label">💰 ราคารวม</span>
-                <span class="value" id="calc-total-price">0.00 บาท</span>
-              </div>
-            </div>
-
-            <button class="btn btn-gold btn-block" style="margin-top: 16px; padding: 16px; font-size: 1.15rem; font-weight: 700; box-shadow: 0 4px 16px rgba(212,168,67,0.3);" onclick="saveTransaction()" id="save-transaction-btn">
-              💾 บันทึกธุรกรรม (Ctrl+Enter)
-            </button>
           </div>
         </div>
       </div>

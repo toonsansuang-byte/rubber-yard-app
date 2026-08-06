@@ -759,13 +759,29 @@ select.form-input option {
 }
 
 /* ===== PURCHASE PAGE ===== */
-.purchase-grid,
-.purchase-top-grid,
-.purchase-trips-calc-grid {
+.purchase-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.purchase-left-col {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
-  align-items: start;
+}
+
+.purchase-right-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.calc-result-wrapper {
+  margin-top: auto;
+  position: sticky;
+  top: 90px;
 }
 
 .member-search-item:hover,
@@ -1505,17 +1521,13 @@ select.form-input option {
     width: 100% !important;
   }
 
-  .purchase-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
-    gap: 12px !important;
-  }
-
   .purchase-grid, .purchase-top-grid, .purchase-trips-calc-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .calc-result-wrapper {
+    margin-top: 0 !important;
+    position: static !important;
   }
 
   .filter-bar {
