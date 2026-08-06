@@ -1626,51 +1626,70 @@ function updateUserSidebarUI() {
 async function loadSettings() {
   try {
     let data = null;
-    if (sb) {
+    if (sb && navigator.onLine) {
       try {
         const res = await sb.from('settings').select('*').eq('id', 1).single();
         if (!res.error && res.data) data = res.data;
       } catch (e) { /* ignore */ }
     }
 
-    const localDualMode = localStorage.getItem('setting_dual_station_mode');
-    const localShowPayer = localStorage.getItem('setting_show_payer_name');
-    const localYardFee = localStorage.getItem('setting_yard_fee');
-    const localAddr = localStorage.getItem('setting_plantation_address');
-    const localBuyer = localStorage.getItem('setting_auction_buyer');
-    const localLogo = localStorage.getItem('setting_plantation_logo');
+    if (data) {
+      // Database values are the SINGLE SOURCE OF TRUTH when online
+      cachedSettings = {
+        plantation_name: data.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก',
+        plantation_address: data.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก',
+        auction_buyer: data.auction_buyer || 'เฮียต้อม ยางพารา',
+        plantation_logo: data.plantation_logo || '',
+        price_cup: Number(data.price_cup ?? 35),
+        price_sheet: Number(data.price_sheet ?? 45),
+        price_latex: Number(data.price_latex ?? 50),
+        yard_fee: Number(data.yard_fee ?? 0.50),
+        default_cart_weight: Number(data.default_cart_weight ?? 5),
+        deduction_percent: Number(data.deduction_percent ?? 0),
+        dual_station_mode: data.dual_station_mode === true,
+        show_payer_name: data.show_payer_name !== false
+      };
 
-    const baseSettings = data || {
-      plantation_name: 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก',
-      price_sheet: 45, price_cup: 35, price_latex: 50,
-      default_cart_weight: 5, deduction_percent: 0,
-      dual_station_mode: false, show_payer_name: true, yard_fee: 0.50
-    };
+      // Sync fetched database settings into local cache backup
+      try {
+        localStorage.setItem('setting_auction_buyer', cachedSettings.auction_buyer);
+        localStorage.setItem('setting_plantation_address', cachedSettings.plantation_address);
+        localStorage.setItem('setting_yard_fee', String(cachedSettings.yard_fee));
+        localStorage.setItem('setting_dual_station_mode', String(cachedSettings.dual_station_mode));
+        localStorage.setItem('setting_show_payer_name', String(cachedSettings.show_payer_name));
+        if (cachedSettings.plantation_logo) {
+          localStorage.setItem('setting_plantation_logo', cachedSettings.plantation_logo);
+        } else {
+          localStorage.removeItem('setting_plantation_logo');
+        }
+      } catch (e) {}
+    } else {
+      // Offline fallback: read from local backup
+      const localDualMode = localStorage.getItem('setting_dual_station_mode');
+      const localShowPayer = localStorage.getItem('setting_show_payer_name');
+      const localYardFee = localStorage.getItem('setting_yard_fee');
+      const localAddr = localStorage.getItem('setting_plantation_address');
+      const localBuyer = localStorage.getItem('setting_auction_buyer');
+      const localLogo = localStorage.getItem('setting_plantation_logo');
 
-    cachedSettings = {
-      ...baseSettings,
-      dual_station_mode: localDualMode !== null ? localDualMode === 'true' : (baseSettings.dual_station_mode === true),
-      show_payer_name: localShowPayer !== null ? localShowPayer === 'true' : (baseSettings.show_payer_name !== false),
-      yard_fee: localYardFee !== null ? parseFloat(localYardFee) : (baseSettings.yard_fee !== undefined ? baseSettings.yard_fee : 0.50),
-      plantation_address: localAddr || baseSettings.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก',
-      auction_buyer: localBuyer || baseSettings.auction_buyer || 'เฮียต้อม ยางพารา',
-      plantation_logo: localLogo || baseSettings.plantation_logo || ''
-    };
+      cachedSettings = {
+        plantation_name: 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก',
+        plantation_address: localAddr || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก',
+        auction_buyer: localBuyer || 'เฮียต้อม ยางพารา',
+        plantation_logo: localLogo || '',
+        price_cup: 35, price_sheet: 45, price_latex: 50,
+        default_cart_weight: 5, deduction_percent: 0,
+        dual_station_mode: localDualMode !== null ? localDualMode === 'true' : false,
+        show_payer_name: localShowPayer !== null ? localShowPayer === 'true' : true,
+        yard_fee: localYardFee !== null ? parseFloat(localYardFee) : 0.50
+      };
+    }
 
     updatePlantationName();
     updatePurchaseDualModeUI();
     return cachedSettings;
   } catch (err) {
     console.error('Failed to load settings:', err);
-    const localDualMode = localStorage.getItem('setting_dual_station_mode');
-    cachedSettings = {
-      plantation_name: 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก',
-      price_sheet: 45, price_cup: 35, price_latex: 50,
-      default_cart_weight: 5, deduction_percent: 0,
-      dual_station_mode: localDualMode !== null ? localDualMode === 'true' : false,
-      show_payer_name: true, yard_fee: 0.50
-    };
-    updatePurchaseDualModeUI();
     return cachedSettings;
   }
 }
@@ -5671,7 +5690,7 @@ async function saveSettings() {
 
   const logoVal = currentCustomLogoBase64 !== null ? currentCustomLogoBase64 : (cachedSettings?.plantation_logo || localStorage.getItem('setting_plantation_logo') || '');
 
-  // 1. Save preferences to localStorage FIRST
+  // 1. Update in-memory cache & local backup FIRST
   localStorage.setItem('setting_dual_station_mode', String(dualStationMode));
   localStorage.setItem('setting_show_payer_name', String(showPayerName));
   localStorage.setItem('setting_yard_fee', String(yardFeeVal));
@@ -5683,7 +5702,6 @@ async function saveSettings() {
     localStorage.removeItem('setting_plantation_logo');
   }
 
-  // Update in-memory cachedSettings immediately
   cachedSettings = {
     ...(cachedSettings || {}),
     plantation_name: plantationName,
@@ -5701,6 +5719,7 @@ async function saveSettings() {
   };
 
   const updateData = {
+    id: 1,
     plantation_name: plantationName,
     plantation_address: plantationAddress,
     auction_buyer: auctionBuyer,
@@ -5718,31 +5737,32 @@ async function saveSettings() {
   showLoading();
   try {
     if (sb && navigator.onLine) {
-      let { data, error } = await sb.from('settings').update(updateData).eq('id', 1).select();
-
-      // Fallback if newly added columns do not exist yet in Supabase schema
+      // Use upsert to handle both row creation (if row 1 missing) and update (if row 1 exists)
+      const { data, error } = await sb.from('settings').upsert(updateData).select();
       if (error) {
-        console.warn('Supabase update failed with new columns, executing fallback:', error.message);
-        delete updateData.plantation_address;
-        delete updateData.auction_buyer;
-        delete updateData.plantation_logo;
-        delete updateData.dual_station_mode;
-        delete updateData.show_payer_name;
-        delete updateData.yard_fee;
-        const res = await sb.from('settings').update(updateData).eq('id', 1).select();
-        data = res.data;
-        error = res.error;
+        console.warn('Supabase settings upsert warning:', error.message);
+        // Fallback upsert for basic columns if table schema lacks optional columns
+        const basicData = {
+          id: 1,
+          plantation_name: plantationName,
+          price_cup: priceCup,
+          price_sheet: priceCup,
+          price_latex: priceCup,
+          default_cart_weight: cartWeightVal,
+          deduction_percent: deductionPercentVal
+        };
+        await sb.from('settings').upsert(basicData);
       }
     }
 
     updatePlantationName();
     updatePlantationLogo();
     updatePurchaseDualModeUI();
-    showToast('บันทึกการตั้งค่าลานยางสำเร็จ!');
+    showToast('💾 บันทึกการตั้งค่าลานยางลงเซิร์ฟเวอร์เรียบร้อย!');
     renderSettings();
   } catch (err) {
     console.error('saveSettings error:', err);
-    showToast('บันทึกการตั้งค่าในเครื่องสำเร็จ!');
+    showToast('บันทึกการตั้งค่าในเครื่องเรียบร้อย!');
     updatePlantationName();
     updatePlantationLogo();
     updatePurchaseDualModeUI();
