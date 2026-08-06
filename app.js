@@ -1623,6 +1623,31 @@ function updateUserSidebarUI() {
   }
 }
 
+function applyThemeMode(theme) {
+  const targetTheme = (theme === 'light') ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', targetTheme);
+  try {
+    localStorage.setItem('setting_theme_mode', targetTheme);
+  } catch (e) {}
+
+  let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (!metaThemeColor) {
+    metaThemeColor = document.createElement('meta');
+    metaThemeColor.name = 'theme-color';
+    document.head.appendChild(metaThemeColor);
+  }
+  metaThemeColor.content = (targetTheme === 'light') ? '#f0f4f2' : '#060f0a';
+
+  const radioEls = document.querySelectorAll('input[name="setting-theme-mode"]');
+  radioEls.forEach(r => {
+    r.checked = (r.value === targetTheme);
+  });
+}
+
+function previewThemeMode(theme) {
+  applyThemeMode(theme);
+}
+
 async function loadSettings() {
   try {
     let data = null;
@@ -1647,7 +1672,8 @@ async function loadSettings() {
         default_cart_weight: Number(data.default_cart_weight ?? 5),
         deduction_percent: Number(data.deduction_percent ?? 0),
         dual_station_mode: data.dual_station_mode === true,
-        show_payer_name: data.show_payer_name !== false
+        show_payer_name: data.show_payer_name !== false,
+        theme_mode: data.theme_mode || localStorage.getItem('setting_theme_mode') || 'dark'
       };
 
       // Sync fetched database settings into local cache backup
@@ -1657,6 +1683,7 @@ async function loadSettings() {
         localStorage.setItem('setting_yard_fee', String(cachedSettings.yard_fee));
         localStorage.setItem('setting_dual_station_mode', String(cachedSettings.dual_station_mode));
         localStorage.setItem('setting_show_payer_name', String(cachedSettings.show_payer_name));
+        localStorage.setItem('setting_theme_mode', cachedSettings.theme_mode);
         if (cachedSettings.plantation_logo) {
           localStorage.setItem('setting_plantation_logo', cachedSettings.plantation_logo);
         } else {
@@ -1671,6 +1698,7 @@ async function loadSettings() {
       const localAddr = localStorage.getItem('setting_plantation_address');
       const localBuyer = localStorage.getItem('setting_auction_buyer');
       const localLogo = localStorage.getItem('setting_plantation_logo');
+      const localTheme = localStorage.getItem('setting_theme_mode');
 
       cachedSettings = {
         plantation_name: 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก',
@@ -1681,10 +1709,12 @@ async function loadSettings() {
         default_cart_weight: 5, deduction_percent: 0,
         dual_station_mode: localDualMode !== null ? localDualMode === 'true' : false,
         show_payer_name: localShowPayer !== null ? localShowPayer === 'true' : true,
-        yard_fee: localYardFee !== null ? parseFloat(localYardFee) : 0.50
+        yard_fee: localYardFee !== null ? parseFloat(localYardFee) : 0.50,
+        theme_mode: localTheme || 'dark'
       };
     }
 
+    applyThemeMode(cachedSettings.theme_mode);
     updatePlantationName();
     updatePurchaseDualModeUI();
     return cachedSettings;
@@ -5673,6 +5703,8 @@ async function renderSettings() {
   const showPayerEl = document.getElementById('setting-show-payer-name');
   if (showPayerEl) showPayerEl.checked = s?.show_payer_name !== false;
 
+  const themeMode = s?.theme_mode || localStorage.getItem('setting_theme_mode') || 'dark';
+  applyThemeMode(themeMode);
   updatePlantationLogo();
 }
 
@@ -5687,6 +5719,7 @@ async function saveSettings() {
   const deductionPercentVal = parseFloat(document.getElementById('setting-deduction-percent')?.value) || 0;
   const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
   const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
+  const themeMode = document.querySelector('input[name="setting-theme-mode"]:checked')?.value || 'dark';
 
   const logoVal = currentCustomLogoBase64 !== null ? currentCustomLogoBase64 : (cachedSettings?.plantation_logo || localStorage.getItem('setting_plantation_logo') || '');
 
@@ -5696,6 +5729,7 @@ async function saveSettings() {
   localStorage.setItem('setting_yard_fee', String(yardFeeVal));
   localStorage.setItem('setting_plantation_address', plantationAddress);
   localStorage.setItem('setting_auction_buyer', auctionBuyer);
+  localStorage.setItem('setting_theme_mode', themeMode);
   if (logoVal) {
     localStorage.setItem('setting_plantation_logo', logoVal);
   } else {
@@ -5715,7 +5749,8 @@ async function saveSettings() {
     default_cart_weight: cartWeightVal,
     deduction_percent: deductionPercentVal,
     dual_station_mode: dualStationMode,
-    show_payer_name: showPayerName
+    show_payer_name: showPayerName,
+    theme_mode: themeMode
   };
 
   const updateData = {
@@ -5731,8 +5766,11 @@ async function saveSettings() {
     default_cart_weight: cartWeightVal,
     deduction_percent: deductionPercentVal,
     dual_station_mode: dualStationMode,
-    show_payer_name: showPayerName
+    show_payer_name: showPayerName,
+    theme_mode: themeMode
   };
+
+  applyThemeMode(themeMode);
 
   showLoading();
   try {

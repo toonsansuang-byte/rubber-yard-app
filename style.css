@@ -54,6 +54,44 @@
   --transition-fast: all 0.15s ease;
 }
 
+/* ===== LIGHT MODE THEME OVERRIDES ===== */
+[data-theme="light"] {
+  --bg-primary: #f0f4f2;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2ece7;
+  --bg-card: #ffffff;
+  --bg-card-hover: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-input: #f8faf9;
+  --bg-modal: #ffffff;
+
+  --accent: #059669;
+  --accent-hover: #047857;
+  --accent-light: rgba(5, 150, 105, 0.12);
+  --accent-glow: rgba(5, 150, 105, 0.20);
+  --gold: #b45309;
+  --gold-light: rgba(180, 83, 9, 0.12);
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-accent: #047857;
+
+  --border: rgba(5, 150, 105, 0.22);
+  --border-hover: rgba(5, 150, 105, 0.45);
+
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.10);
+  --success: #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.10);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.10);
+
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.10);
+  --shadow-glow: 0 0 25px rgba(5, 150, 105, 0.10);
+}
+
 /* ===== RESET & BASE ===== */
 *, *::before, *::after {
   margin: 0;
