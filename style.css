@@ -759,17 +759,12 @@ select.form-input option {
 }
 
 /* ===== PURCHASE PAGE ===== */
-.purchase-top-grid {
+.purchase-top-grid,
+.purchase-trips-calc-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-bottom: 20px;
-}
-
-.purchase-trips-calc-grid {
-  display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 20px;
   align-items: start;
 }
 
