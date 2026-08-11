@@ -6424,6 +6424,39 @@ async function syncOfflineData() {
   isSyncingData = true;
 
   try {
+    // Data Recovery: Check for unsynced offline_transactions in IndexedDB
+    try {
+      const allTx = await new Promise((res) => {
+        const tx = offlineDB.transaction(['offline_transactions'], 'readonly');
+        const store = tx.objectStore('offline_transactions');
+        const req = store.getAll();
+        req.onsuccess = () => res(req.result || []);
+      });
+
+      const unsyncedTx = allTx.filter(t => !t.synced);
+      if (unsyncedTx.length > 0) {
+        const txQueue = offlineDB.transaction(['sync_queue'], 'readwrite');
+        const syncStore = txQueue.objectStore('sync_queue');
+        const existingQueue = await new Promise(res => {
+          const req = syncStore.getAll();
+          req.onsuccess = () => res(req.result || []);
+        });
+        const existingOfflineIds = new Set(existingQueue.map(q => q.payload?.offline_id || q.payload?.id));
+
+        for (const unsynced of unsyncedTx) {
+          if (!existingOfflineIds.has(unsynced.offline_id) && !existingOfflineIds.has(unsynced.id)) {
+            syncStore.add({
+              type: 'transaction',
+              payload: unsynced,
+              timestamp: unsynced.date || new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Sync queue recovery check warning:', e);
+    }
+
     const queue = await new Promise((resolve) => {
       const tx = offlineDB.transaction(['sync_queue'], 'readonly');
       const store = tx.objectStore('sync_queue');
@@ -6436,6 +6469,15 @@ async function syncOfflineData() {
       updateOfflineStatusUI();
       return;
     }
+
+    // Sort queue: round_create FIRST, then transaction, then round_close
+    queue.sort((a, b) => {
+      const typeScore = (t) => t === 'round_create' ? 1 : (t === 'transaction' ? 2 : 3);
+      const diff = typeScore(a.type) - typeScore(b.type);
+      return diff !== 0 ? diff : (a.queue_id - b.queue_id);
+    });
+
+    const roundIdMap = {}; // Maps 'off_round_123' -> real integer Supabase round ID
     
     showToast(`🔄 กำลังซิงค์... (0/${queue.length})`, 'info');
     let successCount = 0;
@@ -6443,14 +6485,60 @@ async function syncOfflineData() {
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       try {
-        if (item.type === 'transaction') {
+        if (item.type === 'round_create') {
+          const offlineRoundId = item.payload.id;
           const payload = { ...item.payload };
           delete payload.offline_id;
-          // IMPORTANT: Strip temporary string offline ID so Supabase uses its auto-increment bigint sequence ID!
           if (payload.id && (typeof payload.id !== 'number' || String(payload.id).startsWith('off_'))) {
             delete payload.id;
           }
           
+          let { data: newRound, error } = await sb.from('purchase_rounds').insert(payload).select().single();
+          if (error && error.message.includes('column')) {
+            const { data: d2, error: e2 } = await sb.from('purchase_rounds').insert({ title: payload.title, status: 'open', start_date: payload.start_date }).select().single();
+            error = e2; newRound = d2;
+          }
+          if (error) throw error;
+
+          if (newRound && newRound.id) {
+            if (offlineRoundId) {
+              roundIdMap[offlineRoundId] = newRound.id;
+            }
+            currentRound = newRound;
+          }
+        } else if (item.type === 'transaction') {
+          const payload = { ...item.payload };
+          const originalOfflineId = payload.offline_id;
+          delete payload.offline_id;
+          delete payload.synced;
+          if (payload.id && (typeof payload.id !== 'number' || String(payload.id).startsWith('off_'))) {
+            delete payload.id;
+          }
+
+          // Map offline round_id to real Supabase round_id
+          if (payload.round_id) {
+            if (typeof payload.round_id === 'string' && payload.round_id.startsWith('off_')) {
+              if (roundIdMap[payload.round_id]) {
+                payload.round_id = roundIdMap[payload.round_id];
+              } else if (currentRound && typeof currentRound.id === 'number') {
+                payload.round_id = currentRound.id;
+              } else {
+                // Try querying the latest open round in Supabase
+                try {
+                  const { data: openRounds } = await sb.from('purchase_rounds').select('id').eq('status', 'open').order('created_at', { ascending: false }).limit(1);
+                  if (openRounds && openRounds.length > 0) {
+                    payload.round_id = openRounds[0].id;
+                    roundIdMap[item.payload.round_id] = openRounds[0].id;
+                  } else {
+                    delete payload.round_id;
+                  }
+                } catch (e) {
+                  delete payload.round_id;
+                }
+              }
+            }
+          }
+
           let { data, error } = await sb.from('transactions').insert(payload).select().single();
           if (error && error.message.includes('column')) {
             delete payload.trips;
@@ -6468,30 +6556,43 @@ async function syncOfflineData() {
             if (e2 && e2.message.includes('column')) {
               delete payload.trips_detail;
               let res3 = await sb.from('transactions').insert(payload).select().single();
-              e2 = res3.error; d2 = res3.data;
+              e2 = res3.error; data = d2;
             }
             error = e2; data = d2;
           }
           if (error) throw error;
-        } else if (item.type === 'round_create') {
-          const payload = { ...item.payload };
-          delete payload.offline_id;
-          if (payload.id && (typeof payload.id !== 'number' || String(payload.id).startsWith('off_'))) {
-            delete payload.id;
+
+          // Mark synced = true in offline_transactions store
+          if (originalOfflineId) {
+            try {
+              const txStore = offlineDB.transaction(['offline_transactions'], 'readwrite').objectStore('offline_transactions');
+              const getReq = txStore.get(originalOfflineId);
+              getReq.onsuccess = () => {
+                if (getReq.result) {
+                  const updatedItem = getReq.result;
+                  updatedItem.synced = true;
+                  txStore.put(updatedItem);
+                }
+              };
+            } catch (e) {}
           }
-          const { error } = await sb.from('purchase_rounds').insert(payload);
-          if (error) throw error;
         } else if (item.type === 'round_close') {
-          const { id, ...updateData } = item.payload;
-          if (id && String(id).startsWith('off_')) {
-            // Round created offline and closed offline, skip update since round isn't in Supabase
-          } else {
-            let { error } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
+          let targetRoundId = item.payload.id;
+          if (targetRoundId && String(targetRoundId).startsWith('off_')) {
+            if (roundIdMap[targetRoundId]) {
+              targetRoundId = roundIdMap[targetRoundId];
+            } else if (currentRound && typeof currentRound.id === 'number') {
+              targetRoundId = currentRound.id;
+            }
+          }
+
+          if (targetRoundId && typeof targetRoundId === 'number') {
+            const { id, ...updateData } = item.payload;
+            let { error } = await sb.from('purchase_rounds').update(updateData).eq('id', targetRoundId);
             if (error) {
               delete updateData.closed_at;
               delete updateData.closed_by_name;
-              const { error: e2 } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
-              if (e2) throw e2;
+              await sb.from('purchase_rounds').update(updateData).eq('id', targetRoundId);
             }
           }
         }
@@ -6507,16 +6608,15 @@ async function syncOfflineData() {
       } catch (err) {
         console.error('Sync error on item:', item, err);
         const retryCount = (item.retryCount || 0) + 1;
-        if (retryCount >= 3) {
-          // Bad item, drop from queue after 3 retries to prevent infinite loop
+        if (retryCount >= 5) {
+          // If persistent failure, delete from sync queue to avoid stuck queue
           await new Promise((resolve) => {
             const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
             tx.objectStore('sync_queue').delete(item.queue_id);
             tx.oncomplete = () => resolve();
           });
-          showToast(`⚠️ ข้ามรายการซิงค์ #${item.queue_id} เนื่องจากข้อมูลมีปัญหา: ${err.message}`, 'error');
+          showToast(`⚠️ ข้ามรายการ #${item.queue_id}: ${err.message}`, 'error');
         } else {
-          // Increment retry count
           item.retryCount = retryCount;
           await new Promise((resolve) => {
             const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
@@ -6528,11 +6628,13 @@ async function syncOfflineData() {
     }
     
     if (successCount > 0) {
-      showToast(`✅ ซิงค์สำเร็จ ${successCount} รายการ!`, 'success');
+      showToast(`✅ ซิงค์สำเร็จ ${successCount} รายการ! ข้อมูลอัปเดตเรียบร้อย`, 'success');
+      await loadCurrentRound();
       if (typeof currentSection !== 'undefined') {
-        if (currentSection === 'history' && typeof renderHistory === 'function') renderHistory();
-        if (currentSection === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
-        if (currentSection === 'rounds' && typeof renderRounds === 'function') renderRounds();
+        if (currentSection === 'history' && typeof renderHistory === 'function') await renderHistory();
+        if (currentSection === 'dashboard' && typeof renderDashboard === 'function') await renderDashboard();
+        if (currentSection === 'rounds' && typeof renderRounds === 'function') await renderRounds();
+        if (currentSection === 'truck-weights' && typeof renderTruckWeights === 'function') await renderTruckWeights();
       }
     }
   } finally {
