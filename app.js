@@ -6415,82 +6415,130 @@ async function getOfflinePendingCount() {
   });
 }
 
+let isSyncingData = false;
+
 async function syncOfflineData() {
-  if (isAppOffline()) return;
+  if (isSyncingData || isAppOffline()) return;
   if (!offlineDB) await openOfflineDB();
   
-  const queue = await new Promise((resolve) => {
-    const tx = offlineDB.transaction(['sync_queue'], 'readonly');
-    const store = tx.objectStore('sync_queue');
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-  });
-  
-  if (queue.length === 0) return;
-  
-  showToast(`🔄 กำลังซิงค์... (0/${queue.length})`, 'info');
-  let successCount = 0;
-  
-  for (let i = 0; i < queue.length; i++) {
-    const item = queue[i];
-    try {
-      if (item.type === 'transaction') {
-        const payload = { ...item.payload };
-        delete payload.offline_id;
-        
-        let { data, error } = await sb.from('transactions').insert(payload).select().single();
-        if (error && error.message.includes('column')) {
-          delete payload.trips;
-          delete payload.cart_weight;
-          delete payload.auction_price;
-          delete payload.yard_fee;
-          delete payload.created_by_display_name;
-          delete payload.confirmed_by_display_name;
-          delete payload.buyer_name;
-          delete payload.auction_buyer;
-          delete payload.sequence_no;
-          delete payload.seq_no;
-          delete payload.queue_no;
-          let { data: d2, error: e2 } = await sb.from('transactions').insert(payload).select().single();
-          if (e2 && e2.message.includes('column')) {
-            delete payload.trips_detail;
-            let res3 = await sb.from('transactions').insert(payload).select().single();
-            e2 = res3.error; d2 = res3.data;
+  isSyncingData = true;
+
+  try {
+    const queue = await new Promise((resolve) => {
+      const tx = offlineDB.transaction(['sync_queue'], 'readonly');
+      const store = tx.objectStore('sync_queue');
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    
+    if (queue.length === 0) {
+      isSyncingData = false;
+      updateOfflineStatusUI();
+      return;
+    }
+    
+    showToast(`🔄 กำลังซิงค์... (0/${queue.length})`, 'info');
+    let successCount = 0;
+    
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      try {
+        if (item.type === 'transaction') {
+          const payload = { ...item.payload };
+          delete payload.offline_id;
+          // IMPORTANT: Strip temporary string offline ID so Supabase uses its auto-increment bigint sequence ID!
+          if (payload.id && (typeof payload.id !== 'number' || String(payload.id).startsWith('off_'))) {
+            delete payload.id;
           }
-          error = e2; data = d2;
+          
+          let { data, error } = await sb.from('transactions').insert(payload).select().single();
+          if (error && error.message.includes('column')) {
+            delete payload.trips;
+            delete payload.cart_weight;
+            delete payload.auction_price;
+            delete payload.yard_fee;
+            delete payload.created_by_display_name;
+            delete payload.confirmed_by_display_name;
+            delete payload.buyer_name;
+            delete payload.auction_buyer;
+            delete payload.sequence_no;
+            delete payload.seq_no;
+            delete payload.queue_no;
+            let { data: d2, error: e2 } = await sb.from('transactions').insert(payload).select().single();
+            if (e2 && e2.message.includes('column')) {
+              delete payload.trips_detail;
+              let res3 = await sb.from('transactions').insert(payload).select().single();
+              e2 = res3.error; d2 = res3.data;
+            }
+            error = e2; data = d2;
+          }
+          if (error) throw error;
+        } else if (item.type === 'round_create') {
+          const payload = { ...item.payload };
+          delete payload.offline_id;
+          if (payload.id && (typeof payload.id !== 'number' || String(payload.id).startsWith('off_'))) {
+            delete payload.id;
+          }
+          const { error } = await sb.from('purchase_rounds').insert(payload);
+          if (error) throw error;
+        } else if (item.type === 'round_close') {
+          const { id, ...updateData } = item.payload;
+          if (id && String(id).startsWith('off_')) {
+            // Round created offline and closed offline, skip update since round isn't in Supabase
+          } else {
+            let { error } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
+            if (error) {
+              delete updateData.closed_at;
+              delete updateData.closed_by_name;
+              const { error: e2 } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
+              if (e2) throw e2;
+            }
+          }
         }
-        if (error) throw error;
-      } else if (item.type === 'round_create') {
-        const payload = { ...item.payload };
-        delete payload.offline_id;
-        const { error } = await sb.from('purchase_rounds').insert(payload);
-        if (error) throw error;
-      } else if (item.type === 'round_close') {
-        const { id, ...updateData } = item.payload;
-        let { error } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
-        if (error) {
-          delete updateData.closed_at;
-          delete updateData.closed_by_name;
-          const { error: e2 } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
-          if (e2) throw e2;
+        
+        // Success: delete from sync queue
+        await new Promise((resolve) => {
+          const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
+          tx.objectStore('sync_queue').delete(item.queue_id);
+          tx.oncomplete = () => resolve();
+        });
+        successCount++;
+        showToast(`🔄 กำลังซิงค์... (${successCount}/${queue.length})`, 'info');
+      } catch (err) {
+        console.error('Sync error on item:', item, err);
+        const retryCount = (item.retryCount || 0) + 1;
+        if (retryCount >= 3) {
+          // Bad item, drop from queue after 3 retries to prevent infinite loop
+          await new Promise((resolve) => {
+            const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
+            tx.objectStore('sync_queue').delete(item.queue_id);
+            tx.oncomplete = () => resolve();
+          });
+          showToast(`⚠️ ข้ามรายการซิงค์ #${item.queue_id} เนื่องจากข้อมูลมีปัญหา: ${err.message}`, 'error');
+        } else {
+          // Increment retry count
+          item.retryCount = retryCount;
+          await new Promise((resolve) => {
+            const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
+            tx.objectStore('sync_queue').put(item);
+            tx.oncomplete = () => resolve();
+          });
         }
       }
-      
-      await new Promise((resolve) => {
-        const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
-        tx.objectStore('sync_queue').delete(item.queue_id);
-        tx.oncomplete = () => resolve();
-      });
-      successCount++;
-      showToast(`🔄 กำลังซิงค์... (${successCount}/${queue.length})`, 'info');
-    } catch (err) {
-      console.error('Sync error:', err);
     }
+    
+    if (successCount > 0) {
+      showToast(`✅ ซิงค์สำเร็จ ${successCount} รายการ!`, 'success');
+      if (typeof currentSection !== 'undefined') {
+        if (currentSection === 'history' && typeof renderHistory === 'function') renderHistory();
+        if (currentSection === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
+        if (currentSection === 'rounds' && typeof renderRounds === 'function') renderRounds();
+      }
+    }
+  } finally {
+    isSyncingData = false;
   }
   
-  if (successCount > 0) {
-    showToast(`✅ ซิงค์สำเร็จ ${successCount} รายการ!`, 'success');
-  }
   updateOfflineStatusUI();
 }
 
@@ -6553,8 +6601,10 @@ async function updateOfflineStatusUI() {
     }
     if (syncBtn) syncBtn.style.display = 'inline-block';
     statusBar.style.display = 'flex';
-    // Auto sync when online with pending items
-    syncOfflineData();
+    // Auto sync when online with pending items (only if not currently syncing)
+    if (!isSyncingData) {
+      syncOfflineData();
+    }
   } else {
     document.body.classList.remove('has-offline-bar');
     statusBar.style.display = 'none';
