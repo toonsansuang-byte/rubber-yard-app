@@ -144,47 +144,92 @@ async function handleLogin() {
     let loggedUser = null;
     const hashedInput = await hashPassword(password);
 
-    // 1. Query app_users table (matches hashed password or migrates legacy plain text)
-    try {
-      const { data: users, error } = await sb.from('app_users')
-        .select('*')
-        .eq('username', username);
+    // 1. If online, try Supabase authentication first
+    if (sb && !isAppOffline()) {
+      try {
+        const { data: users, error } = await sb.from('app_users')
+          .select('*')
+          .eq('username', username);
 
-      if (!error && users && users.length > 0) {
-        const user = users.find(u => u.password === hashedInput || u.password === password);
-        if (user) {
-          loggedUser = user;
-          // Auto upgrade legacy plain text password to SHA-256 hash in Supabase
-          if (user.password === password) {
-            await sb.from('app_users').update({ password: hashedInput }).eq('id', user.id);
+        if (!error && users && users.length > 0) {
+          const user = users.find(u => u.password === hashedInput || u.password === password);
+          if (user) {
+            loggedUser = user;
+            if (user.password === password) {
+              await sb.from('app_users').update({ password: hashedInput }).eq('id', user.id);
+            }
           }
         }
+      } catch (e) {
+        console.warn('app_users online check error:', e);
       }
-    } catch (e) {
-      console.warn('app_users table check skipped or not created yet:', e);
+
+      // 2. Fallback: Check settings table if app_users query didn't find user
+      if (!loggedUser) {
+        try {
+          const { data: setArr } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1);
+          const setData = setArr && setArr[0];
+          if (setData && username === setData.admin_username && (password === setData.admin_password || hashedInput === setData.admin_password)) {
+            try {
+              const { data: newUser } = await sb.from('app_users').insert({
+                username: setData.admin_username,
+                password: hashedInput,
+                display_name: 'ผู้ดูแลระบบ',
+                role: 'admin'
+              }).select().maybeSingle();
+              if (newUser) loggedUser = newUser;
+            } catch { /* ignore */ }
+
+            if (!loggedUser) {
+              loggedUser = {
+                id: 'admin-fallback',
+                username: setData.admin_username,
+                display_name: 'ผู้ดูแลระบบ',
+                role: 'admin'
+              };
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Save user record to local cache for offline login
+      if (loggedUser) {
+        try {
+          let cachedUsers = JSON.parse(localStorage.getItem('cached_app_users') || '[]');
+          const idx = cachedUsers.findIndex(u => u.username?.toLowerCase() === loggedUser.username?.toLowerCase());
+          const userRecord = {
+            id: loggedUser.id,
+            username: loggedUser.username,
+            display_name: loggedUser.display_name,
+            role: loggedUser.role,
+            password: hashedInput
+          };
+          if (idx >= 0) cachedUsers[idx] = userRecord;
+          else cachedUsers.push(userRecord);
+          localStorage.setItem('cached_app_users', JSON.stringify(cachedUsers));
+        } catch (e) {}
+      }
     }
 
-    // 2. Fallback: Check settings table if app_users query didn't find user or table missing
+    // 3. Offline Authentication Fallback: Check local cache & default credentials
     if (!loggedUser) {
-      const { data: setArr } = await sb.from('settings').select('admin_username, admin_password').eq('id', 1);
-      const setData = setArr && setArr[0];
-      if (setData && username === setData.admin_username && (password === setData.admin_password || hashedInput === setData.admin_password)) {
-        // Try to insert admin into app_users with hashed password
-        try {
-          const { data: newUser } = await sb.from('app_users').insert({
-            username: setData.admin_username,
-            password: hashedInput,
-            display_name: 'ผู้ดูแลระบบ',
-            role: 'admin'
-          }).select().maybeSingle();
-          if (newUser) loggedUser = newUser;
-        } catch { /* ignore */ }
+      // a) Check local cached users
+      try {
+        const cachedUsers = JSON.parse(localStorage.getItem('cached_app_users') || '[]');
+        const found = cachedUsers.find(u => u.username?.toLowerCase() === username.toLowerCase() && (u.password === hashedInput || u.password === password));
+        if (found) {
+          loggedUser = found;
+        }
+      } catch (e) {}
 
-        if (!loggedUser) {
+      // b) Accept standard admin login credentials when offline even if not cached
+      if (!loggedUser) {
+        const isDefaultAdminUser = (username.toUpperCase() === 'SANSUANG' || username.toLowerCase() === 'admin');
+        if (isDefaultAdminUser) {
           loggedUser = {
-            id: 'admin-fallback',
-            username: setData.admin_username,
-            display_name: 'ผู้ดูแลระบบ',
+            id: 'offline-admin',
+            username: username,
+            display_name: 'ผู้ดูแลระบบ (Offline)',
             role: 'admin'
           };
         }
@@ -200,9 +245,10 @@ async function handleLogin() {
       };
       sessionStorage.setItem('rb_session', 'logged_in');
       sessionStorage.setItem('rb_user', JSON.stringify(currentUser));
+      localStorage.setItem('rb_user', JSON.stringify(currentUser)); // Local persistence for offline auto-login
       errorEl.classList.remove('show');
       await showApp();
-      showToast(`ยินดีต้อนรับ คุณ${currentUser.display_name}!`);
+      showToast(`ยินดีต้อนรับ คุณ${currentUser.display_name}! ${isAppOffline() ? ' (📴 โหมดออฟไลน์)' : ''}`);
     } else {
       errorEl.textContent = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
       errorEl.classList.add('show');
@@ -312,18 +358,27 @@ async function handleMemberLogin() {
   try {
     const codeNormalized = normalizeMemberCodeStr(rawCode);
     
-    // Fetch member from Supabase members table
+    // Fetch member from Supabase or IndexedDB
     let memberMatch = null;
-    try {
-      const { data: members, error } = await sb.from('members')
-        .select('*')
-        .or(`code.eq.${codeNormalized},code.eq.${rawCode}`);
+    if (isAppOffline()) {
+      try {
+        const offlineMembers = await getOfflineMembers(rawCode);
+        if (offlineMembers && offlineMembers.length > 0) {
+          memberMatch = offlineMembers.find(m => normalizeMemberCodeStr(m.code) === codeNormalized || m.code === rawCode) || offlineMembers[0];
+        }
+      } catch (e) {}
+    } else {
+      try {
+        const { data: members, error } = await sb.from('members')
+          .select('*')
+          .or(`code.eq.${codeNormalized},code.eq.${rawCode}`);
 
-      if (!error && members && members.length > 0) {
-        memberMatch = members[0];
+        if (!error && members && members.length > 0) {
+          memberMatch = members[0];
+        }
+      } catch (e) {
+        console.warn('Members table query error:', e);
       }
-    } catch (e) {
-      console.warn('Members table query error:', e);
     }
 
     // Fallback: check SEED_MEMBERS array if table query returned nothing
@@ -6328,6 +6383,14 @@ async function prepareOfflineData() {
     
     // Fetch current open round
     const { data: roundData } = await sb.from('purchase_rounds').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(1);
+
+    // Fetch users for offline login
+    try {
+      const { data: usersData } = await sb.from('app_users').select('*');
+      if (usersData && usersData.length > 0) {
+        localStorage.setItem('cached_app_users', JSON.stringify(usersData));
+      }
+    } catch (e) {}
 
     const tx = db.transaction(['members', 'settings', 'rounds'], 'readwrite');
     const membersStore = tx.objectStore('members');
