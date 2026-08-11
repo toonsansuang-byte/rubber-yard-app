@@ -91,6 +91,83 @@
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.10);
   --shadow-glow: 0 0 25px rgba(5, 150, 105, 0.10);
 }
+/* ===== OFFLINE STATUS BAR ===== */
+.offline-status-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: 'Prompt', sans-serif;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+.offline-status-bar.offline {
+  background: linear-gradient(135deg, #92400e, #b45309);
+  color: #fef3c7;
+}
+
+.offline-status-bar.online {
+  background: linear-gradient(135deg, #065f46, #059669);
+  color: #d1fae5;
+}
+
+.offline-status-bar.syncing {
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  color: #dbeafe;
+}
+
+.offline-status-bar.has-pending {
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  color: #dbeafe;
+}
+
+.offline-pending-badge {
+  background: rgba(255,255,255,0.25);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.offline-sync-btn {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: inherit;
+  padding: 4px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Prompt', sans-serif;
+  transition: background 0.2s;
+}
+
+.offline-sync-btn:hover {
+  background: rgba(255,255,255,0.35);
+}
+
+/* Adjust body padding when offline bar is visible */
+body.has-offline-bar {
+  padding-top: 38px;
+}
+
+body.has-offline-bar #sidebar {
+  top: 38px;
+  height: calc(100vh - 38px);
+}
+
+body.has-offline-bar .loading-overlay {
+  top: 38px;
+}
 
 /* ===== RESET & BASE ===== */
 *, *::before, *::after {

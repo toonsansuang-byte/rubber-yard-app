@@ -1801,11 +1801,28 @@ function updatePurchaseDualModeUI() {
 // ========== PURCHASE ROUNDS MANAGEMENT ==========
 async function loadCurrentRound() {
   try {
-    const { data } = await sb.from('purchase_rounds')
-      .select('*')
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    let data = null;
+    if (isAppOffline()) {
+      if (!offlineDB) await openOfflineDB();
+      const tx = offlineDB.transaction(['rounds'], 'readonly');
+      const store = tx.objectStore('rounds');
+      const req = store.getAll();
+      data = await new Promise((resolve) => {
+        req.onsuccess = () => {
+          const rounds = req.result || [];
+          const openRounds = rounds.filter(r => r.status === 'open');
+          openRounds.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+          resolve(openRounds.length > 0 ? [openRounds[0]] : null);
+        };
+      });
+    } else {
+      const res = await sb.from('purchase_rounds')
+        .select('*')
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      data = res.data;
+    }
 
     if (data && data.length > 0) {
       currentRound = data[0];
@@ -1877,20 +1894,38 @@ async function saveStartNewRound() {
         closed_at: new Date().toISOString(),
         closed_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
       };
-      let { error: closeErr } = await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
-      if (closeErr) {
-        delete closePayload.closed_at;
-        delete closePayload.closed_by_name;
-        await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
+      if (isAppOffline()) {
+        closePayload.id = currentRound.id;
+        await saveOfflineRound(closePayload, 'round_close');
+      } else {
+        let { error: closeErr } = await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
+        if (closeErr) {
+          delete closePayload.closed_at;
+          delete closePayload.closed_by_name;
+          await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
+        }
       }
     }
 
     // Insert new open round
-    const { data, error } = await sb.from('purchase_rounds').insert({
+    const payload = {
       title: title,
       status: 'open',
       start_date: new Date().toISOString()
-    }).select().single();
+    };
+    
+    let data, error;
+    if (isAppOffline()) {
+      try {
+        data = await saveOfflineRound(payload, 'round_create');
+      } catch (err) {
+        error = err;
+      }
+    } else {
+      const res = await sb.from('purchase_rounds').insert(payload).select().single();
+      data = res.data;
+      error = res.error;
+    }
 
     if (error) throw error;
 
@@ -1928,13 +1963,24 @@ async function closeRound(roundId) {
       closed_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
     };
 
-    let { error } = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
-    if (error) {
-      console.warn('closeRound update fallback executed:', error.message);
-      delete updatePayload.closed_at;
-      delete updatePayload.closed_by_name;
-      const res = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
+    let error = null;
+    if (isAppOffline()) {
+      updatePayload.id = roundId;
+      try {
+        await saveOfflineRound(updatePayload, 'round_close');
+      } catch (err) {
+        error = err;
+      }
+    } else {
+      let res = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
       error = res.error;
+      if (error) {
+        console.warn('closeRound update fallback executed:', error.message);
+        delete updatePayload.closed_at;
+        delete updatePayload.closed_by_name;
+        res = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
+        error = res.error;
+      }
     }
 
     if (error) throw error;
@@ -3498,13 +3544,17 @@ async function searchPurchaseMember(query) {
   if (!query.trim()) { listEl.innerHTML = ''; return; }
 
   try {
-    const { data } = await sb.from('members')
-      .select('*')
-      .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
-      .order('code')
-      .limit(8);
-
-    const members = data || [];
+    let members = [];
+    if (isAppOffline()) {
+      members = await getOfflineMembers(query);
+    } else {
+      const { data } = await sb.from('members')
+        .select('*')
+        .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
+        .order('code')
+        .limit(8);
+      members = data || [];
+    }
     currentSearchMembersResults = members;
 
     if (members.length === 0) {
@@ -3871,24 +3921,38 @@ async function saveTransaction(confirmedOverride = false) {
         date: new Date().toISOString()
       };
 
-      let { data, error } = await sb.from('transactions').insert(payload).select().single();
-
-      if (error && error.message.includes('column')) {
-        delete payload.trips;
-        delete payload.cart_weight;
-        delete payload.auction_price;
-        delete payload.yard_fee;
-        delete payload.created_by_display_name;
-        delete payload.confirmed_by_display_name;
-        delete payload.buyer_name;
-        delete payload.auction_buyer;
-        delete payload.sequence_no;
-        delete payload.seq_no;
-        delete payload.queue_no;
+      let data, error;
+      if (isAppOffline()) {
+        try {
+          const pendingCount = await getOfflinePendingCount();
+          payload.sequence_no = nextSeqNo + pendingCount;
+          payload.seq_no = payload.sequence_no;
+          payload.id = 'off_tx_' + Date.now();
+          data = await saveOfflineTransaction(payload);
+          showToast('📴 บันทึกออฟไลน์สำเร็จ! (รอซิงค์)');
+        } catch (err) {
+          error = err;
+        }
+      } else {
         let res = await sb.from('transactions').insert(payload).select().single();
+
         if (res.error && res.error.message.includes('column')) {
-          delete payload.trips_detail;
+          delete payload.trips;
+          delete payload.cart_weight;
+          delete payload.auction_price;
+          delete payload.yard_fee;
+          delete payload.created_by_display_name;
+          delete payload.confirmed_by_display_name;
+          delete payload.buyer_name;
+          delete payload.auction_buyer;
+          delete payload.sequence_no;
+          delete payload.seq_no;
+          delete payload.queue_no;
           res = await sb.from('transactions').insert(payload).select().single();
+          if (res.error && res.error.message.includes('column')) {
+            delete payload.trips_detail;
+            res = await sb.from('transactions').insert(payload).select().single();
+          }
         }
         data = res.data;
         error = res.error;
@@ -6200,18 +6264,372 @@ async function forceSeedMembers() {
   hideLoading();
 }
 
+// ========== OFFLINE PWA SYSTEM (IndexedDB + Sync) ==========
+let offlineDB = null;
+
+function openOfflineDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('rubber_yard_offline', 1);
+    
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('members')) {
+        db.createObjectStore('members', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('rounds')) {
+        db.createObjectStore('rounds', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('offline_transactions')) {
+        db.createObjectStore('offline_transactions', { keyPath: 'offline_id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains('sync_queue')) {
+        db.createObjectStore('sync_queue', { keyPath: 'queue_id', autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = (e) => {
+      offlineDB = e.target.result;
+      resolve(offlineDB);
+    };
+
+    request.onerror = (e) => {
+      console.error('IndexedDB error:', e);
+      reject(e);
+    };
+  });
+}
+
+function isAppOffline() {
+  return !navigator.onLine;
+}
+
+async function prepareOfflineData() {
+  if (!sb) return;
+  showLoading();
+  try {
+    const db = await openOfflineDB();
+    
+    // Fetch members
+    let allMembers = [];
+    let page = 0;
+    while(true) {
+      const { data, error } = await sb.from('members').select('*').range(page*1000, (page+1)*1000 - 1);
+      if (error || !data || data.length === 0) break;
+      allMembers = allMembers.concat(data);
+      page++;
+      if (data.length < 1000) break;
+    }
+    
+    // Fetch settings
+    const { data: settingsData } = await sb.from('settings').select('*').eq('id', 1).single();
+    
+    // Fetch current open round
+    const { data: roundData } = await sb.from('purchase_rounds').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(1);
+
+    const tx = db.transaction(['members', 'settings', 'rounds'], 'readwrite');
+    const membersStore = tx.objectStore('members');
+    const settingsStore = tx.objectStore('settings');
+    const roundsStore = tx.objectStore('rounds');
+    
+    membersStore.clear();
+    allMembers.forEach(m => membersStore.put(m));
+    
+    if (settingsData) settingsStore.put(settingsData);
+    if (roundData && roundData.length > 0) roundsStore.put(roundData[0]);
+    
+    return new Promise((resolve) => {
+      tx.oncomplete = () => {
+        showToast(`✅ เตรียมข้อมูลออฟไลน์สำเร็จ! (สมาชิก ${allMembers.length} คน)`, 'success');
+        updateOfflineStatusUI();
+        hideLoading();
+        resolve();
+      };
+    });
+  } catch (err) {
+    hideLoading();
+    console.error('Failed to prepare offline data:', err);
+  }
+}
+
+async function getOfflineMembers(query) {
+  if (!offlineDB) await openOfflineDB();
+  return new Promise((resolve) => {
+    const tx = offlineDB.transaction(['members'], 'readonly');
+    const store = tx.objectStore('members');
+    const request = store.openCursor();
+    const results = [];
+    const q = query.toLowerCase();
+    
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor && results.length < 8) {
+        const m = cursor.value;
+        if ((m.code && m.code.toLowerCase().includes(q)) || (m.name && m.name.toLowerCase().includes(q))) {
+          results.push(m);
+        }
+        cursor.continue();
+      } else {
+        resolve(results);
+      }
+    };
+  });
+}
+
+async function saveOfflineTransaction(payload) {
+  if (!offlineDB) await openOfflineDB();
+  return new Promise((resolve, reject) => {
+    const tx = offlineDB.transaction(['offline_transactions', 'sync_queue'], 'readwrite');
+    const txStore = tx.objectStore('offline_transactions');
+    const syncStore = tx.objectStore('sync_queue');
+    
+    const request = txStore.add(payload);
+    request.onsuccess = (e) => {
+      const offlineId = e.target.result;
+      payload.offline_id = offlineId;
+      syncStore.add({
+        type: 'transaction',
+        payload: payload,
+        timestamp: new Date().toISOString()
+      });
+    };
+    
+    tx.oncomplete = () => {
+      updateOfflineStatusUI();
+      resolve(payload);
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function getOfflinePendingCount() {
+  if (!offlineDB) await openOfflineDB();
+  return new Promise((resolve) => {
+    const tx = offlineDB.transaction(['sync_queue'], 'readonly');
+    const store = tx.objectStore('sync_queue');
+    const countRequest = store.count();
+    countRequest.onsuccess = () => resolve(countRequest.result);
+    countRequest.onerror = () => resolve(0);
+  });
+}
+
+async function syncOfflineData() {
+  if (isAppOffline()) return;
+  if (!offlineDB) await openOfflineDB();
+  
+  const queue = await new Promise((resolve) => {
+    const tx = offlineDB.transaction(['sync_queue'], 'readonly');
+    const store = tx.objectStore('sync_queue');
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+  });
+  
+  if (queue.length === 0) return;
+  
+  showToast(`🔄 กำลังซิงค์... (0/${queue.length})`, 'info');
+  let successCount = 0;
+  
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i];
+    try {
+      if (item.type === 'transaction') {
+        const payload = { ...item.payload };
+        delete payload.offline_id;
+        
+        let { data, error } = await sb.from('transactions').insert(payload).select().single();
+        if (error && error.message.includes('column')) {
+          delete payload.trips;
+          delete payload.cart_weight;
+          delete payload.auction_price;
+          delete payload.yard_fee;
+          delete payload.created_by_display_name;
+          delete payload.confirmed_by_display_name;
+          delete payload.buyer_name;
+          delete payload.auction_buyer;
+          delete payload.sequence_no;
+          delete payload.seq_no;
+          delete payload.queue_no;
+          let { data: d2, error: e2 } = await sb.from('transactions').insert(payload).select().single();
+          if (e2 && e2.message.includes('column')) {
+            delete payload.trips_detail;
+            let res3 = await sb.from('transactions').insert(payload).select().single();
+            e2 = res3.error; d2 = res3.data;
+          }
+          error = e2; data = d2;
+        }
+        if (error) throw error;
+      } else if (item.type === 'round_create') {
+        const payload = { ...item.payload };
+        delete payload.offline_id;
+        const { error } = await sb.from('purchase_rounds').insert(payload);
+        if (error) throw error;
+      } else if (item.type === 'round_close') {
+        const { id, ...updateData } = item.payload;
+        let { error } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
+        if (error) {
+          delete updateData.closed_at;
+          delete updateData.closed_by_name;
+          const { error: e2 } = await sb.from('purchase_rounds').update(updateData).eq('id', id);
+          if (e2) throw e2;
+        }
+      }
+      
+      await new Promise((resolve) => {
+        const tx = offlineDB.transaction(['sync_queue'], 'readwrite');
+        tx.objectStore('sync_queue').delete(item.queue_id);
+        tx.oncomplete = () => resolve();
+      });
+      successCount++;
+      showToast(`🔄 กำลังซิงค์... (${successCount}/${queue.length})`, 'info');
+    } catch (err) {
+      console.error('Sync error:', err);
+    }
+  }
+  
+  if (successCount > 0) {
+    showToast(`✅ ซิงค์สำเร็จ ${successCount} รายการ!`, 'success');
+  }
+  updateOfflineStatusUI();
+}
+
+async function updateOfflineStatusUI() {
+  const statusBar = document.getElementById('offline-status-bar');
+  const statusIcon = document.getElementById('offline-status-icon');
+  const statusText = document.getElementById('offline-status-text');
+  const pendingBadge = document.getElementById('offline-pending-count');
+  const syncBtn = document.getElementById('offline-sync-btn');
+  const settingsStatusText = document.getElementById('offline-data-status-text');
+
+  const pendingCount = await getOfflinePendingCount();
+
+  // Check indexedDB member count for settings display
+  try {
+    if (offlineDB) {
+      const tx = offlineDB.transaction(['members'], 'readonly');
+      const store = tx.objectStore('members');
+      const countReq = store.count();
+      countReq.onsuccess = () => {
+        const memberCount = countReq.result || 0;
+        if (settingsStatusText) {
+          if (memberCount > 0) {
+            settingsStatusText.innerHTML = `✅ พร้อมใช้งานออฟไลน์ (ดาวน์โหลดสมาชิกแล้ว <strong>${memberCount}</strong> คน)`;
+            settingsStatusText.style.color = 'var(--text-accent)';
+          } else {
+            settingsStatusText.innerHTML = `⚠️ ยังไม่ได้เตรียมข้อมูลออฟไลน์ (กรุณากดปุ่ม "📥 เตรียมข้อมูลออฟไลน์" ก่อนไปลานยาง)`;
+            settingsStatusText.style.color = 'var(--warning)';
+          }
+        }
+      };
+    }
+  } catch (e) {}
+
+  if (!statusBar) return;
+
+  if (isAppOffline()) {
+    document.body.classList.add('has-offline-bar');
+    statusBar.className = 'offline-status-bar offline';
+    if (statusIcon) statusIcon.textContent = '📴';
+    if (statusText) statusText.textContent = 'โหมดออฟไลน์ — บันทึกข้อมูลลงเครื่อง';
+    if (pendingBadge) {
+      if (pendingCount > 0) {
+        pendingBadge.textContent = `${pendingCount} รายการค้างซิงค์`;
+        pendingBadge.style.display = 'inline-block';
+      } else {
+        pendingBadge.style.display = 'none';
+      }
+    }
+    if (syncBtn) syncBtn.style.display = 'none';
+    statusBar.style.display = 'flex';
+  } else if (pendingCount > 0) {
+    document.body.classList.add('has-offline-bar');
+    statusBar.className = 'offline-status-bar has-pending';
+    if (statusIcon) statusIcon.textContent = '🔄';
+    if (statusText) statusText.textContent = `เชื่อมต่อแล้ว — มี ${pendingCount} รายการรอซิงค์ขึ้นเซิร์ฟเวอร์`;
+    if (pendingBadge) {
+      pendingBadge.textContent = `${pendingCount} รายการ`;
+      pendingBadge.style.display = 'inline-block';
+    }
+    if (syncBtn) syncBtn.style.display = 'inline-block';
+    statusBar.style.display = 'flex';
+    // Auto sync when online with pending items
+    syncOfflineData();
+  } else {
+    document.body.classList.remove('has-offline-bar');
+    statusBar.style.display = 'none';
+  }
+}
+
+
+async function saveOfflineRound(roundData, actionType) {
+  if (!offlineDB) await openOfflineDB();
+  return new Promise((resolve, reject) => {
+    const tx = offlineDB.transaction(['rounds', 'sync_queue'], 'readwrite');
+    const roundsStore = tx.objectStore('rounds');
+    const syncStore = tx.objectStore('sync_queue');
+    
+    if (actionType === 'round_create') {
+      roundData.id = 'off_round_' + Date.now();
+      roundsStore.put(roundData);
+    } else if (actionType === 'round_close') {
+      roundsStore.delete(roundData.id); 
+    }
+    
+    syncStore.add({
+      type: actionType,
+      payload: roundData,
+      timestamp: new Date().toISOString()
+    });
+    
+    tx.oncomplete = () => {
+      updateOfflineStatusUI();
+      resolve(roundData);
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+window.addEventListener('online', updateOfflineStatusUI);
+window.addEventListener('offline', updateOfflineStatusUI);
+
 // ========== INITIALIZATION ==========
 async function init() {
   updatePlantationLogo();
+  await openOfflineDB();
+
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('sw.js');
+    } catch (e) {
+      console.log('SW registration failed:', e);
+    }
+  }
+
   try {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch (err) {
-    showToast('ไม่สามารถเชื่อมต่อ Supabase ได้', 'error');
-    hideLoading();
-    return;
+    if (!isAppOffline()) {
+      showToast('ไม่สามารถเชื่อมต่อ Supabase ได้', 'error');
+      hideLoading();
+      return;
+    }
   }
 
-  if (checkAuth()) {
+  updateOfflineStatusUI();
+
+  let isAuth = checkAuth();
+  if (!isAuth && isAppOffline()) {
+    const storedUser = localStorage.getItem('rb_user') || sessionStorage.getItem('rb_user');
+    if (storedUser) {
+      try {
+        currentUser = JSON.parse(storedUser);
+        isAuth = true;
+      } catch (e) {}
+    }
+  }
+
+  if (isAuth) {
     showLoading();
     await seedInitialMembers();
     await showApp();
