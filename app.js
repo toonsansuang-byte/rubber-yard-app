@@ -4728,7 +4728,7 @@ function buildReceiptCopyHTML(tx, plantName) {
             (trip.net_weight !== undefined ? trip.net_weight : trip.netWeight)));
     }
     const displayVal = (val !== undefined && Number(val) > 0) ? formatNumber(val) : '-';
-    tripGridCellsHtml += `<td style="border:1px solid #000; padding:2px 1px; width:12.5%; text-align:center; font-size:11px;">${displayVal}</td>`;
+    tripGridCellsHtml += `<td style="border:1px solid #000; padding:3px 2px; width:12.5%; text-align:center; font-size:13px; font-weight:bold;">${displayVal}</td>`;
   }
 
   const totalGross = tripsArr.reduce((s, t) => s + Number(t.gross_weight || t.gross || t.net_weight || 0), 0);
@@ -4750,45 +4750,45 @@ function buildReceiptCopyHTML(tx, plantName) {
   let creatorName = tx.created_by_display_name || tx.created_by_name || 'ผู้ดูแลระบบ';
 
   return `
-    <div class="receipt-single-copy" style="font-family:'Sarabun','TH Sarabun New',sans-serif; color:#000; padding:6px 12px; background:#fff; font-size:11px; line-height:1.3; border:1px solid #000; margin-bottom:4px; box-sizing:border-box;">
+    <div class="receipt-single-copy" style="font-family:'Sarabun','TH Sarabun New',sans-serif; color:#000; padding:8px 14px; background:#fff; font-size:13px; line-height:1.35; border:1px solid #000; margin-bottom:4px; box-sizing:border-box;">
       <!-- Header -->
-      <div style="text-align:center; margin-bottom:6px; border-bottom:1px solid #000; padding-bottom:4px;">
-        <div style="font-size:14px; font-weight:bold; color:#000;">${plantName}</div>
-        <div style="font-size:11px; color:#000; margin-top:1px;">${plantAddress}</div>
+      <div style="text-align:center; margin-bottom:6px; border-bottom:1.5px solid #000; padding-bottom:4px;">
+        <div style="font-size:17px; font-weight:900; color:#000; letter-spacing:0.5px;">${plantName}</div>
+        <div style="font-size:12px; color:#111; margin-top:2px;">${plantAddress}</div>
       </div>
 
       <!-- Main Form Table -->
-      <table style="width:100%; border-collapse:collapse; font-size:11px;">
+      <table style="width:100%; border-collapse:collapse; font-size:13.5px;">
         <tr>
-          <td style="width:130px; font-weight:bold; padding:1px 0;">วันที่ขายยาง</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${dateFormattedStr}</td>
+          <td style="width:145px; font-weight:bold; padding:2px 0;">วันที่ขายยาง</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${dateFormattedStr}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">ผู้ประมูล</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${auctionBuyer}</td>
+          <td style="font-weight:bold; padding:2px 0;">ผู้ประมูล</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${auctionBuyer}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">ลำดับที่</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${sequenceNo}</td>
+          <td style="font-weight:bold; padding:2px 0;">ลำดับที่</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${sequenceNo}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">เลขที่บิล/คิว</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${queueNo}</td>
+          <td style="font-weight:bold; padding:2px 0;">เลขที่บิล/คิว</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${queueNo}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">รหัสสมาชิก</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${memberCodeFormatted}</td>
+          <td style="font-weight:bold; padding:2px 0;">รหัสสมาชิก</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:15px; text-align:center; color:#000;">${memberCodeFormatted}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">ชื่อสมาชิก</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
+          <td style="font-weight:bold; padding:2px 0;">ชื่อสมาชิก</td>
+          <td style="border-bottom:1px dotted #000; font-weight:900; font-size:15px; text-align:center;">${tx.member_name}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">ชื่อคนกรีด</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${tx.member_name}</td>
+          <td style="font-weight:bold; padding:2px 0;">ชื่อคนกรีด</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${tx.member_name}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
+          <td style="font-weight:bold; padding:3px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
           <td style="padding:2px 0;">
             <table style="width:100%; border-collapse:collapse;">
               <tr>
@@ -4798,40 +4798,40 @@ function buildReceiptCopyHTML(tx, plantName) {
           </td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">น้ำหนักยางรวมรถ</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalGross)}</td>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางรวมรถ</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(totalGross)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">น้ำหนักรวมรถเข็น</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(totalCart)}</td>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักรวมรถเข็น</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(totalCart)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">น้ำหนักยางสุทธิ</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(finalNetWeight)}</td>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางสุทธิ</td>
+          <td style="border-bottom:1px dotted #000; font-weight:900; font-size:15px; text-align:center;">${formatNumber(finalNetWeight)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:1px 0;">ราคา / กิโลกรัม</td>
-          <td style="border-bottom:1px dotted #000; font-weight:bold; text-align:center;">${formatNumber(tx.price_per_kg)}</td>
+          <td style="font-weight:bold; padding:2px 0;">ราคา / กิโลกรัม</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(tx.price_per_kg)}</td>
         </tr>
         <tr>
-          <td style="font-weight:bold; padding:2px 0; font-size:12px;">จำนวนเงิน</td>
-          <td style="border-bottom:1px solid #000; font-weight:bold; text-align:center; font-size:13px;">${formatNumber(tx.total_price)}</td>
+          <td style="font-weight:900; padding:4px 0; font-size:15px;">จำนวนเงิน</td>
+          <td style="border-bottom:2px solid #000; font-weight:900; text-align:center; font-size:18px; color:#000;">${formatNumber(tx.total_price)} บาท</td>
         </tr>
       </table>
 
       <!-- Signatures Footer -->
-      <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; text-align:center; font-size:10px;">
+      <div style="margin-top:14px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; font-size:11.5px;">
         <div>
-          <div style="border-bottom:1px solid #000; height:16px;"></div>
-          <div style="font-weight:bold; margin-top:1px;">ผู้จัดทำ</div>
+          <div style="border-bottom:1px solid #000; height:18px;"></div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้จัดทำ</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:16px;"></div>
-          <div style="font-weight:bold; margin-top:1px;">ผู้จ่ายเงิน</div>
+          <div style="border-bottom:1px solid #000; height:18px;"></div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้จ่ายเงิน</div>
         </div>
         <div>
-          <div style="border-bottom:1px solid #000; height:16px;"></div>
-          <div style="font-weight:bold; margin-top:1px;">ผู้รับเงิน</div>
+          <div style="border-bottom:1px solid #000; height:18px;"></div>
+          <div style="font-weight:bold; margin-top:2px;">ผู้รับเงิน</div>
         </div>
       </div>
     </div>
@@ -4851,7 +4851,7 @@ function renderReceiptContent() {
   const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
   const copy1 = buildReceiptCopyHTML(currentReceiptTx, plantName);
   const copy2 = buildReceiptCopyHTML(currentReceiptTx, plantName);
-  const cutLine = `<div class="receipt-cut-line" style="text-align:center; font-size:9px; margin:3px 0; color:#333; font-weight:bold;">----------------------------------------------------------------------------------------------------</div>`;
+  const cutLine = `<div class="receipt-cut-line" style="text-align:center; font-size:11px; margin:4px 0; color:#222; font-weight:bold;">✂️ ----------------------------------------------------------------------------------------------------</div>`;
 
   document.getElementById('receipt-content').innerHTML = `
     ${copy1}
@@ -4862,16 +4862,18 @@ function renderReceiptContent() {
 
 function closeReceiptModal() {
   document.getElementById('receipt-modal').classList.remove('show');
+  navigateTo('purchase');
+  if (typeof initPurchase === 'function') {
+    initPurchase();
+  }
+  setTimeout(() => {
+    const memberSearchInput = document.getElementById('purchase-member-search');
+    if (memberSearchInput) memberSearchInput.focus();
+  }, 200);
 }
 
 function printReceipt() {
   if (!currentReceiptTx) return;
-
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตป๊อปอัพเพื่อพิมพ์', 'error');
-    return;
-  }
 
   const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
   const copy1 = buildReceiptCopyHTML(currentReceiptTx, plantName);
@@ -4886,33 +4888,33 @@ function printReceipt() {
       <style>
         @page {
           size: A4 portrait;
-          margin: 4mm 5mm;
+          margin: 4mm 6mm;
         }
         * {
           box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
         html, body {
           width: 100%;
-          height: 100%;
           margin: 0;
           padding: 0;
           background: #fff;
           font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
-          overflow: hidden;
         }
         .page-container {
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          height: 100%;
-          max-height: 288mm;
+          height: 280mm;
+          max-height: 282mm;
           padding: 1mm;
           box-sizing: border-box;
         }
         .receipt-single-copy {
           height: 48.5%;
-          border: 1px solid #000;
-          padding: 10px 14px;
+          border: 1.5px solid #000;
+          padding: 10px 16px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
@@ -4920,11 +4922,8 @@ function printReceipt() {
           background: #fff;
         }
         .receipt-cut-line {
-          height: 2%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 10px;
+          text-align: center;
+          font-size: 11px;
           font-weight: bold;
           color: #000;
           letter-spacing: 2px;
@@ -4933,7 +4932,7 @@ function printReceipt() {
         table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12.5px;
+          font-size: 13.5px;
         }
         td {
           padding: 2.5px 0;
@@ -4943,21 +4942,50 @@ function printReceipt() {
     <body>
       <div class="page-container">
         ${copy1}
-        <div class="receipt-cut-line">----------------------------------------------------------------------------------------------------</div>
+        <div class="receipt-cut-line">✂️ ----------------------------------------------------------------------------------------------------</div>
         ${copy2}
       </div>
     </body>
     </html>
   `;
 
-  printWindow.document.open();
-  printWindow.document.write(htmlContent);
-  printWindow.document.close();
+  // Hidden iframe to prevent any popup windows from sticking around
+  let printFrame = document.getElementById('receipt-print-iframe');
+  if (!printFrame) {
+    printFrame = document.createElement('iframe');
+    printFrame.id = 'receipt-print-iframe';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+  }
 
-  printWindow.focus();
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  frameDoc.write(htmlContent);
+  frameDoc.close();
+
+  // Close receipt modal immediately
+  closeReceiptModal();
+
+  // Navigate back to Purchase and focus on Member Search input
+  navigateTo('purchase');
+  if (typeof initPurchase === 'function') {
+    initPurchase();
+  }
   setTimeout(() => {
-    printWindow.print();
-  }, 350);
+    const memberSearchInput = document.getElementById('purchase-member-search');
+    if (memberSearchInput) memberSearchInput.focus();
+  }, 250);
+
+  // Trigger print via iframe without popup window
+  setTimeout(() => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+  }, 200);
 }
 
 // ========== HISTORY ==========
