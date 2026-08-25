@@ -5,21 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="ระบบจัดการลานยางพาราชุมชน - รับซื้อยาง คำนวณน้ำหนัก คำนวณราคา">
   <meta name="theme-color" content="#060f0a">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>ลานยางพาราชุมชน | ระบบจัดการรับซื้อยาง</title>
-  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css?v=2.0">
 </head>
 <body>
 
-  <!-- ===== OFFLINE STATUS BAR ===== -->
-  <div id="offline-status-bar" class="offline-status-bar" style="display:none;">
-    <span id="offline-status-icon">📴</span>
-    <span id="offline-status-text">โหมดออฟไลน์</span>
-    <span id="offline-pending-count" class="offline-pending-badge" style="display:none;">0</span>
-    <button id="offline-sync-btn" class="offline-sync-btn" onclick="syncOfflineData()" style="display:none;">🔄 ซิงค์ข้อมูล</button>
-  </div>
+
 
   <!-- ===== TOAST CONTAINER ===== -->
   <div class="toast-container" id="toast-container"></div>
@@ -737,6 +728,7 @@
                   <th>ราคา/กก.</th>
                   <th>ยอดเงิน</th>
                   <th>ผู้บันทึก</th>
+                  <th style="text-align:center;">สถานะ</th>
                   <th>จัดการ</th>
                 </tr>
               </thead>
@@ -949,23 +941,39 @@
             </div>
           </div>
 
-          <!-- Offline PWA Section -->
+          <!-- Cloud Sync Section -->
           <div class="glass-card">
-            <div class="settings-section-title">📴 โหมดออฟไลน์ (PWA)</div>
+            <div class="settings-section-title">☁️ การซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์</div>
             
             <div style="display:flex; flex-direction:column; gap:12px;">
-              <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">กดปุ่มด้านล่างเพื่อดาวน์โหลดข้อมูลสมาชิก ราคา และตั้งค่าทั้งหมดลงในเครื่อง สำหรับใช้งานที่ลานยางโดยไม่ต้องมีอินเทอร์เน็ต</p>
-              
-              <div id="offline-data-status" style="background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); font-size:0.85rem;">
-                <span id="offline-data-status-text" style="color:var(--text-muted);">ยังไม่ได้เตรียมข้อมูลออฟไลน์</span>
-              </div>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
+                ซิงค์รายการรับซื้อและข้อมูลล่าสุดในเครื่องขึ้นระบบคลาวด์ เพื่อให้สมาชิกสามารถตรวจสอบข้อมูลผ่านมือถือได้แบบเรียลไทม์
+              </p>
               
               <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="prepareOfflineData()" style="padding:12px 24px;">
-                  📥 เตรียมข้อมูลออฟไลน์
-                </button>
-                <button class="btn btn-secondary" onclick="syncOfflineData()" id="settings-sync-btn" style="padding:12px 24px;">
+                <button class="btn btn-primary" onclick="syncOfflineData()" id="settings-sync-btn" style="padding:12px 24px;">
                   🔄 ซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- App Version & Auto-Update -->
+          <div class="glass-card">
+            <div class="settings-section-title">📦 เวอร์ชันและการอัปเดตโปรแกรม</div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; background:rgba(255,255,255,0.02); padding:16px 20px; border-radius:var(--radius-md); border:1px solid var(--border);">
+              <div>
+                <div style="font-size:1.05rem; font-weight:700; color:var(--text-accent);" id="app-current-version-text">
+                  เวอร์ชันปัจจุบัน: v1.0.0
+                </div>
+                <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:4px;" id="app-update-status-detail">
+                  ระบบตรวจเช็คอัปเดตอัตโนมัติจาก GitHub Releases (เมื่อต่ออินเทอร์เน็ต)
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-manual-check-update" onclick="manualCheckForUpdate()">
+                  🔍 ตรวจสอบการอัปเดต
                 </button>
               </div>
             </div>
@@ -1701,10 +1709,29 @@
     </div>
   </div>
 
-  <!-- SheetJS (XLSX) Client for Excel/CSV parsing -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- Supabase JS Client -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=2.0"></script>
+  <!-- ===== AUTO-UPDATE FLOATING NOTIFICATION BANNER ===== -->
+  <div id="auto-updater-banner" style="display:none; position:fixed; bottom:24px; right:24px; z-index:99999; background:rgba(15, 23, 42, 0.96); border:1px solid rgba(56, 189, 248, 0.4); box-shadow:0 12px 30px rgba(0,0,0,0.6); backdrop-filter:blur(14px); padding:16px 20px; border-radius:14px; max-width:440px; color:#f8fafc; font-family:inherit; animation: slideUpFade 0.3s ease-out;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div id="updater-icon" style="font-size:1.6rem; flex-shrink:0;">🔔</div>
+      <div style="flex-grow:1; min-width:0;">
+        <div id="updater-title" style="font-weight:700; font-size:0.95rem; color:#38bdf8; margin-bottom:2px;">พบการอัปเดตใหม่</div>
+        <div id="updater-desc" style="font-size:0.82rem; color:#94a3b8; line-height:1.3;">กำลังดาวน์โหลดเวอร์ชันใหม่ในเบื้องหลัง...</div>
+        <div id="updater-progress-container" style="display:none; width:100%; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; margin-top:8px; overflow:hidden;">
+          <div id="updater-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg, #38bdf8, #22c55e); transition:width 0.2s ease;"></div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <button id="updater-restart-btn" class="btn btn-primary btn-sm" style="display:none; padding:8px 14px; font-size:0.82rem; font-weight:600; white-space:nowrap;" onclick="applyAppUpdate()">
+          🔄 รีสตาร์ทและอัปเดต
+        </button>
+        <button class="btn btn-secondary btn-sm btn-icon" style="padding:4px 8px; font-size:0.85rem;" onclick="dismissUpdaterBanner()" title="ปิดการแจ้งเตือน">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local JS Libraries for 100% Offline Support -->
+  <script src="libs/xlsx.full.min.js"></script>
+  <script src="libs/supabase.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
