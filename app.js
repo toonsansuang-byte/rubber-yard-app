@@ -5146,6 +5146,7 @@ async function filterHistory() {
           <td style="text-align:center;">${statusBadge}</td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
+            <button class="btn btn-primary btn-sm btn-icon" onclick="openEditTransactionModal('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
@@ -5847,6 +5848,213 @@ function clearHistoryFilter() {
   document.getElementById('history-date-to').value = '';
   document.getElementById('history-member-filter').value = '';
   filterHistory();
+}
+
+// ========== EDIT TRANSACTION IN HISTORY ==========
+let currentEditingTx = null;
+
+async function openEditTransactionModal(txId) {
+  if (!txId) return;
+  showLoading();
+  try {
+    let tx = null;
+    if (isDesktopApp()) {
+      const res = await window.desktopDB.select('transactions', ['*'], { id: txId });
+      tx = res && res.length > 0 ? res[0] : null;
+    } else if (sb && !isAppOffline()) {
+      const { data } = await sb.from('transactions').select('*').eq('id', txId).single();
+      tx = data;
+    }
+
+    if (!tx) {
+      showToast('ไม่พบข้อมูลรายการนี้', 'error');
+      hideLoading();
+      return;
+    }
+
+    currentEditingTx = tx;
+
+    // Populate Fields
+    document.getElementById('edit-tx-id').value = tx.id || '';
+    document.getElementById('edit-tx-supabase-id').value = tx.supabase_id || '';
+    document.getElementById('edit-tx-member-code-val').value = tx.member_code || '';
+    document.getElementById('edit-tx-member-name-val').value = tx.member_name || '';
+    document.getElementById('edit-tx-round-id').value = tx.round_id || '';
+
+    document.getElementById('edit-tx-member-code').textContent = tx.member_code || '-';
+    document.getElementById('edit-tx-member-name').textContent = tx.member_name || '-';
+    document.getElementById('edit-tx-date').textContent = formatDateTime(tx.date || tx.created_at);
+
+    // Rubber Type
+    const rubberType = tx.rubber_type || 'cup';
+    const radio = document.querySelector(`input[name="edit-rubber-type"][value="${rubberType}"]`);
+    if (radio) radio.checked = true;
+    updateEditRubberTypeUI(rubberType);
+
+    // Weights & Price
+    const grossVal = Number(tx.gross_weight || tx.net_weight || 0);
+    const cartVal = Number(tx.cart_weight || 0);
+    const priceVal = Number(tx.price_per_kg || 0);
+
+    document.getElementById('edit-tx-gross').value = grossVal > 0 ? grossVal : '';
+    document.getElementById('edit-tx-cart').value = cartVal > 0 ? cartVal : '';
+    document.getElementById('edit-tx-price').value = priceVal > 0 ? priceVal : '';
+
+    recalculateEditTx();
+
+    document.getElementById('edit-tx-modal').classList.add('show');
+  } catch (err) {
+    console.error('openEditTransactionModal error:', err);
+    showToast('ไม่สามารถเปิดฟอร์มแก้ไขได้: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function closeEditTransactionModal() {
+  const modal = document.getElementById('edit-tx-modal');
+  if (modal) modal.classList.remove('show');
+  currentEditingTx = null;
+}
+
+function onEditRubberTypeChange() {
+  const selected = document.querySelector('input[name="edit-rubber-type"]:checked')?.value || 'cup';
+  updateEditRubberTypeUI(selected);
+}
+
+function updateEditRubberTypeUI(type) {
+  ['cup', 'sheet', 'latex'].forEach(t => {
+    const el = document.getElementById(`edit-opt-${t}`);
+    if (el) {
+      if (t === type) {
+        el.style.borderColor = 'var(--text-accent)';
+        el.style.background = 'rgba(34, 197, 94, 0.15)';
+        el.style.color = 'var(--text-accent)';
+        el.style.fontWeight = '700';
+      } else {
+        el.style.borderColor = 'var(--border)';
+        el.style.background = 'var(--bg-input)';
+        el.style.color = 'var(--text-secondary)';
+        el.style.fontWeight = 'normal';
+      }
+    }
+  });
+}
+
+function recalculateEditTx() {
+  const gross = parseFloat(document.getElementById('edit-tx-gross')?.value) || 0;
+  const cart = parseFloat(document.getElementById('edit-tx-cart')?.value) || 0;
+  const price = parseFloat(document.getElementById('edit-tx-price')?.value) || 0;
+
+  const net = Math.max(0, gross - cart);
+  const finalNet = net;
+  const total = Math.round(finalNet * price * 100) / 100;
+
+  const netDisplay = document.getElementById('edit-tx-net-display');
+  const totalDisplay = document.getElementById('edit-tx-total-display');
+
+  if (netDisplay) netDisplay.textContent = `${formatNumber(net)} กก.`;
+  if (totalDisplay) totalDisplay.textContent = `${formatNumber(total)} ฿`;
+}
+
+async function saveEditedTransaction() {
+  if (!currentEditingTx) return;
+
+  const txId = document.getElementById('edit-tx-id')?.value;
+  const gross = parseFloat(document.getElementById('edit-tx-gross')?.value) || 0;
+  const cart = parseFloat(document.getElementById('edit-tx-cart')?.value) || 0;
+  const price = parseFloat(document.getElementById('edit-tx-price')?.value) || 0;
+  const rubberType = document.querySelector('input[name="edit-rubber-type"]:checked')?.value || 'cup';
+
+  if (gross <= 0) {
+    showToast('กรุณากรอกน้ำหนักยางรวมรถ', 'warning');
+    return;
+  }
+  if (gross < cart) {
+    showToast('น้ำหนักยางรวมรถต้องมากกว่าน้ำหนักรถเข็น', 'warning');
+    return;
+  }
+  if (price <= 0) {
+    showToast('กรุณาระบุราคารับซื้อต่อ กก.', 'warning');
+    return;
+  }
+
+  const net = Math.max(0, gross - cart);
+  const finalNet = net;
+  const total = Math.round(finalNet * price * 100) / 100;
+
+  // Single updated trip
+  const updatedTrips = [{
+    gross_weight: gross,
+    cart_weight: cart,
+    net_weight: net
+  }];
+
+  const updateData = {
+    rubber_type: rubberType,
+    gross_weight: gross,
+    cart_weight: cart,
+    net_weight: net,
+    deduction_percent: 0,
+    final_weight: finalNet,
+    price_per_kg: price,
+    total_price: total,
+    trip_count: 1,
+    trips: JSON.stringify(updatedTrips),
+    trips_detail: JSON.stringify(updatedTrips)
+  };
+
+  showLoading();
+  try {
+    if (isDesktopApp()) {
+      // 1. Update SQLite
+      await window.desktopDB.update('transactions', {
+        ...updateData,
+        synced: 0
+      }, { id: txId });
+
+      // 2. Add/Update sync_queue
+      await window.desktopDB.insert('sync_queue', {
+        table_name: 'transactions',
+        action: 'UPDATE',
+        row_data: JSON.stringify({
+          ...currentEditingTx,
+          ...updateData,
+          id: currentEditingTx.supabase_id || txId
+        }),
+        local_id: txId
+      });
+
+      // 3. Update Supabase if online
+      if (sb && !isAppOffline()) {
+        try {
+          if (currentEditingTx.supabase_id) {
+            await sb.from('transactions').update(updateData).eq('id', currentEditingTx.supabase_id);
+          } else {
+            await sb.from('transactions').update(updateData).eq('id', txId);
+          }
+        } catch (cloudErr) {
+          console.warn('Cloud update transaction error:', cloudErr);
+        }
+      }
+    } else if (sb && !isAppOffline()) {
+      // Web App Supabase Update
+      const { error } = await sb.from('transactions').update(updateData).eq('id', txId);
+      if (error) throw error;
+    }
+
+    closeEditTransactionModal();
+    await filterHistory();
+    if (typeof renderDashboard === 'function') {
+      try { await renderDashboard(); } catch (e) {}
+    }
+    showToast('✅ แก้ไขข้อมูลรายการรับซื้อสำเร็จเรียบร้อย!');
+  } catch (err) {
+    console.error('saveEditedTransaction error:', err);
+    showToast('เกิดข้อผิดพลาดในการบันทึก: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 async function showReceiptFromHistory(txId) {

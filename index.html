@@ -1241,6 +1241,94 @@
     </div>
   </div>
 
+  <!-- ===== EDIT TRANSACTION MODAL ===== -->
+  <div class="modal-overlay" id="edit-tx-modal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3>✏️ แก้ไขรายการรับซื้อยาง</h3>
+        <button class="modal-close" onclick="closeEditTransactionModal()">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+        <input type="hidden" id="edit-tx-id">
+        <input type="hidden" id="edit-tx-supabase-id">
+        <input type="hidden" id="edit-tx-member-code-val">
+        <input type="hidden" id="edit-tx-member-name-val">
+        <input type="hidden" id="edit-tx-round-id">
+
+        <!-- Member Information Card -->
+        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 16px;">
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">ข้อมูลสมาชิก</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div>
+              <span class="badge badge-green" id="edit-tx-member-code" style="font-size:0.9rem; padding:4px 8px;">-</span>
+              <strong id="edit-tx-member-name" style="font-size:1.05rem; margin-left:8px; color:var(--text-primary);">-</strong>
+            </div>
+            <div style="font-size:0.85rem; color:var(--text-secondary);" id="edit-tx-date">-</div>
+          </div>
+        </div>
+
+        <!-- Rubber Type -->
+        <div class="form-group" style="margin:0;">
+          <label style="font-size:0.85rem; font-weight:600; margin-bottom:6px; display:block;">ชนิดยาง</label>
+          <div class="rubber-type-selector" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+            <label class="rubber-type-option" id="edit-opt-cup" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+              <input type="radio" name="edit-rubber-type" value="cup" style="display:none;" onchange="onEditRubberTypeChange()">
+              <span>ยางก้นถ้วย</span>
+            </label>
+            <label class="rubber-type-option" id="edit-opt-sheet" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+              <input type="radio" name="edit-rubber-type" value="sheet" style="display:none;" onchange="onEditRubberTypeChange()">
+              <span>ยางแผ่น</span>
+            </label>
+            <label class="rubber-type-option" id="edit-opt-latex" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+              <input type="radio" name="edit-rubber-type" value="latex" style="display:none;" onchange="onEditRubberTypeChange()">
+              <span>น้ำยางสด</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Weight & Price Inputs Grid -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label for="edit-tx-gross" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+              ⚖️ น้ำหนักยางรวมรถ (กก.)
+            </label>
+            <input type="number" step="any" id="edit-tx-gross" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+          </div>
+
+          <div class="form-group" style="margin:0;">
+            <label for="edit-tx-cart" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+              🛒 น้ำหนักรถเข็น (กก.)
+            </label>
+            <input type="number" step="any" id="edit-tx-cart" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+          </div>
+
+          <div class="form-group" style="margin:0; grid-column:span 2;">
+            <label for="edit-tx-price" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+              💰 ราคารับซื้อ / กิโลกรัม (บาท)
+            </label>
+            <input type="number" step="any" id="edit-tx-price" class="form-control" style="font-size:1.15rem; font-weight:700; color:var(--text-accent); text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+          </div>
+        </div>
+
+        <!-- Live Calculation Summary Card -->
+        <div style="background:linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(20, 184, 166, 0.08) 100%); border:1px solid rgba(34, 197, 94, 0.25); border-radius:var(--radius-md); padding:14px 18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="color:var(--text-secondary); font-size:0.9rem;">น้ำหนักยางสุทธิ:</span>
+            <strong id="edit-tx-net-display" style="font-size:1.15rem; color:var(--text-primary);">0.00 กก.</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);">
+            <span style="color:var(--text-primary); font-size:1rem; font-weight:700;">ยอดเงินรวมสุทธิ:</span>
+            <strong id="edit-tx-total-display" style="font-size:1.4rem; font-weight:900; color:var(--gold);">0.00 ฿</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary" onclick="closeEditTransactionModal()" style="padding:10px 20px;">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveEditedTransaction()" id="edit-tx-save-btn" style="padding:10px 24px;">💾 บันทึกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== ROUND SUMMARY REPORT MODAL ===== -->
   <div class="modal-overlay" id="round-report-modal">
     <div class="modal-content" style="max-width: 750px;">
