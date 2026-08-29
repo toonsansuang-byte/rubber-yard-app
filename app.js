@@ -6099,7 +6099,11 @@ async function saveEditedTransaction() {
     net_weight: net
   }];
 
-  const updateData = {
+  if (currentEditingTx.member_code) {
+    localStorage.setItem('tx_trips_v2_' + currentEditingTx.member_code + '_' + gross, JSON.stringify(updatedTrips));
+  }
+
+  const updateDataSQLite = {
     rubber_type: rubberType,
     gross_weight: gross,
     cart_weight: cart,
@@ -6113,12 +6117,23 @@ async function saveEditedTransaction() {
     trips_detail: JSON.stringify(updatedTrips)
   };
 
+  const updateDataCloud = {
+    rubber_type: rubberType,
+    gross_weight: gross,
+    net_weight: net,
+    deduction_percent: 0,
+    final_weight: finalNet,
+    price_per_kg: price,
+    total_price: total,
+    trip_count: 1
+  };
+
   showLoading();
   try {
     if (isDesktopApp()) {
       // 1. Update SQLite
       await window.desktopDB.update('transactions', {
-        ...updateData,
+        ...updateDataSQLite,
         synced: 0
       }, { id: txId });
 
@@ -6128,7 +6143,7 @@ async function saveEditedTransaction() {
         action: 'UPDATE',
         row_data: JSON.stringify({
           ...currentEditingTx,
-          ...updateData,
+          ...updateDataCloud,
           id: currentEditingTx.supabase_id || txId
         }),
         local_id: txId
@@ -6138,17 +6153,17 @@ async function saveEditedTransaction() {
       if (sb && !isAppOffline()) {
         try {
           if (currentEditingTx.supabase_id) {
-            await sb.from('transactions').update(updateData).eq('id', currentEditingTx.supabase_id);
+            await sb.from('transactions').update(updateDataCloud).eq('id', currentEditingTx.supabase_id);
           } else {
-            await sb.from('transactions').update(updateData).eq('id', txId);
+            await sb.from('transactions').update(updateDataCloud).eq('id', txId);
           }
         } catch (cloudErr) {
           console.warn('Cloud update transaction error:', cloudErr);
         }
       }
     } else if (sb && !isAppOffline()) {
-      // Web App Supabase Update
-      const { error } = await sb.from('transactions').update(updateData).eq('id', txId);
+      // Web App Supabase Update (Cloud payload only)
+      const { error } = await sb.from('transactions').update(updateDataCloud).eq('id', txId);
       if (error) throw error;
     }
 
