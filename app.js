@@ -3559,16 +3559,19 @@ function closeConfirmModal() {
   document.getElementById('confirm-modal').classList.remove('show');
 }
 
-async function initPurchase() {
-  if (!editingTransaction) {
-    const banner = document.getElementById('purchase-edit-banner');
-    const saveBtn = document.getElementById('save-transaction-btn');
-    if (banner) banner.style.display = 'none';
-    if (saveBtn) {
-      saveBtn.innerHTML = '💾 บันทึกธุรกรรม (Ctrl+Enter)';
-      saveBtn.style.background = '';
-      saveBtn.style.borderColor = '';
-    }
+async function initPurchase(forceReset = false) {
+  if (editingTransaction && !forceReset) {
+    return;
+  }
+
+  editingTransaction = null;
+  const banner = document.getElementById('purchase-edit-banner');
+  const saveBtn = document.getElementById('save-transaction-btn');
+  if (banner) banner.style.display = 'none';
+  if (saveBtn) {
+    saveBtn.innerHTML = '💾 บันทึกธุรกรรม (Ctrl+Enter)';
+    saveBtn.style.background = '';
+    saveBtn.style.borderColor = '';
   }
 
   await loadCurrentRound();
@@ -5995,6 +5998,11 @@ async function editTransactionOnPurchasePage(txId) {
       account_no: tx.member_account_no || ''
     };
 
+    const searchInput = document.getElementById('purchase-member-search');
+    const searchList = document.getElementById('purchase-member-list');
+    if (searchInput) searchInput.value = '';
+    if (searchList) searchList.innerHTML = '';
+
     const selInfo = document.getElementById('selected-member-info');
     const selName = document.getElementById('selected-member-name');
     const selCode = document.getElementById('selected-member-code');
@@ -6076,7 +6084,7 @@ function cancelEditTransaction() {
     saveBtn.style.background = '';
     saveBtn.style.borderColor = '';
   }
-  initPurchase();
+  initPurchase(true);
   navigateTo('history');
   showToast('ยกเลิกการแก้ไขรายการแล้ว');
 }
