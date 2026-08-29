@@ -3559,8 +3559,18 @@ function closeConfirmModal() {
   document.getElementById('confirm-modal').classList.remove('show');
 }
 
-// ========== PURCHASE — MULTI-TRIP ==========
 async function initPurchase() {
+  if (!editingTransaction) {
+    const banner = document.getElementById('purchase-edit-banner');
+    const saveBtn = document.getElementById('save-transaction-btn');
+    if (banner) banner.style.display = 'none';
+    if (saveBtn) {
+      saveBtn.innerHTML = '💾 บันทึกธุรกรรม (Ctrl+Enter)';
+      saveBtn.style.background = '';
+      saveBtn.style.borderColor = '';
+    }
+  }
+
   await loadCurrentRound();
   clearSelectedMember();
   document.getElementById('purchase-member-search').value = '';
@@ -4032,6 +4042,106 @@ async function saveTransaction(confirmedOverride = false) {
   const encodedTruckNumber = encodeTripsIntoTruckNumber(truckNumber, tripDetails);
 
   showLoading();
+
+  if (editingTransaction) {
+    const updateDataSQLite = {
+      rubber_type: rubberType,
+      gross_weight: totalGross,
+      cart_weight: totalCart,
+      net_weight: totalNet,
+      deduction_percent: 0,
+      final_weight: finalWeight,
+      auction_price: auctionPrice,
+      yard_fee: yardFee,
+      price_per_kg: netPricePerKg,
+      total_price: totalPrice,
+      trip_count: tripDetails.length,
+      trips: JSON.stringify(tripDetails),
+      trips_detail: JSON.stringify(tripDetails),
+      member_code: selectedMember.code,
+      member_name: selectedMember.name,
+      member_account_no: selectedMember.account_no || '',
+      truck_number: encodedTruckNumber,
+      trailer_type: trailerType
+    };
+
+    const updateDataCloud = {
+      rubber_type: rubberType,
+      gross_weight: totalGross,
+      net_weight: totalNet,
+      deduction_percent: 0,
+      final_weight: finalWeight,
+      price_per_kg: netPricePerKg,
+      total_price: totalPrice,
+      trip_count: tripDetails.length,
+      member_code: selectedMember.code,
+      member_name: selectedMember.name,
+      member_account_no: selectedMember.account_no || '',
+      truck_number: encodedTruckNumber,
+      trailer_type: trailerType
+    };
+
+    if (selectedMember.code) {
+      localStorage.setItem('tx_trips_v2_' + selectedMember.code + '_' + totalGross, JSON.stringify(tripDetails));
+    }
+
+    try {
+      if (isDesktopApp()) {
+        await window.desktopDB.update('transactions', { ...updateDataSQLite, synced: 0 }, { id: editingTransaction.id });
+        await window.desktopDB.insert('sync_queue', {
+          table_name: 'transactions',
+          action: 'UPDATE',
+          row_data: JSON.stringify({
+            ...editingTransaction,
+            ...updateDataCloud,
+            id: editingTransaction.supabase_id || editingTransaction.id
+          }),
+          local_id: editingTransaction.id
+        });
+
+        if (sb && !isAppOffline()) {
+          try {
+            if (editingTransaction.supabase_id) {
+              await sb.from('transactions').update(updateDataCloud).eq('id', editingTransaction.supabase_id);
+            } else {
+              await sb.from('transactions').update(updateDataCloud).eq('id', editingTransaction.id);
+            }
+          } catch (e) {
+            console.warn('Cloud update tx error:', e);
+          }
+        }
+      } else if (sb && !isAppOffline()) {
+        const { error } = await sb.from('transactions').update(updateDataCloud).eq('id', editingTransaction.id);
+        if (error) throw error;
+      }
+
+      const receiptObj = {
+        ...editingTransaction,
+        ...updateDataSQLite
+      };
+
+      // Reset edit mode
+      editingTransaction = null;
+      const banner = document.getElementById('purchase-edit-banner');
+      const saveBtn = document.getElementById('save-transaction-btn');
+      if (banner) banner.style.display = 'none';
+      if (saveBtn) {
+        saveBtn.innerHTML = '💾 บันทึกธุรกรรม (Ctrl+Enter)';
+        saveBtn.style.background = '';
+        saveBtn.style.borderColor = '';
+      }
+
+      hideLoading();
+      showToast('✅ บันทึกการแก้ไขธุรกรรมสำเร็จ!', 'success');
+      showReceipt(receiptObj);
+      return;
+    } catch (updateErr) {
+      hideLoading();
+      console.error('Save edited transaction error:', updateErr);
+      showToast('เกิดข้อผิดพลาดในการบันทึกการแก้ไข: ' + updateErr.message, 'error');
+      return;
+    }
+  }
 
   const currentAuctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
 
@@ -5146,7 +5256,7 @@ async function filterHistory() {
           <td style="text-align:center;">${statusBadge}</td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
-            <button class="btn btn-primary btn-sm btn-icon" onclick="openEditTransactionModal('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
+            <button class="btn btn-primary btn-sm btn-icon" onclick="editTransactionOnPurchasePage('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
@@ -5850,107 +5960,10 @@ function clearHistoryFilter() {
   filterHistory();
 }
 
-// ========== EDIT TRANSACTION IN HISTORY ==========
-let currentEditingTx = null;
+// ========== EDIT TRANSACTION ON PURCHASE PAGE ==========
+let editingTransaction = null;
 
-function ensureEditTransactionModalDOM() {
-  let modal = document.getElementById('edit-tx-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.id = 'edit-tx-modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width: 580px;">
-        <div class="modal-header">
-          <h3>✏️ แก้ไขรายการรับซื้อยาง</h3>
-          <button class="modal-close" onclick="closeEditTransactionModal()">✕</button>
-        </div>
-        <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
-          <input type="hidden" id="edit-tx-id">
-          <input type="hidden" id="edit-tx-supabase-id">
-          <input type="hidden" id="edit-tx-member-code-val">
-          <input type="hidden" id="edit-tx-member-name-val">
-          <input type="hidden" id="edit-tx-round-id">
-
-          <!-- Member Information Card -->
-          <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 16px;">
-            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">ข้อมูลสมาชิก</div>
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-              <div>
-                <span class="badge badge-green" id="edit-tx-member-code" style="font-size:0.9rem; padding:4px 8px;">-</span>
-                <strong id="edit-tx-member-name" style="font-size:1.05rem; margin-left:8px; color:var(--text-primary);">-</strong>
-              </div>
-              <div style="font-size:0.85rem; color:var(--text-secondary);" id="edit-tx-date">-</div>
-            </div>
-          </div>
-
-          <!-- Rubber Type -->
-          <div class="form-group" style="margin:0;">
-            <label style="font-size:0.85rem; font-weight:600; margin-bottom:6px; display:block;">ชนิดยาง</label>
-            <div class="rubber-type-selector" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
-              <label class="rubber-type-option" id="edit-opt-cup" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
-                <input type="radio" name="edit-rubber-type" value="cup" style="display:none;" onchange="onEditRubberTypeChange()">
-                <span>ยางก้นถ้วย</span>
-              </label>
-              <label class="rubber-type-option" id="edit-opt-sheet" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
-                <input type="radio" name="edit-rubber-type" value="sheet" style="display:none;" onchange="onEditRubberTypeChange()">
-                <span>ยางแผ่น</span>
-              </label>
-              <label class="rubber-type-option" id="edit-opt-latex" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
-                <input type="radio" name="edit-rubber-type" value="latex" style="display:none;" onchange="onEditRubberTypeChange()">
-                <span>น้ำยางสด</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Weight & Price Inputs Grid -->
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div class="form-group" style="margin:0;">
-              <label for="edit-tx-gross" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
-                ⚖️ น้ำหนักยางรวมรถ (กก.)
-              </label>
-              <input type="number" step="any" id="edit-tx-gross" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
-            </div>
-
-            <div class="form-group" style="margin:0;">
-              <label for="edit-tx-cart" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
-                🛒 น้ำหนักรถเข็น (กก.)
-              </label>
-              <input type="number" step="any" id="edit-tx-cart" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
-            </div>
-
-            <div class="form-group" style="margin:0; grid-column:span 2;">
-              <label for="edit-tx-price" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
-                💰 ราคารับซื้อ / กิโลกรัม (บาท)
-              </label>
-              <input type="number" step="any" id="edit-tx-price" class="form-control" style="font-size:1.15rem; font-weight:700; color:var(--text-accent); text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
-            </div>
-          </div>
-
-          <!-- Live Calculation Summary Card -->
-          <div style="background:linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(20, 184, 166, 0.08) 100%); border:1px solid rgba(34, 197, 94, 0.25); border-radius:var(--radius-md); padding:14px 18px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <span style="color:var(--text-secondary); font-size:0.9rem;">น้ำหนักยางสุทธิ:</span>
-              <strong id="edit-tx-net-display" style="font-size:1.15rem; color:var(--text-primary);">0.00 กก.</strong>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);">
-              <span style="color:var(--text-primary); font-size:1rem; font-weight:700;">ยอดเงินรวมสุทธิ:</span>
-              <strong id="edit-tx-total-display" style="font-size:1.4rem; font-weight:900; color:var(--gold);">0.00 ฿</strong>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
-          <button class="btn btn-secondary" onclick="closeEditTransactionModal()" style="padding:10px 20px;">ยกเลิก</button>
-          <button class="btn btn-primary" onclick="saveEditedTransaction()" id="edit-tx-save-btn" style="padding:10px 24px;">💾 บันทึกการแก้ไข</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  }
-  return modal;
-}
-
-async function openEditTransactionModal(txId) {
+async function editTransactionOnPurchasePage(txId) {
   if (!txId) return;
   showLoading();
   try {
@@ -5969,216 +5982,103 @@ async function openEditTransactionModal(txId) {
       return;
     }
 
-    currentEditingTx = tx;
+    editingTransaction = tx;
 
-    // Ensure DOM exists
-    const modal = ensureEditTransactionModalDOM();
+    // Navigate to purchase page
+    navigateTo('purchase');
 
-    // Populate Fields safely
-    const setVal = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val !== undefined && val !== null ? val : '';
-    };
-    const setText = (id, txt) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = txt !== undefined && txt !== null ? txt : '';
+    // Populate Member
+    selectedMember = {
+      id: tx.member_id || tx.id,
+      code: tx.member_code,
+      name: tx.member_name,
+      account_no: tx.member_account_no || ''
     };
 
-    setVal('edit-tx-id', tx.id || '');
-    setVal('edit-tx-supabase-id', tx.supabase_id || '');
-    setVal('edit-tx-member-code-val', tx.member_code || '');
-    setVal('edit-tx-member-name-val', tx.member_name || '');
-    setVal('edit-tx-round-id', tx.round_id || '');
+    const selInfo = document.getElementById('selected-member-info');
+    const selName = document.getElementById('selected-member-name');
+    const selCode = document.getElementById('selected-member-code');
+    const selAvatar = document.getElementById('selected-member-avatar');
+    if (selInfo) selInfo.classList.add('show');
+    if (selName) selName.textContent = tx.member_name || '-';
+    if (selCode) selCode.textContent = `รหัส: ${tx.member_code || '-'}`;
+    if (selAvatar) selAvatar.textContent = (tx.member_name || '?').charAt(0);
 
-    setText('edit-tx-member-code', tx.member_code || '-');
-    setText('edit-tx-member-name', tx.member_name || '-');
-    setText('edit-tx-date', formatDateTime(tx.date || tx.created_at));
+    // Populate Settings / Prices
+    const yardFee = cachedSettings && cachedSettings.yard_fee !== undefined ? parseFloat(cachedSettings.yard_fee) : 0.50;
+    const cartEl = document.getElementById('cart-weight');
+    const priceEl = document.getElementById('price-per-kg');
+    if (cartEl) cartEl.value = tx.cart_weight || cachedSettings?.default_cart_weight || 0;
+    if (priceEl) priceEl.value = (Number(tx.price_per_kg || 0) + yardFee).toFixed(2);
 
-    // Rubber Type
-    const rubberType = tx.rubber_type || 'cup';
-    const radio = document.querySelector(`input[name="edit-rubber-type"][value="${rubberType}"]`);
-    if (radio) radio.checked = true;
-    updateEditRubberTypeUI(rubberType);
+    // Populate Trips
+    let tripsArr = [];
+    try {
+      if (tx.trips && typeof tx.trips === 'string' && tx.trips.startsWith('[')) tripsArr = JSON.parse(tx.trips);
+      else if (tx.trips_detail && typeof tx.trips_detail === 'string' && tx.trips_detail.startsWith('[')) tripsArr = JSON.parse(tx.trips_detail);
+      else if (Array.isArray(tx.trips)) tripsArr = tx.trips;
+      else if (Array.isArray(tx.trips_detail)) tripsArr = tx.trips_detail;
+    } catch (e) {}
 
-    // Weights & Price
-    const grossVal = Number(tx.gross_weight || tx.net_weight || 0);
-    const cartVal = Number(tx.cart_weight || 0);
-    const priceVal = Number(tx.price_per_kg || 0);
+    if (!tripsArr || tripsArr.length === 0) {
+      tripsArr = [{ gross_weight: tx.gross_weight || tx.net_weight, cart_weight: tx.cart_weight || 0 }];
+    }
 
-    setVal('edit-tx-gross', grossVal > 0 ? grossVal : '');
-    setVal('edit-tx-cart', cartVal > 0 ? cartVal : '');
-    setVal('edit-tx-price', priceVal > 0 ? priceVal : '');
+    trips = tripsArr.map(t => ({
+      grossWeight: Number(t.gross_weight || t.grossWeight || t.gross || t.net_weight || 0)
+    }));
 
-    recalculateEditTx();
+    renderTrips();
+    calculatePrice();
 
-    modal.classList.add('show');
+    // Populate Truck & Trailer
+    const truckSelect = document.getElementById('purchase-truck-number');
+    const trailerSelect = document.getElementById('purchase-trailer-type');
+    if (truckSelect && tx.truck_number) {
+      const cleanTruck = decodeTripsFromTruckNumber(tx.truck_number).cleanTruckNumber;
+      if (cleanTruck) truckSelect.value = cleanTruck;
+    }
+    if (trailerSelect && tx.trailer_type) {
+      trailerSelect.value = tx.trailer_type;
+    }
+    updatePurchaseTruckIndicator();
+
+    // Update Banner and Save Button UI
+    const banner = document.getElementById('purchase-edit-banner');
+    const desc = document.getElementById('purchase-edit-banner-desc');
+    const saveBtn = document.getElementById('save-transaction-btn');
+
+    if (banner) banner.style.display = 'flex';
+    if (desc) desc.textContent = `สมาชิก: [${tx.member_code}] ${tx.member_name} | บันทึกเมื่อ: ${formatDateTime(tx.date || tx.created_at)}`;
+    if (saveBtn) {
+      saveBtn.innerHTML = '✏️ บันทึกการแก้ไขธุรกรรม (Ctrl+Enter)';
+      saveBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+      saveBtn.style.borderColor = '#10b981';
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(`✏️ เข้าสู่โหมดแก้ไขรายการของ ${tx.member_name}`, 'info');
   } catch (err) {
-    console.error('openEditTransactionModal error:', err);
-    showToast('ไม่สามารถเปิดฟอร์มแก้ไขได้: ' + err.message, 'error');
+    console.error('editTransactionOnPurchasePage error:', err);
+    showToast('ไม่สามารถเปิดแก้ไขรายการได้: ' + err.message, 'error');
   } finally {
     hideLoading();
   }
 }
 
-function closeEditTransactionModal() {
-  const modal = document.getElementById('edit-tx-modal');
-  if (modal) modal.classList.remove('show');
-  currentEditingTx = null;
-}
-
-function onEditRubberTypeChange() {
-  const selected = document.querySelector('input[name="edit-rubber-type"]:checked')?.value || 'cup';
-  updateEditRubberTypeUI(selected);
-}
-
-function updateEditRubberTypeUI(type) {
-  ['cup', 'sheet', 'latex'].forEach(t => {
-    const el = document.getElementById(`edit-opt-${t}`);
-    if (el) {
-      if (t === type) {
-        el.style.borderColor = 'var(--text-accent)';
-        el.style.background = 'rgba(34, 197, 94, 0.15)';
-        el.style.color = 'var(--text-accent)';
-        el.style.fontWeight = '700';
-      } else {
-        el.style.borderColor = 'var(--border)';
-        el.style.background = 'var(--bg-input)';
-        el.style.color = 'var(--text-secondary)';
-        el.style.fontWeight = 'normal';
-      }
-    }
-  });
-}
-
-function recalculateEditTx() {
-  const gross = parseFloat(document.getElementById('edit-tx-gross')?.value) || 0;
-  const cart = parseFloat(document.getElementById('edit-tx-cart')?.value) || 0;
-  const price = parseFloat(document.getElementById('edit-tx-price')?.value) || 0;
-
-  const net = Math.max(0, gross - cart);
-  const finalNet = net;
-  const total = Math.round(finalNet * price * 100) / 100;
-
-  const netDisplay = document.getElementById('edit-tx-net-display');
-  const totalDisplay = document.getElementById('edit-tx-total-display');
-
-  if (netDisplay) netDisplay.textContent = `${formatNumber(net)} กก.`;
-  if (totalDisplay) totalDisplay.textContent = `${formatNumber(total)} ฿`;
-}
-
-async function saveEditedTransaction() {
-  if (!currentEditingTx) return;
-
-  const txId = document.getElementById('edit-tx-id')?.value;
-  const gross = parseFloat(document.getElementById('edit-tx-gross')?.value) || 0;
-  const cart = parseFloat(document.getElementById('edit-tx-cart')?.value) || 0;
-  const price = parseFloat(document.getElementById('edit-tx-price')?.value) || 0;
-  const rubberType = document.querySelector('input[name="edit-rubber-type"]:checked')?.value || 'cup';
-
-  if (gross <= 0) {
-    showToast('กรุณากรอกน้ำหนักยางรวมรถ', 'warning');
-    return;
+function cancelEditTransaction() {
+  editingTransaction = null;
+  const banner = document.getElementById('purchase-edit-banner');
+  const saveBtn = document.getElementById('save-transaction-btn');
+  if (banner) banner.style.display = 'none';
+  if (saveBtn) {
+    saveBtn.innerHTML = '💾 บันทึกธุรกรรม (Ctrl+Enter)';
+    saveBtn.style.background = '';
+    saveBtn.style.borderColor = '';
   }
-  if (gross < cart) {
-    showToast('น้ำหนักยางรวมรถต้องมากกว่าน้ำหนักรถเข็น', 'warning');
-    return;
-  }
-  if (price <= 0) {
-    showToast('กรุณาระบุราคารับซื้อต่อ กก.', 'warning');
-    return;
-  }
-
-  const net = Math.max(0, gross - cart);
-  const finalNet = net;
-  const total = Math.round(finalNet * price * 100) / 100;
-
-  // Single updated trip
-  const updatedTrips = [{
-    gross_weight: gross,
-    cart_weight: cart,
-    net_weight: net
-  }];
-
-  if (currentEditingTx.member_code) {
-    localStorage.setItem('tx_trips_v2_' + currentEditingTx.member_code + '_' + gross, JSON.stringify(updatedTrips));
-  }
-
-  const updateDataSQLite = {
-    rubber_type: rubberType,
-    gross_weight: gross,
-    cart_weight: cart,
-    net_weight: net,
-    deduction_percent: 0,
-    final_weight: finalNet,
-    price_per_kg: price,
-    total_price: total,
-    trip_count: 1,
-    trips: JSON.stringify(updatedTrips),
-    trips_detail: JSON.stringify(updatedTrips)
-  };
-
-  const updateDataCloud = {
-    rubber_type: rubberType,
-    gross_weight: gross,
-    net_weight: net,
-    deduction_percent: 0,
-    final_weight: finalNet,
-    price_per_kg: price,
-    total_price: total,
-    trip_count: 1
-  };
-
-  showLoading();
-  try {
-    if (isDesktopApp()) {
-      // 1. Update SQLite
-      await window.desktopDB.update('transactions', {
-        ...updateDataSQLite,
-        synced: 0
-      }, { id: txId });
-
-      // 2. Add/Update sync_queue
-      await window.desktopDB.insert('sync_queue', {
-        table_name: 'transactions',
-        action: 'UPDATE',
-        row_data: JSON.stringify({
-          ...currentEditingTx,
-          ...updateDataCloud,
-          id: currentEditingTx.supabase_id || txId
-        }),
-        local_id: txId
-      });
-
-      // 3. Update Supabase if online
-      if (sb && !isAppOffline()) {
-        try {
-          if (currentEditingTx.supabase_id) {
-            await sb.from('transactions').update(updateDataCloud).eq('id', currentEditingTx.supabase_id);
-          } else {
-            await sb.from('transactions').update(updateDataCloud).eq('id', txId);
-          }
-        } catch (cloudErr) {
-          console.warn('Cloud update transaction error:', cloudErr);
-        }
-      }
-    } else if (sb && !isAppOffline()) {
-      // Web App Supabase Update (Cloud payload only)
-      const { error } = await sb.from('transactions').update(updateDataCloud).eq('id', txId);
-      if (error) throw error;
-    }
-
-    closeEditTransactionModal();
-    await filterHistory();
-    if (typeof renderDashboard === 'function') {
-      try { await renderDashboard(); } catch (e) {}
-    }
-    showToast('✅ แก้ไขข้อมูลรายการรับซื้อสำเร็จเรียบร้อย!');
-  } catch (err) {
-    console.error('saveEditedTransaction error:', err);
-    showToast('เกิดข้อผิดพลาดในการบันทึก: ' + err.message, 'error');
-  } finally {
-    hideLoading();
-  }
+  initPurchase();
+  navigateTo('history');
+  showToast('ยกเลิกการแก้ไขรายการแล้ว');
 }
 
 async function showReceiptFromHistory(txId) {
