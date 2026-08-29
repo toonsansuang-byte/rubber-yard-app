@@ -3273,6 +3273,14 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
     document.getElementById('stat-month-amount').innerHTML = `${formatNumber(monthAmount)} <span class="unit">บาท</span>`;
     document.getElementById('stat-total-members').innerHTML = `${memberCount || 0} <span class="unit">คน</span>`;
 
+    // Populate scope filter and render Leaderboard
+    try {
+      await populateDashboardScopeFilter();
+      await renderDashboardLeaderboard();
+    } catch (lbErr) {
+      console.warn('Leaderboard render error:', lbErr);
+    }
+
     // Recent transactions table
     const tbody = document.getElementById('recent-transactions');
     const emptyState = document.getElementById('recent-empty');
@@ -3304,6 +3312,274 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
     showToast('โหลดข้อมูลแดชบอร์ดไม่สำเร็จ: ' + err.message, 'error');
   }
   if (showSpinner) hideLoading();
+}
+
+// ========== DASHBOARD LEADERBOARD & TABS ==========
+let currentDashboardView = 'leaderboard';
+
+function switchDashboardView(viewName) {
+  currentDashboardView = viewName;
+  const tabLeaderboard = document.getElementById('dashboard-tab-leaderboard');
+  const tabRecent = document.getElementById('dashboard-tab-recent');
+  const viewLeaderboard = document.getElementById('dashboard-view-leaderboard');
+  const viewRecent = document.getElementById('dashboard-view-recent');
+
+  if (viewName === 'leaderboard') {
+    if (tabLeaderboard) {
+      tabLeaderboard.className = 'btn btn-primary btn-sm';
+      tabLeaderboard.style.fontWeight = '700';
+    }
+    if (tabRecent) {
+      tabRecent.className = 'btn btn-secondary btn-sm';
+      tabRecent.style.fontWeight = 'normal';
+    }
+    if (viewLeaderboard) viewLeaderboard.style.display = 'block';
+    if (viewRecent) viewRecent.style.display = 'none';
+  } else {
+    if (tabLeaderboard) {
+      tabLeaderboard.className = 'btn btn-secondary btn-sm';
+      tabLeaderboard.style.fontWeight = 'normal';
+    }
+    if (tabRecent) {
+      tabRecent.className = 'btn btn-primary btn-sm';
+      tabRecent.style.fontWeight = '700';
+    }
+    if (viewLeaderboard) viewLeaderboard.style.display = 'none';
+    if (viewRecent) viewRecent.style.display = 'block';
+  }
+}
+
+async function populateDashboardScopeFilter() {
+  const selectEl = document.getElementById('dashboard-scope-filter');
+  if (!selectEl) return;
+
+  const currentVal = selectEl.value || 'current';
+
+  let rounds = [];
+  try {
+    if (isDesktopApp()) {
+      rounds = await window.desktopDB.query('SELECT id, title, start_date, closed_at, status FROM purchase_rounds ORDER BY id DESC LIMIT 20') || [];
+    } else if (sb && !isAppOffline()) {
+      const { data } = await sb.from('purchase_rounds').select('id, title, start_date, closed_at, status').order('id', { ascending: false }).limit(20);
+      rounds = data || [];
+    }
+  } catch (e) {
+    console.warn('Load rounds for dashboard filter error:', e);
+  }
+
+  let html = `
+    <option value="current">⚡ รอบส่งมอบปัจจุบัน</option>
+    <option value="month">📅 รวมทั้ง 2 รอบในเดือนนี้</option>
+    <option value="season">🏆 รวมตลอดทั้งปี / ปิดหน้ายาง</option>
+  `;
+
+  if (rounds && rounds.length > 0) {
+    html += '<optgroup label="📜 เลือกรอบส่งมอบยางย้อนหลัง">';
+    rounds.forEach(r => {
+      const statusText = r.status === 'open' ? '🟢 เปิดอยู่' : '🔒 ปิดแล้ว';
+      const title = r.title || `รอบที่ ${r.id}`;
+      html += `<option value="round_${r.id}">${title} (${statusText})</option>`;
+    });
+    html += '</optgroup>';
+  }
+
+  selectEl.innerHTML = html;
+  if (Array.from(selectEl.options).some(o => o.value === currentVal)) {
+    selectEl.value = currentVal;
+  } else {
+    selectEl.value = 'current';
+  }
+}
+
+async function renderDashboardLeaderboard() {
+  const selectEl = document.getElementById('dashboard-scope-filter');
+  const scope = selectEl ? selectEl.value : 'current';
+
+  const podiumEl = document.getElementById('dashboard-podium');
+  const tbodyEl = document.getElementById('dashboard-leaderboard-body');
+  const emptyEl = document.getElementById('dashboard-leaderboard-empty');
+  const tableContainer = tbodyEl ? tbodyEl.closest('.table-container') : null;
+
+  try {
+    let txs = [];
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
+    const startOfYear = new Date(today.getFullYear(), 0, 1).toISOString();
+
+    if (isDesktopApp()) {
+      if (scope === 'current') {
+        if (currentRound) {
+          txs = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ?', [currentRound.id]) || [];
+        } else {
+          txs = await window.desktopDB.query('SELECT * FROM transactions ORDER BY id DESC LIMIT 50') || [];
+        }
+      } else if (scope === 'month') {
+        txs = await window.desktopDB.query('SELECT * FROM transactions WHERE date >= ?', [startOfMonth]) || [];
+      } else if (scope === 'season') {
+        txs = await window.desktopDB.query('SELECT * FROM transactions WHERE date >= ?', [startOfYear]) || [];
+        if (txs.length === 0) {
+          txs = await window.desktopDB.select('transactions', ['*']) || [];
+        }
+      } else if (scope.startsWith('round_')) {
+        const targetRoundId = scope.replace('round_', '');
+        txs = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ?', [targetRoundId]) || [];
+      }
+    } else if (sb && !isAppOffline()) {
+      if (scope === 'current') {
+        if (currentRound) {
+          const { data } = await sb.from('transactions').select('*').eq('round_id', currentRound.id);
+          txs = data || [];
+        } else {
+          const { data } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(50);
+          txs = data || [];
+        }
+      } else if (scope === 'month') {
+        const { data } = await sb.from('transactions').select('*').gte('date', startOfMonth);
+        txs = data || [];
+      } else if (scope === 'season') {
+        const { data } = await sb.from('transactions').select('*').gte('date', startOfYear);
+        txs = data || [];
+        if (txs.length === 0) {
+          const { data: allData } = await sb.from('transactions').select('*');
+          txs = allData || [];
+        }
+      } else if (scope.startsWith('round_')) {
+        const targetRoundId = scope.replace('round_', '');
+        const { data } = await sb.from('transactions').select('*').eq('round_id', targetRoundId);
+        txs = data || [];
+      }
+    }
+
+    if (!txs || txs.length === 0) {
+      if (podiumEl) podiumEl.innerHTML = '';
+      if (tbodyEl) tbodyEl.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'block';
+      if (tableContainer) tableContainer.style.display = 'none';
+      return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'block';
+
+    // Group by member_code (or member_name)
+    const memberMap = {};
+    txs.forEach(t => {
+      const code = t.member_code || 'NON_MEMBER';
+      if (!memberMap[code]) {
+        memberMap[code] = {
+          code: t.member_code || '-',
+          name: t.member_name || 'ไม่ระบุชื่อ',
+          account_no: t.member_account_no || '',
+          total_weight: 0,
+          total_price: 0,
+          delivery_count: 0
+        };
+      }
+      const weight = Number(t.final_weight || t.net_weight || 0);
+      const price = Number(t.total_price || 0);
+      memberMap[code].total_weight += weight;
+      memberMap[code].total_price += price;
+      memberMap[code].delivery_count += (t.trip_count || 1);
+    });
+
+    // Sort descending by total_weight
+    const ranked = Object.values(memberMap).sort((a, b) => b.total_weight - a.total_weight);
+
+    // 1. Render Top 3 Podium Cards
+    if (podiumEl) {
+      const top3 = ranked.slice(0, 3);
+      const podiumConfig = [
+        {
+          rank: 1,
+          trophy: '🥇',
+          title: 'อันดับ 1 (ถ้วยทอง)',
+          borderColor: 'rgba(234, 179, 8, 0.6)',
+          bgGradient: 'linear-gradient(135deg, rgba(234, 179, 8, 0.18) 0%, rgba(202, 138, 4, 0.06) 100%)',
+          textColor: '#fbbf24'
+        },
+        {
+          rank: 2,
+          trophy: '🥈',
+          title: 'อันดับ 2 (ถ้วยเงิน)',
+          borderColor: 'rgba(203, 213, 225, 0.5)',
+          bgGradient: 'linear-gradient(135deg, rgba(203, 213, 225, 0.14) 0%, rgba(148, 163, 184, 0.05) 100%)',
+          textColor: '#e2e8f0'
+        },
+        {
+          rank: 3,
+          trophy: '🥉',
+          title: 'อันดับ 3 (ถ้วยทองแดง)',
+          borderColor: 'rgba(217, 119, 6, 0.5)',
+          bgGradient: 'linear-gradient(135deg, rgba(217, 119, 6, 0.14) 0%, rgba(180, 83, 9, 0.05) 100%)',
+          textColor: '#f59e0b'
+        }
+      ];
+
+      podiumEl.innerHTML = top3.map((m, idx) => {
+        const conf = podiumConfig[idx] || podiumConfig[0];
+        return `
+          <div style="background:${conf.bgGradient}; border:1.5px solid ${conf.borderColor}; border-radius:var(--radius-lg); padding:16px 18px; position:relative; box-shadow:0 4px 16px rgba(0,0,0,0.15); display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-size:1.05rem; font-weight:800; color:${conf.textColor};">${conf.trophy} ${conf.title}</span>
+                <span class="badge badge-green" style="font-size:0.85rem; padding:3px 8px;">${m.code}</span>
+              </div>
+              <div style="font-size:1.15rem; font-weight:700; color:var(--text-primary); margin-bottom:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                ${escapeHTML(m.name)}
+              </div>
+            </div>
+
+            <div style="background:rgba(0,0,0,0.25); border-radius:var(--radius-md); padding:10px 14px; border:1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+                <span style="font-size:0.8rem; color:var(--text-secondary);">น้ำหนักยางรวม:</span>
+                <strong style="font-size:1.3rem; font-weight:900; color:${conf.textColor};">${formatNumber(m.total_weight)} <span style="font-size:0.85rem; font-weight:600;">กก.</span></strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; color:var(--text-secondary); border-top:1px dashed rgba(255,255,255,0.1); padding-top:4px;">
+                <span>ยอดเงินรวม:</span>
+                <span style="font-weight:700; color:var(--gold);">${formatNumber(m.total_price)} ฿</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-top:2px;">
+                ส่งทั้งหมด ${m.delivery_count} เที่ยว
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 2. Render Leaderboard Table
+    if (tbodyEl) {
+      tbodyEl.innerHTML = ranked.map((m, idx) => {
+        let rankBadge = '';
+        let rowStyle = '';
+        if (idx === 0) {
+          rankBadge = `<span style="font-size:1.15rem;" title="อันดับ 1">🥇 1</span>`;
+          rowStyle = 'background:rgba(234, 179, 8, 0.08); font-weight:600;';
+        } else if (idx === 1) {
+          rankBadge = `<span style="font-size:1.15rem;" title="อันดับ 2">🥈 2</span>`;
+          rowStyle = 'background:rgba(203, 213, 225, 0.06); font-weight:600;';
+        } else if (idx === 2) {
+          rankBadge = `<span style="font-size:1.15rem;" title="อันดับ 3">🥉 3</span>`;
+          rowStyle = 'background:rgba(217, 119, 6, 0.06); font-weight:600;';
+        } else {
+          rankBadge = `<span class="badge" style="background:rgba(255,255,255,0.06); font-size:0.9rem; padding:2px 8px;">${idx + 1}</span>`;
+        }
+
+        return `
+          <tr style="${rowStyle}">
+            <td style="text-align:center;">${rankBadge}</td>
+            <td><span class="badge badge-green">${m.code}</span></td>
+            <td style="font-size:0.95rem; font-weight:600;">${escapeHTML(m.name)}</td>
+            <td style="text-align:right; font-size:1.05rem; font-weight:800; color:var(--text-accent);">${formatNumber(m.total_weight)} กก.</td>
+            <td style="text-align:right; font-weight:700; color:var(--gold);">${formatNumber(m.total_price)} ฿</td>
+            <td style="text-align:center; color:var(--text-secondary);">${m.delivery_count} เที่ยว</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    console.error('renderDashboardLeaderboard error:', err);
+  }
 }
 
 // ========== MEMBERS ==========
