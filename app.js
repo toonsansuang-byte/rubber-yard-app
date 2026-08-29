@@ -5853,6 +5853,103 @@ function clearHistoryFilter() {
 // ========== EDIT TRANSACTION IN HISTORY ==========
 let currentEditingTx = null;
 
+function ensureEditTransactionModalDOM() {
+  let modal = document.getElementById('edit-tx-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'edit-tx-modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 580px;">
+        <div class="modal-header">
+          <h3>✏️ แก้ไขรายการรับซื้อยาง</h3>
+          <button class="modal-close" onclick="closeEditTransactionModal()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+          <input type="hidden" id="edit-tx-id">
+          <input type="hidden" id="edit-tx-supabase-id">
+          <input type="hidden" id="edit-tx-member-code-val">
+          <input type="hidden" id="edit-tx-member-name-val">
+          <input type="hidden" id="edit-tx-round-id">
+
+          <!-- Member Information Card -->
+          <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 16px;">
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">ข้อมูลสมาชิก</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <span class="badge badge-green" id="edit-tx-member-code" style="font-size:0.9rem; padding:4px 8px;">-</span>
+                <strong id="edit-tx-member-name" style="font-size:1.05rem; margin-left:8px; color:var(--text-primary);">-</strong>
+              </div>
+              <div style="font-size:0.85rem; color:var(--text-secondary);" id="edit-tx-date">-</div>
+            </div>
+          </div>
+
+          <!-- Rubber Type -->
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:0.85rem; font-weight:600; margin-bottom:6px; display:block;">ชนิดยาง</label>
+            <div class="rubber-type-selector" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+              <label class="rubber-type-option" id="edit-opt-cup" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+                <input type="radio" name="edit-rubber-type" value="cup" style="display:none;" onchange="onEditRubberTypeChange()">
+                <span>ยางก้นถ้วย</span>
+              </label>
+              <label class="rubber-type-option" id="edit-opt-sheet" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+                <input type="radio" name="edit-rubber-type" value="sheet" style="display:none;" onchange="onEditRubberTypeChange()">
+                <span>ยางแผ่น</span>
+              </label>
+              <label class="rubber-type-option" id="edit-opt-latex" style="padding:10px; text-align:center; cursor:pointer; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); font-size:0.85rem;">
+                <input type="radio" name="edit-rubber-type" value="latex" style="display:none;" onchange="onEditRubberTypeChange()">
+                <span>น้ำยางสด</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Weight & Price Inputs Grid -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label for="edit-tx-gross" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+                ⚖️ น้ำหนักยางรวมรถ (กก.)
+              </label>
+              <input type="number" step="any" id="edit-tx-gross" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+            </div>
+
+            <div class="form-group" style="margin:0;">
+              <label for="edit-tx-cart" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+                🛒 น้ำหนักรถเข็น (กก.)
+              </label>
+              <input type="number" step="any" id="edit-tx-cart" class="form-control" style="font-size:1.1rem; font-weight:700; text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+            </div>
+
+            <div class="form-group" style="margin:0; grid-column:span 2;">
+              <label for="edit-tx-price" style="font-size:0.85rem; font-weight:600; margin-bottom:4px; display:block;">
+                💰 ราคารับซื้อ / กิโลกรัม (บาท)
+              </label>
+              <input type="number" step="any" id="edit-tx-price" class="form-control" style="font-size:1.15rem; font-weight:700; color:var(--text-accent); text-align:right;" oninput="recalculateEditTx()" placeholder="0.00">
+            </div>
+          </div>
+
+          <!-- Live Calculation Summary Card -->
+          <div style="background:linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(20, 184, 166, 0.08) 100%); border:1px solid rgba(34, 197, 94, 0.25); border-radius:var(--radius-md); padding:14px 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="color:var(--text-secondary); font-size:0.9rem;">น้ำหนักยางสุทธิ:</span>
+              <strong id="edit-tx-net-display" style="font-size:1.15rem; color:var(--text-primary);">0.00 กก.</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);">
+              <span style="color:var(--text-primary); font-size:1rem; font-weight:700;">ยอดเงินรวมสุทธิ:</span>
+              <strong id="edit-tx-total-display" style="font-size:1.4rem; font-weight:900; color:var(--gold);">0.00 ฿</strong>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+          <button class="btn btn-secondary" onclick="closeEditTransactionModal()" style="padding:10px 20px;">ยกเลิก</button>
+          <button class="btn btn-primary" onclick="saveEditedTransaction()" id="edit-tx-save-btn" style="padding:10px 24px;">💾 บันทึกการแก้ไข</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  return modal;
+}
+
 async function openEditTransactionModal(txId) {
   if (!txId) return;
   showLoading();
@@ -5874,16 +5971,28 @@ async function openEditTransactionModal(txId) {
 
     currentEditingTx = tx;
 
-    // Populate Fields
-    document.getElementById('edit-tx-id').value = tx.id || '';
-    document.getElementById('edit-tx-supabase-id').value = tx.supabase_id || '';
-    document.getElementById('edit-tx-member-code-val').value = tx.member_code || '';
-    document.getElementById('edit-tx-member-name-val').value = tx.member_name || '';
-    document.getElementById('edit-tx-round-id').value = tx.round_id || '';
+    // Ensure DOM exists
+    const modal = ensureEditTransactionModalDOM();
 
-    document.getElementById('edit-tx-member-code').textContent = tx.member_code || '-';
-    document.getElementById('edit-tx-member-name').textContent = tx.member_name || '-';
-    document.getElementById('edit-tx-date').textContent = formatDateTime(tx.date || tx.created_at);
+    // Populate Fields safely
+    const setVal = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val !== undefined && val !== null ? val : '';
+    };
+    const setText = (id, txt) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = txt !== undefined && txt !== null ? txt : '';
+    };
+
+    setVal('edit-tx-id', tx.id || '');
+    setVal('edit-tx-supabase-id', tx.supabase_id || '');
+    setVal('edit-tx-member-code-val', tx.member_code || '');
+    setVal('edit-tx-member-name-val', tx.member_name || '');
+    setVal('edit-tx-round-id', tx.round_id || '');
+
+    setText('edit-tx-member-code', tx.member_code || '-');
+    setText('edit-tx-member-name', tx.member_name || '-');
+    setText('edit-tx-date', formatDateTime(tx.date || tx.created_at));
 
     // Rubber Type
     const rubberType = tx.rubber_type || 'cup';
@@ -5896,13 +6005,13 @@ async function openEditTransactionModal(txId) {
     const cartVal = Number(tx.cart_weight || 0);
     const priceVal = Number(tx.price_per_kg || 0);
 
-    document.getElementById('edit-tx-gross').value = grossVal > 0 ? grossVal : '';
-    document.getElementById('edit-tx-cart').value = cartVal > 0 ? cartVal : '';
-    document.getElementById('edit-tx-price').value = priceVal > 0 ? priceVal : '';
+    setVal('edit-tx-gross', grossVal > 0 ? grossVal : '');
+    setVal('edit-tx-cart', cartVal > 0 ? cartVal : '');
+    setVal('edit-tx-price', priceVal > 0 ? priceVal : '');
 
     recalculateEditTx();
 
-    document.getElementById('edit-tx-modal').classList.add('show');
+    modal.classList.add('show');
   } catch (err) {
     console.error('openEditTransactionModal error:', err);
     showToast('ไม่สามารถเปิดฟอร์มแก้ไขได้: ' + err.message, 'error');
