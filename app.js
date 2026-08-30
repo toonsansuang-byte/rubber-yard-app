@@ -2013,12 +2013,9 @@ function openStartRoundModal() {
   const modal = document.getElementById('start-round-modal');
   const titleInput = document.getElementById('round-title-input');
   
-  // Default round name suggestion
+  // Default round name suggestion: "วันที่ 30 ส.ค. 2569"
   const today = new Date();
-  const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-  const monthStr = monthNames[today.getMonth()];
-  const yearStr = today.getFullYear() + 543;
-  titleInput.value = `รอบที่ 1 - ${monthStr} ${yearStr}`;
+  titleInput.value = `วันที่ ${formatDate(today)}`;
   
   modal.classList.add('show');
   titleInput.focus();
@@ -2524,10 +2521,10 @@ function renderRoundReportContent(round, transactions, format) {
       <h3 style="margin-top:6px; color:#0f172a;">${round.title}</h3>
     </div>
 
-    <div class="report-meta-grid">
+    <div class="report-meta-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">
       <div class="report-meta-item">
         <div class="meta-label">วันที่</div>
-        <div class="meta-val">${formatDateTime(round.start_date)}</div>
+        <div class="meta-val">${formatDate(round.start_date)}</div>
       </div>
       <div class="report-meta-item">
         <div class="meta-label">จำนวนสมาชิกที่ขาย</div>
@@ -2600,10 +2597,20 @@ function closeRoundReportModal() {
 
 async function exportRoundToExcel(roundId = null) {
   let round = currentReportRound;
+  let transactions = currentReportTxList;
+
   if (roundId && (!round || round.id !== roundId)) {
     try {
-      const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
-      if (data) round = data;
+      if (isDesktopApp()) {
+        const r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
+        if (r && r.length > 0) round = r[0];
+        transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) ORDER BY member_code ASC', [roundId, String(round?.supabase_id || roundId), String(roundId)]) || [];
+      } else if (sb && !isAppOffline()) {
+        const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+        if (data) round = data;
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', roundId).order('member_code');
+        transactions = txList || [];
+      }
     } catch (e) { /* ignore */ }
   }
 
@@ -2612,10 +2619,24 @@ async function exportRoundToExcel(roundId = null) {
     return;
   }
 
+  if (!transactions || transactions.length === 0) {
+    if (isDesktopApp()) {
+      transactions = await window.desktopDB.query(
+        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY member_code ASC',
+        [round.id, String(round.supabase_id || round.id), String(round.id), round.id]
+      ) || [];
+    }
+    if ((!transactions || transactions.length === 0) && sb && !isAppOffline()) {
+      try {
+        const targetRId = round.supabase_id || round.id;
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('member_code');
+        transactions = txList || [];
+      } catch (e) {}
+    }
+  }
+
   showLoading();
   try {
-    const { data: txList } = await sb.from('transactions').select('*').eq('round_id', round.id).order('member_code');
-    const transactions = txList || [];
     const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
     const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
 
@@ -2703,8 +2724,7 @@ async function exportRoundToExcel(roundId = null) {
           <tr>
             <td colspan="7" class="meta-info">
               <b>รอบส่งมอบยาง:</b> ${round.title} &nbsp;&nbsp;|&nbsp;&nbsp; 
-              <b>วันที่เริ่ม:</b> ${formatDate(round.start_date)} &nbsp;&nbsp;|&nbsp;&nbsp; 
-              <b>วันที่ปิดรอบ:</b> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}
+              <b>วันที่:</b> ${formatDate(round.start_date)}
             </td>
           </tr>
           <tr><td colspan="7"></td></tr>
