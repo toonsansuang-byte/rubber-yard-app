@@ -2424,11 +2424,32 @@ async function showRoundReport(roundId) {
     let round = null;
     let transactions = [];
     if (isDesktopApp()) {
-      const r = await window.desktopDB.select('purchase_rounds', ['*'], { id: roundId });
+      let r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
       round = r && r.length > 0 ? r[0] : null;
-      transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? ORDER BY date ASC', [roundId]) || [];
+
+      if (!round && sb && !isAppOffline()) {
+        try {
+          const { data: cloudR } = await sb.from('purchase_rounds').select('*').eq('id', roundId).maybeSingle();
+          if (cloudR) round = cloudR;
+        } catch (e) {}
+      }
+
+      transactions = await window.desktopDB.query(
+        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY date ASC',
+        [String(roundId), String(round?.supabase_id || roundId), String(roundId), roundId]
+      ) || [];
+
+      if ((!transactions || transactions.length === 0) && sb && !isAppOffline() && round) {
+        try {
+          const targetRId = round.supabase_id || round.id;
+          const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('date');
+          if (txList && txList.length > 0) {
+            transactions = txList;
+          }
+        } catch (e) {}
+      }
     } else if (sb && !isAppOffline()) {
-      const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+      const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).maybeSingle();
       round = data;
       const { data: txList } = await sb.from('transactions')
         .select('*')
