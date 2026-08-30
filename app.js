@@ -2330,6 +2330,10 @@ async function renderRounds() {
         try {
           const { data: cloudRounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false });
           if (cloudRounds && cloudRounds.length > 0) {
+            const cloudIds = cloudRounds.map(c => String(c.id));
+            const placeholders = cloudIds.map(() => '?').join(',');
+            await window.desktopDB.run(`DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != '' AND supabase_id NOT IN (${placeholders})`, cloudIds);
+
             for (const cr of cloudRounds) {
               const existing = await window.desktopDB.query('SELECT id FROM purchase_rounds WHERE supabase_id = ? OR title = ?', [String(cr.id), cr.title || '']);
               if (existing && existing.length > 0) {
@@ -3010,20 +3014,25 @@ async function deleteRound(roundId) {
   showLoading();
   try {
     if (isDesktopApp()) {
-      await window.desktopDB.delete('transactions', { round_id: roundId });
-      await window.desktopDB.delete('truck_deliveries', { round_id: roundId });
-      await window.desktopDB.delete('purchase_rounds', { id: roundId });
-      await window.desktopDB.run('DELETE FROM sync_queue WHERE (table_name = "transactions" OR table_name = "purchase_rounds" OR table_name = "truck_deliveries") AND local_id = ?', [roundId]);
+      const r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
+      const roundObj = r && r.length > 0 ? r[0] : null;
+      const targetCloudId = roundObj?.supabase_id || roundId;
 
-      if (sb && !isAppOffline()) {
+      await window.desktopDB.run('DELETE FROM transactions WHERE round_id = ? OR round_id = ?', [String(roundId), String(targetCloudId)]);
+      await window.desktopDB.run('DELETE FROM truck_deliveries WHERE round_id = ? OR round_id = ?', [String(roundId), String(targetCloudId)]);
+      await window.desktopDB.run('DELETE FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
+      await window.desktopDB.run('DELETE FROM sync_queue WHERE (table_name = "transactions" OR table_name = "purchase_rounds" OR table_name = "truck_deliveries") AND (local_id = ? OR row_data LIKE ?)', [roundId, `%${roundId}%`]);
+
+      if (sb && !isAppOffline() && targetCloudId) {
         try {
-          await sb.from('transactions').delete().eq('round_id', roundId);
-          await sb.from('truck_deliveries').delete().eq('round_id', roundId);
-          await sb.from('purchase_rounds').delete().eq('id', roundId);
+          await sb.from('transactions').delete().eq('round_id', targetCloudId);
+          await sb.from('truck_deliveries').delete().eq('round_id', targetCloudId);
+          await sb.from('purchase_rounds').delete().eq('id', targetCloudId);
         } catch (e) {}
       }
     } else if (sb && !isAppOffline()) {
       await sb.from('transactions').delete().eq('round_id', roundId);
+      await sb.from('truck_deliveries').delete().eq('round_id', roundId);
       const { data, error } = await sb.from('purchase_rounds').delete().eq('id', roundId).select();
       if (error) throw error;
     }
