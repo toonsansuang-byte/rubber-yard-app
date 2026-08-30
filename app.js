@@ -4460,6 +4460,10 @@ async function saveTransaction(confirmedOverride = false) {
   showLoading();
 
   if (editingTransaction) {
+    const editorName = currentUser?.display_name || currentUser?.username || 'ผู้ดูแลระบบ';
+    const editTimestamp = formatDateTime(new Date().toISOString());
+    const editorLabel = `${editorName} (${editTimestamp})`;
+
     const updateDataSQLite = {
       rubber_type: rubberType,
       gross_weight: totalGross,
@@ -4478,7 +4482,8 @@ async function saveTransaction(confirmedOverride = false) {
       member_name: selectedMember.name,
       member_account_no: selectedMember.account_no || '',
       truck_number: encodedTruckNumber,
-      trailer_type: trailerType
+      trailer_type: trailerType,
+      confirmed_by_display_name: editorLabel
     };
 
     const updateDataCloud = {
@@ -4494,7 +4499,8 @@ async function saveTransaction(confirmedOverride = false) {
       member_name: selectedMember.name,
       member_account_no: selectedMember.account_no || '',
       truck_number: encodedTruckNumber,
-      trailer_type: trailerType
+      trailer_type: trailerType,
+      confirmed_by_display_name: editorLabel
     };
 
     if (selectedMember.code) {
@@ -5197,10 +5203,6 @@ function buildReceiptCopyHTML(tx, plantName) {
       tripsArr = JSON.parse(tx.trips);
     } else if (Array.isArray(tx.trips_detail) && tx.trips_detail.length > 0) {
       tripsArr = tx.trips_detail;
-    } else if (typeof tx.trips_detail === 'string' && tx.trips_detail.trim().startsWith('[')) {
-      tripsArr = JSON.parse(tx.trips_detail);
-    } else if (Array.isArray(tx.trip_details) && tx.trip_details.length > 0) {
-      tripsArr = tx.trip_details;
     } else if (typeof tx.trip_details === 'string' && tx.trip_details.trim().startsWith('[')) {
       tripsArr = JSON.parse(tx.trip_details);
     }
@@ -5330,10 +5332,6 @@ function buildReceiptCopyHTML(tx, plantName) {
         <tr>
           <td style="font-weight:bold; padding:2px 0;">น้ำหนักรวมรถเข็น</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(totalCart)}</td>
-        </tr>
-        <tr>
-          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางสุทธิ</td>
-          <td style="border-bottom:1px dotted #000; font-weight:900; font-size:15px; text-align:center;">${formatNumber(finalNetWeight)}</td>
         </tr>
         <tr>
           <td style="font-weight:bold; padding:2px 0;">ราคา / กิโลกรัม</td>
@@ -5708,6 +5706,17 @@ async function filterHistory() {
           ? `<span class="badge" style="background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block;"></span>ซิงค์แล้ว</span>`
           : `<span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>รอซิงค์</span>`;
 
+        const createdBy = t.created_by_display_name || t.created_by_name || 'ผู้ดูแลระบบ';
+        const editedBy = t.confirmed_by_display_name || '';
+        const authorHtml = editedBy
+          ? `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:3px;">
+               <span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>
+               <span style="font-size:0.72rem; color:#fbbf24; font-weight:500; display:inline-flex; align-items:center; gap:2px; background:rgba(245,158,11,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);" title="แก้ไขโดย: ${editedBy}">
+                 ✏️ ${editedBy}
+               </span>
+             </div>`
+          : `<span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>`;
+
         return `
         <tr>
           <td style="text-align:center;">
@@ -5722,7 +5731,7 @@ async function filterHistory() {
           <td style="font-weight:600;color:var(--text-accent);">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
           <td>${formatNumber(t.price_per_kg)}</td>
           <td style="font-weight:600;color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
-          <td><span class="badge" style="background:rgba(255,255,255,0.08);">${t.created_by_name || 'ผู้ดูแลระบบ'}</span></td>
+          <td>${authorHtml}</td>
           <td style="text-align:center;">${statusBadge}</td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
