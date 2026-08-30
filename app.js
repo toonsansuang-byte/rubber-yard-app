@@ -325,6 +325,17 @@ async function showApp() {
   await fetchAdminPendingBankRequestsCount();
   initRealtimeSubscriptions();
   navigateTo('dashboard');
+
+  if (isDesktopApp()) {
+    window.desktopDB.syncDownload().then(async (res) => {
+      if (res && res.success) {
+        await loadCurrentRound();
+        if (currentSection === 'dashboard' && typeof renderDashboard === 'function') await renderDashboard(false);
+        if (currentSection === 'history' && typeof renderHistory === 'function') await renderHistory(false);
+        if (currentSection === 'rounds' && typeof renderRounds === 'function') await renderRounds();
+      }
+    }).catch(console.warn);
+  }
 }
 
 // ========== MEMBER PORTAL AUTH & SYSTEM ==========
@@ -1933,7 +1944,28 @@ async function loadCurrentRound() {
     let data = null;
     if (isDesktopApp()) {
       const openRounds = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE status = "open" ORDER BY created_at DESC LIMIT 1');
-      data = openRounds || [];
+      if (openRounds && openRounds.length > 0) {
+        data = openRounds;
+      } else if (sb && !isAppOffline()) {
+        try {
+          const res = await sb.from('purchase_rounds').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(1);
+          if (res.data && res.data.length > 0) {
+            data = res.data;
+            const r = res.data[0];
+            const existing = await window.desktopDB.query('SELECT id FROM purchase_rounds WHERE supabase_id = ? OR title = ?', [String(r.id), r.title || '']);
+            if (!existing || existing.length === 0) {
+              await window.desktopDB.insert('purchase_rounds', {
+                title: r.title || '',
+                status: r.status || 'open',
+                start_date: r.start_date || new Date().toISOString(),
+                supabase_id: String(r.id)
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Fallback loadCurrentRound error:', e);
+        }
+      }
     } else if (sb && !isAppOffline()) {
       const res = await sb.from('purchase_rounds')
         .select('*')
@@ -2285,6 +2317,7 @@ async function renderRounds() {
         </div>
         ${reconciliationHtml}
       `;
+    } else {
       activeDetailEl.innerHTML = `
         <div class="empty-state" style="padding:20px;">
           <div class="empty-icon">⏸️</div>
@@ -2296,6 +2329,37 @@ async function renderRounds() {
     // Render rounds table
     let rounds = [];
     if (isDesktopApp()) {
+      if (sb && !isAppOffline()) {
+        try {
+          const { data: cloudRounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false });
+          if (cloudRounds && cloudRounds.length > 0) {
+            for (const cr of cloudRounds) {
+              const existing = await window.desktopDB.query('SELECT id FROM purchase_rounds WHERE supabase_id = ? OR title = ?', [String(cr.id), cr.title || '']);
+              if (existing && existing.length > 0) {
+                await window.desktopDB.update('purchase_rounds', {
+                  title: cr.title || '',
+                  status: cr.status,
+                  start_date: cr.start_date,
+                  closed_at: cr.closed_at,
+                  closed_by_name: cr.closed_by_name || '',
+                  supabase_id: String(cr.id)
+                }, { id: existing[0].id });
+              } else {
+                await window.desktopDB.insert('purchase_rounds', {
+                  title: cr.title || '',
+                  status: cr.status || 'open',
+                  start_date: cr.start_date || new Date().toISOString(),
+                  closed_at: cr.closed_at || null,
+                  closed_by_name: cr.closed_by_name || '',
+                  supabase_id: String(cr.id)
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Sync rounds in renderRounds error:', e);
+        }
+      }
       rounds = await window.desktopDB.query('SELECT * FROM purchase_rounds ORDER BY created_at DESC') || [];
     } else if (sb && !isAppOffline()) {
       const { data, error } = await sb.from('purchase_rounds')
@@ -5260,9 +5324,11 @@ function buildReceiptCopyHTML(tx, plantName) {
 }
 
 let currentReceiptTx = null;
+let receiptSourceSection = 'purchase';
 
-function showReceipt(tx) {
+function showReceipt(tx, source = null) {
   currentReceiptTx = tx;
+  receiptSourceSection = source || currentSection || 'purchase';
   renderReceiptContent();
   document.getElementById('receipt-modal').classList.add('show');
 }
@@ -5283,14 +5349,16 @@ function renderReceiptContent() {
 
 function closeReceiptModal() {
   document.getElementById('receipt-modal').classList.remove('show');
-  navigateTo('purchase');
-  if (typeof initPurchase === 'function') {
-    initPurchase();
+  if (receiptSourceSection === 'purchase') {
+    navigateTo('purchase');
+    if (typeof initPurchase === 'function') {
+      initPurchase();
+    }
+    setTimeout(() => {
+      const memberSearchInput = document.getElementById('purchase-member-search');
+      if (memberSearchInput) memberSearchInput.focus();
+    }, 200);
   }
-  setTimeout(() => {
-    const memberSearchInput = document.getElementById('purchase-member-search');
-    if (memberSearchInput) memberSearchInput.focus();
-  }, 200);
 }
 
 function printReceipt() {
@@ -5392,15 +5460,16 @@ function printReceipt() {
   // Close receipt modal immediately
   closeReceiptModal();
 
-  // Navigate back to Purchase and focus on Member Search input
-  navigateTo('purchase');
-  if (typeof initPurchase === 'function') {
-    initPurchase();
+  if (receiptSourceSection === 'purchase') {
+    navigateTo('purchase');
+    if (typeof initPurchase === 'function') {
+      initPurchase();
+    }
+    setTimeout(() => {
+      const memberSearchInput = document.getElementById('purchase-member-search');
+      if (memberSearchInput) memberSearchInput.focus();
+    }, 250);
   }
-  setTimeout(() => {
-    const memberSearchInput = document.getElementById('purchase-member-search');
-    if (memberSearchInput) memberSearchInput.focus();
-  }, 250);
 
   // Trigger print via iframe without popup window
   setTimeout(() => {
@@ -5416,8 +5485,40 @@ async function renderHistory() {
     let rounds = [];
     let members = [];
     if (isDesktopApp()) {
-      rounds = await window.desktopDB.query('SELECT id, title, status FROM purchase_rounds ORDER BY created_at DESC');
-      members = await window.desktopDB.query('SELECT code, name FROM members ORDER BY code');
+      if (sb && !isAppOffline()) {
+        try {
+          const { data: cloudRounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false });
+          if (cloudRounds && cloudRounds.length > 0) {
+            for (const cr of cloudRounds) {
+              const existing = await window.desktopDB.query('SELECT id FROM purchase_rounds WHERE supabase_id = ? OR title = ?', [String(cr.id), cr.title || '']);
+              if (existing && existing.length > 0) {
+                await window.desktopDB.update('purchase_rounds', {
+                  title: cr.title || '',
+                  status: cr.status,
+                  start_date: cr.start_date,
+                  closed_at: cr.closed_at,
+                  closed_by_name: cr.closed_by_name || '',
+                  supabase_id: String(cr.id)
+                }, { id: existing[0].id });
+              } else {
+                await window.desktopDB.insert('purchase_rounds', {
+                  title: cr.title || '',
+                  status: cr.status || 'open',
+                  start_date: cr.start_date || new Date().toISOString(),
+                  closed_at: cr.closed_at || null,
+                  closed_by_name: cr.closed_by_name || '',
+                  supabase_id: String(cr.id)
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Sync cloud rounds in renderHistory error:', e);
+        }
+      }
+
+      rounds = await window.desktopDB.query('SELECT id, title, status, supabase_id FROM purchase_rounds ORDER BY created_at DESC') || [];
+      members = await window.desktopDB.query('SELECT code, name FROM members ORDER BY code') || [];
     } else if (sb && !isAppOffline()) {
       const { data: r } = await sb.from('purchase_rounds').select('id, title, status').order('created_at', { ascending: false });
       rounds = r || [];
@@ -5429,7 +5530,10 @@ async function renderHistory() {
     const currentRoundVal = roundFilter ? roundFilter.value : '';
     if (roundFilter) {
       roundFilter.innerHTML = '<option value="">ทุกรอบการรับซื้อ</option>' +
-        (rounds || []).map(r => `<option value="${r.id}" ${String(r.id) === String(currentRoundVal) ? 'selected' : ''}>${r.title} (${r.status === 'open' ? 'กำลังเปิด' : 'ปิดแล้ว'})</option>`).join('');
+        (rounds || []).map(r => {
+          const val = r.supabase_id || r.id;
+          return `<option value="${val}" ${String(val) === String(currentRoundVal) || String(r.id) === String(currentRoundVal) ? 'selected' : ''}>${r.title} (${r.status === 'open' ? '🟢 เปิดอยู่' : '🔒 ปิดแล้ว'})</option>`;
+        }).join('');
     }
 
     const memberFilter = document.getElementById('history-member-filter');
@@ -5458,10 +5562,10 @@ async function filterHistory() {
     if (isDesktopApp()) {
       if (sb && !isAppOffline()) {
         try {
-          const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(200);
+          const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
           if (cloudTxs && cloudTxs.length > 0) {
             for (const tx of cloudTxs) {
-              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND total_price = ? AND date = ?)', [tx.id, tx.member_code, tx.total_price, tx.date]);
+              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND date = ?)', [tx.id, tx.member_code, tx.date]);
               if (!existing || existing.length === 0) {
                 const localTx = {
                   ...tx,
@@ -5472,6 +5576,17 @@ async function filterHistory() {
                 };
                 delete localTx.id;
                 await window.desktopDB.insert('transactions', localTx);
+              } else {
+                await window.desktopDB.update('transactions', {
+                  round_id: tx.round_id,
+                  supabase_id: tx.id,
+                  synced: 1,
+                  total_price: tx.total_price,
+                  final_weight: tx.final_weight,
+                  net_weight: tx.net_weight,
+                  gross_weight: tx.gross_weight || 0,
+                  cart_weight: tx.cart_weight || 0
+                }, { id: existing[0].id });
               }
             }
           }
@@ -5482,7 +5597,10 @@ async function filterHistory() {
 
       let sql = 'SELECT * FROM transactions WHERE 1=1';
       const params = [];
-      if (roundId) { sql += ' AND round_id = ?'; params.push(roundId); }
+      if (roundId) {
+        sql += ' AND (round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ? OR id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?))';
+        params.push(roundId, roundId, roundId, roundId);
+      }
       if (dateFrom) { sql += ' AND date >= ?'; params.push(dateFrom + 'T00:00:00'); }
       if (dateTo) { sql += ' AND date <= ?'; params.push(dateTo + 'T23:59:59'); }
       if (memberCode) { sql += ' AND member_code = ?'; params.push(memberCode); }
@@ -6407,7 +6525,7 @@ async function showReceiptFromHistory(txId) {
       const { data } = await sb.from('transactions').select('*').eq('id', txId).single();
       tx = data;
     }
-    if (tx) showReceipt(tx);
+    if (tx) showReceipt(tx, 'history');
   } catch (err) {
     showToast('โหลดใบเสร็จไม่สำเร็จ', 'error');
   }
