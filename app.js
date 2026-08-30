@@ -1943,10 +1943,7 @@ async function loadCurrentRound() {
   try {
     let data = null;
     if (isDesktopApp()) {
-      const openRounds = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE status = "open" ORDER BY created_at DESC LIMIT 1');
-      if (openRounds && openRounds.length > 0) {
-        data = openRounds;
-      } else if (sb && !isAppOffline()) {
+      if (sb && !isAppOffline()) {
         try {
           const res = await sb.from('purchase_rounds').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(1);
           if (res.data && res.data.length > 0) {
@@ -1956,15 +1953,30 @@ async function loadCurrentRound() {
             if (!existing || existing.length === 0) {
               await window.desktopDB.insert('purchase_rounds', {
                 title: r.title || '',
-                status: r.status || 'open',
+                status: 'open',
                 start_date: r.start_date || new Date().toISOString(),
                 supabase_id: String(r.id)
               });
+            } else {
+              await window.desktopDB.update('purchase_rounds', {
+                status: 'open',
+                title: r.title || '',
+                start_date: r.start_date || new Date().toISOString()
+              }, { id: existing[0].id });
             }
+          } else {
+            // Cloud has NO active open rounds! Mark any local rounds as closed
+            await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed" WHERE status = "open"');
+            data = null;
           }
         } catch (e) {
-          console.warn('Fallback loadCurrentRound error:', e);
+          console.warn('Sync loadCurrentRound error:', e);
+          const openRounds = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE status = "open" ORDER BY created_at DESC LIMIT 1');
+          data = openRounds;
         }
+      } else {
+        const openRounds = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE status = "open" ORDER BY created_at DESC LIMIT 1');
+        data = openRounds;
       }
     } else if (sb && !isAppOffline()) {
       const res = await sb.from('purchase_rounds')
@@ -7848,6 +7860,28 @@ async function init() {
           }
         } catch (uErr) {
           console.warn('Desktop sync users on init error:', uErr);
+        }
+      }
+
+      // Sync purchase_rounds from Supabase on init
+      if (sb && !isAppOffline()) {
+        try {
+          const { data: cloudRounds } = await sb.from('purchase_rounds').select('*');
+          if (cloudRounds) {
+            const cloudIds = cloudRounds.map(c => String(c.id));
+            if (cloudIds.length > 0) {
+              const placeholders = cloudIds.map(() => '?').join(',');
+              await window.desktopDB.run(`DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != '' AND supabase_id NOT IN (${placeholders})`, cloudIds);
+            } else {
+              await window.desktopDB.run('DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != ""');
+            }
+            const hasOpen = cloudRounds.some(r => r.status === 'open');
+            if (!hasOpen) {
+              await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed" WHERE status = "open"');
+            }
+          }
+        } catch (rErr) {
+          console.warn('Desktop sync rounds on init error:', rErr);
         }
       }
     } catch (e) {
