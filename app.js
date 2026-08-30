@@ -6801,26 +6801,35 @@ async function renderUsers() {
   try {
     let users = [];
     if (isDesktopApp()) {
-      users = await window.desktopDB.query('SELECT * FROM app_users ORDER BY created_at ASC') || [];
-      if (users.length === 0 && sb && !isAppOffline()) {
+      if (sb && !isAppOffline()) {
         try {
           const { data: cloudUsers } = await sb.from('app_users').select('*').order('created_at');
           if (cloudUsers && cloudUsers.length > 0) {
             for (const u of cloudUsers) {
-              await window.desktopDB.insert('app_users', {
-                username: u.username,
-                password: u.password,
-                display_name: u.display_name || '',
-                position: u.position || '',
-                role: u.role || 'staff'
-              });
+              const existing = await window.desktopDB.query('SELECT id FROM app_users WHERE LOWER(username) = LOWER(?)', [u.username]);
+              if (existing && existing.length > 0) {
+                await window.desktopDB.update('app_users', {
+                  display_name: u.display_name || '',
+                  position: u.position || '',
+                  role: u.role || 'user',
+                  password: u.password
+                }, { id: existing[0].id });
+              } else {
+                await window.desktopDB.insert('app_users', {
+                  username: u.username,
+                  password: u.password,
+                  display_name: u.display_name || '',
+                  position: u.position || '',
+                  role: u.role || 'user'
+                });
+              }
             }
-            users = await window.desktopDB.query('SELECT * FROM app_users ORDER BY created_at ASC') || [];
           }
         } catch (e) {
           console.warn('Desktop fetch cloud users error:', e);
         }
       }
+      users = await window.desktopDB.query('SELECT * FROM app_users ORDER BY created_at ASC') || [];
     } else if (sb && !isAppOffline()) {
       const { data, error } = await sb.from('app_users').select('*').order('created_at');
       if (error) throw error;
@@ -6852,7 +6861,7 @@ async function renderUsers() {
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="openUserModal('${u.id}')" title="แก้ไข">✏️</button>
             ${String(u.id) !== String(currentUser.id) 
-              ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteUser('${u.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>` 
+              ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteUser('${u.id}', '${u.username}')" title="ลบ" style="margin-left:4px;">🗑️</button>` 
               : ''}
           </td>
         </tr>
@@ -6929,7 +6938,7 @@ async function saveUser() {
   try {
     if (isDesktopApp()) {
       if (hiddenId) {
-        const updatePayload = { display_name, role };
+        const updatePayload = { display_name, position, role };
         if (password) {
           updatePayload.password = await hashPassword(password);
         }
@@ -6940,19 +6949,42 @@ async function saveUser() {
           row_data: JSON.stringify({ id: hiddenId, ...updatePayload }),
           local_id: hiddenId
         });
+
+        if (sb && !isAppOffline()) {
+          try {
+            await sb.from('app_users').update(updatePayload).eq('username', username);
+          } catch (cloudErr) {
+            console.warn('Direct cloud update user error:', cloudErr);
+          }
+        }
         showToast('แก้ไขข้อมูลผู้ใช้งานสำเร็จ!');
       } else {
         const hashedPass = await hashPassword(password);
-        const insertPayload = { username, display_name, password: hashedPass, role };
+        const insertPayload = { username, display_name, position, password: hashedPass, role };
         const inserted = await window.desktopDB.insert('app_users', insertPayload);
         await window.desktopDB.insert('sync_queue', {
           table_name: 'app_users',
           action: 'INSERT',
-          row_data: JSON.stringify(inserted),
+          row_data: JSON.stringify(insertPayload),
           local_id: inserted.id
         });
+
+        if (sb && !isAppOffline()) {
+          try {
+            await sb.from('app_users').upsert(insertPayload, { onConflict: 'username' });
+          } catch (cloudErr) {
+            console.warn('Direct cloud insert user error:', cloudErr);
+          }
+        }
         showToast('เพิ่มผู้ใช้งานใหม่สำเร็จ!');
       }
+
+      try {
+        if (typeof window.desktopDB.syncUpload === 'function') {
+          window.desktopDB.syncUpload().catch(() => {});
+        }
+      } catch (e) {}
+
     } else if (sb && !isAppOffline()) {
       if (hiddenId) {
         const updatePayload = { display_name, position, role };
@@ -6996,19 +7028,19 @@ async function saveUser() {
   hideLoading();
 }
 
-function confirmDeleteUser(id) {
+function confirmDeleteUser(id, username = null) {
   const modal = document.getElementById('confirm-modal');
   document.getElementById('confirm-message').innerHTML = `
     <span class="confirm-icon">⚠️</span>
-    ต้องการลบบัญชีผู้ใช้งานนี้ใช่หรือไม่?
+    ต้องการลบบัญชีผู้ใช้งาน <strong>${username || ''}</strong> ใช่หรือไม่?
   `;
-  document.getElementById('confirm-action-btn').onclick = () => deleteUser(id);
+  document.getElementById('confirm-action-btn').onclick = () => deleteUser(id, username);
   modal.classList.add('show');
 }
 
-async function deleteUser(id) {
-  if (!id) return;
-  if (currentUser && id === currentUser.id) {
+async function deleteUser(id, username = null) {
+  if (!id && !username) return;
+  if (currentUser && (id === currentUser.id || username === currentUser.username)) {
     showToast('ไม่สามารถลบบัญชีของตัวเองได้', 'error');
     return;
   }
@@ -7016,20 +7048,38 @@ async function deleteUser(id) {
   showLoading();
   try {
     if (isDesktopApp()) {
-      const userRows = await window.desktopDB.select('app_users', ['*'], { id });
-      const u = (userRows && userRows.length > 0) ? userRows[0] : null;
-
-      await window.desktopDB.delete('app_users', { id });
-      await window.desktopDB.run('DELETE FROM sync_queue WHERE table_name = "app_users" AND local_id = ?', [id]);
-
-      if (sb && !isAppOffline() && u) {
-        try {
-          await sb.from('app_users').delete().eq('username', u.username);
-        } catch (e) {}
+      let targetUsername = username;
+      if (!targetUsername && id) {
+        const userRows = await window.desktopDB.select('app_users', ['*'], { id });
+        const u = (userRows && userRows.length > 0) ? userRows[0] : null;
+        if (u) targetUsername = u.username;
       }
+
+      if (id) {
+        await window.desktopDB.delete('app_users', { id });
+        await window.desktopDB.run('DELETE FROM sync_queue WHERE table_name = "app_users" AND local_id = ?', [id]);
+      }
+      if (targetUsername) {
+        await window.desktopDB.delete('app_users', { username: targetUsername });
+        await window.desktopDB.run('DELETE FROM sync_queue WHERE table_name = "app_users" AND row_data LIKE ?', [`%"username":"${targetUsername}"%`]);
+      }
+
+      if (sb && !isAppOffline() && targetUsername) {
+        try {
+          await sb.from('app_users').delete().eq('username', targetUsername);
+        } catch (e) {
+          console.warn('Cloud delete user error:', e);
+        }
+      }
+
+      try {
+        if (typeof window.desktopDB.syncUpload === 'function') {
+          window.desktopDB.syncUpload().catch(() => {});
+        }
+      } catch (e) {}
     } else if (sb && !isAppOffline()) {
-      const { data, error } = await sb.from('app_users').delete().eq('id', id).select();
-      if (error) throw error;
+      if (id) await sb.from('app_users').delete().eq('id', id);
+      if (username) await sb.from('app_users').delete().eq('username', username);
     }
 
     closeConfirmModal();
