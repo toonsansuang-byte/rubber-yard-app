@@ -3734,13 +3734,16 @@ async function renderMembers(filter = '') {
         members = await window.desktopDB.search('members', filter, ['code', 'name']);
       } else {
         members = await window.desktopDB.select('members', ['*']);
-      }
-      // If SQLite is empty, auto-seed with SEED_MEMBERS
-      if ((!members || members.length === 0) && typeof SEED_MEMBERS !== 'undefined' && SEED_MEMBERS.length > 0) {
-        for (const sm of SEED_MEMBERS) {
-          await window.desktopDB.insert('members', sm);
+        // If SQLite is truly empty (count 0), auto-seed with SEED_MEMBERS
+        if ((!members || members.length === 0) && typeof SEED_MEMBERS !== 'undefined' && SEED_MEMBERS.length > 0) {
+          for (const sm of SEED_MEMBERS) {
+            const exists = await window.desktopDB.select('members', ['id'], { code: sm.code });
+            if (!exists || exists.length === 0) {
+              await window.desktopDB.insert('members', sm);
+            }
+          }
+          members = await window.desktopDB.select('members', ['*']);
         }
-        members = await window.desktopDB.select('members', ['*']);
       }
     } else {
       let query = sb.from('members').select('*').order('code');
@@ -5612,6 +5615,12 @@ async function filterHistory() {
         try {
           const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
           if (cloudTxs && cloudTxs.length > 0) {
+            const cloudIds = cloudTxs.map(t => String(t.id));
+            const placeholders = cloudIds.map(() => '?').join(',');
+            // Remove local transactions that were deleted from cloud or orphaned test transactions
+            await window.desktopDB.run(`DELETE FROM transactions WHERE supabase_id IS NOT NULL AND supabase_id != '' AND supabase_id NOT IN (${placeholders})`, cloudIds);
+            await window.desktopDB.run(`DELETE FROM transactions WHERE (round_id IS NULL OR round_id = '' OR round_id = 'null') AND synced = 1`);
+
             for (const tx of cloudTxs) {
               const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND date = ?)', [tx.id, tx.member_code, tx.date]);
               if (!existing || existing.length === 0) {
