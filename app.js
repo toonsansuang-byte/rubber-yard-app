@@ -2526,12 +2526,8 @@ function renderRoundReportContent(round, transactions, format) {
 
     <div class="report-meta-grid">
       <div class="report-meta-item">
-        <div class="meta-label">วันที่เริ่มรอบ</div>
+        <div class="meta-label">วันที่</div>
         <div class="meta-val">${formatDateTime(round.start_date)}</div>
-      </div>
-      <div class="report-meta-item">
-        <div class="meta-label">วันที่ปิดรอบ</div>
-        <div class="meta-val">${round.end_date ? formatDateTime(round.end_date) : 'กำลังเปิดรับซื้อ'}</div>
       </div>
       <div class="report-meta-item">
         <div class="meta-label">จำนวนสมาชิกที่ขาย</div>
@@ -2908,7 +2904,7 @@ async function printRoundReport(roundId = null) {
         <h2>${plantationName}</h2>
         <p>${plantationAddress}</p>
         <h3>เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</h3>
-        <p style="margin-top:4px;"><strong>รอบส่งมอบยาง:</strong> ${round.title} &nbsp;|&nbsp; <strong>วันที่เริ่ม:</strong> ${formatDate(round.start_date)} &nbsp;|&nbsp; <strong>วันที่ปิดรอบ:</strong> ${round.end_date ? formatDate(round.end_date) : 'กำลังเปิดรับซื้อ'}</p>
+        <p style="margin-top:4px;"><strong>รอบส่งมอบยาง:</strong> ${round.title} &nbsp;|&nbsp; <strong>วันที่:</strong> ${formatDate(round.start_date)}</p>
       </div>
 
       <div class="meta-grid">
