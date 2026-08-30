@@ -3770,6 +3770,22 @@ async function renderMembers(filter = '') {
     const tbody = document.getElementById('members-table-body');
     const emptyState = document.getElementById('members-empty');
 
+    const countEl = document.getElementById('member-total-count');
+    if (countEl) {
+      if (filter) {
+        let totalAll = members.length;
+        if (isDesktopApp()) {
+          totalAll = await window.desktopDB.count('members');
+        } else if (sb && !isAppOffline()) {
+          const { count } = await sb.from('members').select('*', { count: 'exact', head: true });
+          totalAll = count || members.length;
+        }
+        countEl.textContent = `${members.length} / ${totalAll} คน`;
+      } else {
+        countEl.textContent = `${members.length} คน`;
+      }
+    }
+
     if (members.length === 0) {
       tbody.innerHTML = '';
       emptyState.style.display = 'block';
@@ -3792,7 +3808,7 @@ async function renderMembers(filter = '') {
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="openMemberModal('${m.id}')" title="แก้ไขข้อมูล">✏️</button>
             <button class="btn btn-warning btn-sm btn-icon" onclick="openAdminResetMemberPasswordModal('${m.id}')" title="รีเซ็ตรหัสผ่าน" style="margin-left:4px;">🔑</button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMember('${m.id}')" title="ลบสมาชิก" style="margin-left:4px;">🗑️</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteMember('${m.id}', '${m.code}', '${(m.name || '').replace(/'/g, "\\'")}')" title="ลบสมาชิก" style="margin-left:4px;">🗑️</button>
           </td>
         </tr>
       `).join('');
