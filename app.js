@@ -161,6 +161,38 @@ async function handleLogin() {
         console.warn('Desktop login SQLite error:', e);
       }
 
+      // If not found in SQLite, try Supabase cloud lookup (if online) and cache into SQLite!
+      if (!loggedUser && sb && !isAppOffline()) {
+        try {
+          const { data: cloudUsers } = await sb.from('app_users').select('*').ilike('username', username);
+          if (cloudUsers && cloudUsers.length > 0) {
+            const user = cloudUsers.find(u => u.password === hashedInput || u.password === password);
+            if (user) {
+              loggedUser = user;
+              const existing = await window.desktopDB.query('SELECT id FROM app_users WHERE LOWER(username) = LOWER(?)', [user.username]);
+              if (existing && existing.length > 0) {
+                await window.desktopDB.update('app_users', {
+                  display_name: user.display_name || '',
+                  position: user.position || '',
+                  role: user.role || 'staff',
+                  password: user.password
+                }, { id: existing[0].id });
+              } else {
+                await window.desktopDB.insert('app_users', {
+                  username: user.username,
+                  password: user.password,
+                  display_name: user.display_name || '',
+                  position: user.position || '',
+                  role: user.role || 'staff'
+                });
+              }
+            }
+          }
+        } catch (cloudErr) {
+          console.warn('Desktop cloud fallback login error:', cloudErr);
+        }
+      }
+
       // Default Admin User fallback in Desktop mode
       if (!loggedUser) {
         const isDefaultAdmin = (username.toUpperCase() === 'SANSUANG' || username.toLowerCase() === 'admin');
@@ -6542,6 +6574,25 @@ async function renderUsers() {
     let users = [];
     if (isDesktopApp()) {
       users = await window.desktopDB.query('SELECT * FROM app_users ORDER BY created_at ASC') || [];
+      if (users.length === 0 && sb && !isAppOffline()) {
+        try {
+          const { data: cloudUsers } = await sb.from('app_users').select('*').order('created_at');
+          if (cloudUsers && cloudUsers.length > 0) {
+            for (const u of cloudUsers) {
+              await window.desktopDB.insert('app_users', {
+                username: u.username,
+                password: u.password,
+                display_name: u.display_name || '',
+                position: u.position || '',
+                role: u.role || 'staff'
+              });
+            }
+            users = await window.desktopDB.query('SELECT * FROM app_users ORDER BY created_at ASC') || [];
+          }
+        } catch (e) {
+          console.warn('Desktop fetch cloud users error:', e);
+        }
+      }
     } else if (sb && !isAppOffline()) {
       const { data, error } = await sb.from('app_users').select('*').order('created_at');
       if (error) throw error;
@@ -7581,6 +7632,36 @@ async function init() {
       if (count === 0 && typeof SEED_MEMBERS !== 'undefined' && SEED_MEMBERS.length > 0) {
         for (const m of SEED_MEMBERS) {
           await window.desktopDB.insert('members', m);
+        }
+      }
+
+      // Sync app_users from Supabase into SQLite so all staff can log in offline
+      if (sb && !isAppOffline()) {
+        try {
+          const { data: cloudUsers } = await sb.from('app_users').select('*');
+          if (cloudUsers && cloudUsers.length > 0) {
+            for (const u of cloudUsers) {
+              const existing = await window.desktopDB.query('SELECT id FROM app_users WHERE LOWER(username) = LOWER(?)', [u.username]);
+              if (existing && existing.length > 0) {
+                await window.desktopDB.update('app_users', {
+                  display_name: u.display_name || '',
+                  position: u.position || '',
+                  role: u.role || 'staff',
+                  password: u.password
+                }, { id: existing[0].id });
+              } else {
+                await window.desktopDB.insert('app_users', {
+                  username: u.username,
+                  password: u.password,
+                  display_name: u.display_name || '',
+                  position: u.position || '',
+                  role: u.role || 'staff'
+                });
+              }
+            }
+          }
+        } catch (uErr) {
+          console.warn('Desktop sync users on init error:', uErr);
         }
       }
     } catch (e) {
