@@ -3906,18 +3906,32 @@ async function saveMember() {
         await window.desktopDB.insert('sync_queue', {
           table_name: 'members',
           action: 'UPDATE',
-          row_data: JSON.stringify({ id: hiddenId, ...cloudPayload }),
+          row_data: JSON.stringify(cloudPayload),
           local_id: hiddenId
         });
+        if (sb && !isAppOffline()) {
+          try {
+            await sb.from('members').update(cloudPayload).eq('code', code);
+          } catch (cloudErr) {
+            console.warn('Direct cloud update member error:', cloudErr);
+          }
+        }
         showToast('แก้ไขข้อมูลสมาชิกสำเร็จ!');
       } else {
         const inserted = await window.desktopDB.insert('members', payload);
         await window.desktopDB.insert('sync_queue', {
           table_name: 'members',
           action: 'INSERT',
-          row_data: JSON.stringify({ ...cloudPayload, local_id: inserted.id }),
+          row_data: JSON.stringify(cloudPayload),
           local_id: inserted.id
         });
+        if (sb && !isAppOffline()) {
+          try {
+            await sb.from('members').upsert(cloudPayload, { onConflict: 'code' });
+          } catch (cloudErr) {
+            console.warn('Direct cloud insert member error:', cloudErr);
+          }
+        }
         showToast('เพิ่มสมาชิกใหม่สำเร็จ!');
       }
 
@@ -3934,7 +3948,7 @@ async function saveMember() {
         if (error) throw error;
         showToast('แก้ไขข้อมูลสมาชิกสำเร็จ!');
       } else {
-        const { error } = await sb.from('members').insert(cloudPayload);
+        const { error } = await sb.from('members').upsert(cloudPayload, { onConflict: 'code' });
         if (error) throw error;
         showToast('เพิ่มสมาชิกใหม่สำเร็จ!');
       }
