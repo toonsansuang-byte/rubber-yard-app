@@ -3874,6 +3874,7 @@ async function saveMember() {
   try {
     const payload = { code, name, phone, account_no };
     if (password) payload.password = password;
+    const cloudPayload = { code, name, phone, account_no };
 
     if (isDesktopApp()) {
       if (hiddenId) {
@@ -3881,7 +3882,7 @@ async function saveMember() {
         await window.desktopDB.insert('sync_queue', {
           table_name: 'members',
           action: 'UPDATE',
-          row_data: JSON.stringify({ id: hiddenId, ...payload }),
+          row_data: JSON.stringify({ id: hiddenId, ...cloudPayload }),
           local_id: hiddenId
         });
         showToast('แก้ไขข้อมูลสมาชิกสำเร็จ!');
@@ -3890,28 +3891,26 @@ async function saveMember() {
         await window.desktopDB.insert('sync_queue', {
           table_name: 'members',
           action: 'INSERT',
-          row_data: JSON.stringify(inserted),
+          row_data: JSON.stringify({ ...cloudPayload, local_id: inserted.id }),
           local_id: inserted.id
         });
         showToast('เพิ่มสมาชิกใหม่สำเร็จ!');
       }
+
+      // Trigger instant cloud sync in background
+      try {
+        if (typeof window.desktopDB.syncUpload === 'function') {
+          window.desktopDB.syncUpload().catch(() => {});
+        }
+      } catch (e) {}
+
     } else if (sb && !isAppOffline()) {
       if (hiddenId) {
-        let { error } = await sb.from('members').update(payload).eq('id', hiddenId);
-        if (error && error.message.includes('column')) {
-          delete payload.password;
-          const res = await sb.from('members').update(payload).eq('id', hiddenId);
-          error = res.error;
-        }
+        const { error } = await sb.from('members').update(cloudPayload).eq('id', hiddenId);
         if (error) throw error;
         showToast('แก้ไขข้อมูลสมาชิกสำเร็จ!');
       } else {
-        let { error } = await sb.from('members').insert(payload);
-        if (error && error.message.includes('column')) {
-          delete payload.password;
-          const res = await sb.from('members').insert(payload);
-          error = res.error;
-        }
+        const { error } = await sb.from('members').insert(cloudPayload);
         if (error) throw error;
         showToast('เพิ่มสมาชิกใหม่สำเร็จ!');
       }
@@ -3948,16 +3947,21 @@ async function deleteMember(id) {
       if (sb && !isAppOffline() && member) {
         try {
           await sb.from('members').delete().eq('code', member.code);
-        } catch (e) {}
+        } catch (cloudErr) {}
       }
+
+      try {
+        if (typeof window.desktopDB.syncUpload === 'function') {
+          window.desktopDB.syncUpload().catch(() => {});
+        }
+      } catch (e) {}
     } else if (sb && !isAppOffline()) {
-      const { data, error } = await sb.from('members').delete().eq('id', id).select();
+      const { error } = await sb.from('members').delete().eq('id', id);
       if (error) throw error;
     }
-
     closeConfirmModal();
+    showToast('ลบสมาชิกสำเร็จ!');
     await renderMembers();
-    showToast('ลบสมาชิกเรียบร้อยแล้ว!');
   } catch (err) {
     showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
   }
