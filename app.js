@@ -1903,10 +1903,20 @@ function handleLogoFileSelect(event) {
   reader.readAsDataURL(file);
 }
 
-function removeCustomLogo() {
+async function removeCustomLogo() {
   currentCustomLogoBase64 = '';
   localStorage.removeItem('setting_plantation_logo');
   if (cachedSettings) cachedSettings.plantation_logo = '';
+  if (isDesktopApp()) {
+    try {
+      await window.desktopDB.update('settings', { plantation_logo: '' }, { id: 1 });
+    } catch (e) {}
+  }
+  if (sb && !isAppOffline()) {
+    try {
+      await sb.from('settings').update({ plantation_logo: '' }).eq('id', 1);
+    } catch (e) {}
+  }
   updatePlantationLogo();
   showToast('คืนค่าโลโก้เป็นแบบเริ่มต้น (🌿) เรียบร้อยแล้ว!');
 }
@@ -6190,14 +6200,22 @@ async function renderTruckWeights(targetRoundId = null) {
     let txArr = [];
     if (isDesktopApp()) {
       if (selectedRoundId && selectedRoundId !== 'all') {
-        txArr = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? ORDER BY date DESC', [selectedRoundId]) || [];
+        const rObj = (roundsList || []).find(r => String(r.id) === String(selectedRoundId) || String(r.supabase_id) === String(selectedRoundId));
+        const sId = rObj?.supabase_id || null;
+        const localId = rObj?.id || null;
+        txArr = await window.desktopDB.query(
+          'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = ? OR round_id = ? ORDER BY date DESC',
+          [String(localId), String(sId), String(selectedRoundId), selectedRoundId]
+        ) || [];
       } else {
         txArr = await window.desktopDB.query('SELECT * FROM transactions ORDER BY date DESC') || [];
       }
     } else if (sb && !isAppOffline()) {
       let query = sb.from('transactions').select('*');
       if (selectedRoundId && selectedRoundId !== 'all') {
-        query = query.eq('round_id', selectedRoundId);
+        const rObj = (roundsList || []).find(r => String(r.id) === String(selectedRoundId) || String(r.supabase_id) === String(selectedRoundId));
+        const targetId = rObj?.supabase_id || rObj?.id || selectedRoundId;
+        query = query.or(`round_id.eq.${targetId},round_id.eq.${selectedRoundId}`);
       }
       const { data: roundTx, error: txErr } = await query;
       if (txErr) throw txErr;
@@ -6315,14 +6333,23 @@ async function showTruckMembersModal(truckNum) {
     let list = [];
     if (isDesktopApp()) {
       if (currentTruckWeightsRoundId && currentTruckWeightsRoundId !== 'all') {
-        list = await window.desktopDB.query('SELECT * FROM transactions WHERE truck_number LIKE ? AND round_id = ? ORDER BY date DESC', [`%${cleanTruckNum}%`, currentTruckWeightsRoundId]) || [];
+        const rObj = (await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [currentTruckWeightsRoundId, String(currentTruckWeightsRoundId)]))?.[0];
+        const sId = rObj?.supabase_id || null;
+        const localId = rObj?.id || null;
+        list = await window.desktopDB.query(
+          'SELECT * FROM transactions WHERE truck_number LIKE ? AND (round_id = ? OR round_id = ? OR round_id = ? OR round_id = ?)',
+          [`%${cleanTruckNum}%`, String(localId), String(sId), String(currentTruckWeightsRoundId), currentTruckWeightsRoundId]
+        ) || [];
       } else {
         list = await window.desktopDB.query('SELECT * FROM transactions WHERE truck_number LIKE ? ORDER BY date DESC', [`%${cleanTruckNum}%`]) || [];
       }
     } else if (sb && !isAppOffline()) {
       let query = sb.from('transactions').select('*').ilike('truck_number', `${cleanTruckNum}%`).order('date', { ascending: false });
       if (currentTruckWeightsRoundId && currentTruckWeightsRoundId !== 'all') {
-        query = query.eq('round_id', currentTruckWeightsRoundId);
+        const { data: rList } = await sb.from('purchase_rounds').select('*');
+        const rObj = (rList || []).find(r => String(r.id) === String(currentTruckWeightsRoundId) || String(r.supabase_id) === String(currentTruckWeightsRoundId));
+        const targetId = rObj?.supabase_id || rObj?.id || currentTruckWeightsRoundId;
+        query = query.or(`round_id.eq.${targetId},round_id.eq.${currentTruckWeightsRoundId}`);
       }
       const { data, error } = await query;
       if (error) throw error;
@@ -6400,27 +6427,52 @@ function closeTruckDetailModal() {
 async function printTruckWeightsReport() {
   showLoading();
   try {
-    let roundObj = currentRound;
-    if (!roundObj) {
-      try {
-        const { data: rData } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false }).limit(1);
-        if (rData && rData.length > 0) roundObj = rData[0];
-      } catch (e) { /* ignore */ }
-    }
-    if (!roundObj) {
-      roundObj = { id: 'all', title: 'รอบส่งมอบยางประจำวัน', start_date: new Date().toISOString() };
+    let targetRoundId = currentTruckWeightsRoundId || currentRound?.id || 'all';
+    let roundObj = null;
+    let txArr = [];
+
+    if (isDesktopApp()) {
+      const allRounds = await window.desktopDB.query('SELECT * FROM purchase_rounds ORDER BY created_at DESC') || [];
+      if (targetRoundId && targetRoundId !== 'all') {
+        roundObj = allRounds.find(r => String(r.id) === String(targetRoundId) || String(r.supabase_id) === String(targetRoundId));
+      }
+      if (!roundObj && allRounds.length > 0 && targetRoundId !== 'all') {
+        roundObj = allRounds[0];
+      }
+
+      if (roundObj && roundObj.id !== 'all') {
+        const sId = roundObj.supabase_id || null;
+        const localId = roundObj.id || null;
+        txArr = await window.desktopDB.query(
+          'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = ? OR round_id = ? ORDER BY date DESC',
+          [String(localId), String(sId), String(targetRoundId), targetRoundId]
+        ) || [];
+      } else {
+        txArr = await window.desktopDB.query('SELECT * FROM transactions ORDER BY date DESC') || [];
+        roundObj = { id: 'all', title: 'ทุกรอบส่งมอบยาง (รวมทั้งหมด)', start_date: new Date().toISOString() };
+      }
+    } else if (sb && !isAppOffline()) {
+      const { data: allRounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false });
+      if (targetRoundId && targetRoundId !== 'all') {
+        roundObj = (allRounds || []).find(r => String(r.id) === String(targetRoundId) || String(r.supabase_id) === String(targetRoundId));
+      }
+      if (!roundObj && allRounds && allRounds.length > 0 && targetRoundId !== 'all') {
+        roundObj = allRounds[0];
+      }
+
+      let query = sb.from('transactions').select('*');
+      if (roundObj && roundObj.id !== 'all') {
+        const targetId = roundObj.supabase_id || roundObj.id;
+        query = query.or(`round_id.eq.${targetId},round_id.eq.${roundObj.id}`);
+      }
+      const { data: roundTx } = await query;
+      txArr = roundTx || [];
+      if (!roundObj) {
+        roundObj = { id: 'all', title: 'ทุกรอบส่งมอบยาง (รวมทั้งหมด)', start_date: new Date().toISOString() };
+      }
     }
 
     const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
-
-    // 1. Query purchased totals from member transactions
-    let query = sb.from('transactions').select('*');
-    if (roundObj.id && roundObj.id !== 'all') {
-      query = query.eq('round_id', roundObj.id);
-    }
-    const { data: roundTx } = await query;
-
-    const txArr = roundTx || [];
     const totalPurchasedWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
     const totalPurchasedAmount = txArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
 
@@ -7346,6 +7398,13 @@ async function saveSettings() {
         row_data: JSON.stringify(updateData),
         local_id: 1
       });
+      if (sb && !isAppOffline()) {
+        try {
+          await sb.from('settings').upsert(updateData);
+        } catch (cloudErr) {
+          console.warn('Direct cloud update settings error:', cloudErr);
+        }
+      }
       showToast('💾 บันทึกการตั้งค่าลานยางสำเร็จ!');
     } else if (sb && navigator.onLine) {
       // Use upsert to handle both row creation (if row 1 missing) and update (if row 1 exists)
