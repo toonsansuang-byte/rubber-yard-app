@@ -461,15 +461,19 @@ async function handleMemberLogin() {
     const hashedInput = await hashPassword(rawPassword);
 
     let isPasswordValid = false;
+    const hasCustomPassword = !!(storedLocalPwd || memberMatch.password);
 
     if (storedLocalPwd && (storedLocalPwd === hashedInput || storedLocalPwd === rawPassword)) {
       isPasswordValid = true;
     } else if (memberMatch.password && (memberMatch.password === hashedInput || memberMatch.password === rawPassword || memberMatch.password === passInputNorm)) {
       isPasswordValid = true;
-    } else if (memberMatch.phone && memberMatch.phone.trim() === rawPassword) {
-      isPasswordValid = true;
-    } else if (rawPassword === memberMatch.code || passInputNorm === codeNorm || rawPassword === codeNorm) {
-      isPasswordValid = true;
+    } else if (!hasCustomPassword) {
+      // FIX C3: Phone and code fallback ONLY when no custom password is set
+      if (memberMatch.phone && memberMatch.phone.trim() === rawPassword) {
+        isPasswordValid = true;
+      } else if (rawPassword === memberMatch.code || passInputNorm === codeNorm || rawPassword === codeNorm) {
+        isPasswordValid = true;
+      }
     }
 
     if (isPasswordValid) {
@@ -560,14 +564,33 @@ async function fetchMemberPortalTransactions() {
 
   showLoading();
   try {
-    const { data: txs, error } = await sb.from('transactions')
-      .select('*')
-      .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
-      .order('date', { ascending: false });
+    let txs = [];
+    // FIX H5: Support Desktop SQLite and offline mode
+    if (isDesktopApp()) {
+      txs = await window.desktopDB.query(
+        'SELECT * FROM transactions WHERE member_code = ? OR member_code = ? ORDER BY date DESC',
+        [code, codeNorm]
+      ) || [];
+      // Also try cloud if online to get latest
+      if (sb && !isAppOffline()) {
+        try {
+          const { data: cloudTxs } = await sb.from('transactions')
+            .select('*')
+            .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
+            .order('date', { ascending: false });
+          if (cloudTxs && cloudTxs.length > 0) txs = cloudTxs;
+        } catch (e) { /* fallback to local data */ }
+      }
+    } else if (sb && !isAppOffline()) {
+      const { data, error } = await sb.from('transactions')
+        .select('*')
+        .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      txs = data || [];
+    }
 
-    if (error) throw error;
-
-    currentMemberPortalTxList = txs || [];
+    currentMemberPortalTxList = txs;
     renderMemberPortalTable();
   } catch (err) {
     showToast('ไม่สามารถโหลดประวัติการขายยางได้: ' + err.message, 'error');
@@ -597,7 +620,12 @@ function renderMemberPortalTable() {
     filtered = filtered.filter(t => (t.date || '').startsWith(currentMonthYearStr));
   } else if (currentMemberPortalPeriod === 'round') {
     if (currentRound && currentRound.id) {
-      filtered = filtered.filter(t => String(t.round_id || '') === String(currentRound.id));
+      const targetRoundIds = [String(currentRound.id)];
+      if (currentRound.supabase_id) targetRoundIds.push(String(currentRound.supabase_id));
+      filtered = filtered.filter(t => targetRoundIds.includes(String(t.round_id || '')));
+    } else {
+      // FIX M4: If no active round, filter to empty list
+      filtered = [];
     }
   }
 
@@ -967,6 +995,13 @@ async function approveBankChangeRequest(reqId) {
       .or(`code.eq.${memberCode},code.eq.${codeNorm}`);
 
     if (memErr) throw memErr;
+
+    // FIX H6: Also update SQLite member account_no for Desktop offline support
+    if (isDesktopApp()) {
+      try {
+        await window.desktopDB.run('UPDATE members SET account_no = ? WHERE code = ? OR code = ?', [newAccNo, memberCode, codeNorm]);
+      } catch (e) { console.warn('SQLite member account_no update failed:', e); }
+    }
 
     // 2. Update request status to 'approved'
     const adminName = currentUser?.display_name || 'ผู้ดูแลระบบ';
@@ -1975,9 +2010,18 @@ async function loadCurrentRound() {
               }, { id: existing[0].id });
             }
           } else {
-            // Cloud has NO active open rounds! Mark any local rounds as closed
-            await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed" WHERE status = "open"');
-            data = null;
+            // FIX C7: Check if there are pending round syncs before force-closing
+            const pendingRoundSync = await window.desktopDB.query(
+              'SELECT COUNT(*) as cnt FROM sync_queue WHERE table_name = "purchase_rounds"'
+            );
+            const hasPending = pendingRoundSync && pendingRoundSync[0] && pendingRoundSync[0].cnt > 0;
+            if (!hasPending) {
+              // Cloud has NO active open rounds and no pending sync → safe to close local
+              await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed" WHERE status = "open"');
+            }
+            data = hasPending ? 
+              await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE status = "open" ORDER BY created_at DESC LIMIT 1') : 
+              null;
           }
         } catch (e) {
           console.warn('Sync loadCurrentRound error:', e);
@@ -2074,6 +2118,13 @@ async function saveStartNewRound() {
           delete closePayload.closed_by_name;
           await sb.from('purchase_rounds').update(closePayload).eq('id', currentRound.id);
         }
+        // FIX C6: Also close the round in local SQLite
+        if (isDesktopApp()) {
+          try {
+            await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed", end_date = ? WHERE id = ? OR supabase_id = ?', 
+              [closePayload.end_date, currentRound.id, String(currentRound.id)]);
+          } catch (e) { console.warn('Close round in SQLite failed:', e); }
+        }
       }
     }
 
@@ -2095,6 +2146,17 @@ async function saveStartNewRound() {
       const res = await sb.from('purchase_rounds').insert(payload).select().single();
       data = res.data;
       error = res.error;
+      // FIX C6: Also insert the new round into local SQLite
+      if (!error && data && isDesktopApp()) {
+        try {
+          await window.desktopDB.insert('purchase_rounds', {
+            title: data.title || title,
+            status: 'open',
+            start_date: data.start_date || payload.start_date,
+            supabase_id: String(data.id)
+          });
+        } catch (e) { console.warn('Insert round into SQLite failed:', e); }
+      }
     }
 
     if (error) throw error;
@@ -2151,6 +2213,13 @@ async function closeRound(roundId) {
         res = await sb.from('purchase_rounds').update(updatePayload).eq('id', roundId);
         error = res.error;
       }
+      // FIX C6: Also update local SQLite when closing round online
+      if (!error && isDesktopApp()) {
+        try {
+          await window.desktopDB.run('UPDATE purchase_rounds SET status = "closed", end_date = ? WHERE id = ? OR supabase_id = ?',
+            [updatePayload.end_date, roundId, String(roundId)]);
+        } catch (e) { console.warn('Close round in SQLite failed:', e); }
+      }
     }
 
     if (error) throw error;
@@ -2176,7 +2245,9 @@ async function renderRounds() {
       // 1. Query member transactions summary for active round
       let txArr = [];
       if (isDesktopApp()) {
-        txArr = await window.desktopDB.query('SELECT net_weight, final_weight, total_price, member_code FROM transactions WHERE round_id = ?', [currentRound.id]) || [];
+        const roundIds = [String(currentRound.id)];
+        if (currentRound.supabase_id) roundIds.push(String(currentRound.supabase_id));
+        txArr = await window.desktopDB.query('SELECT net_weight, final_weight, total_price, member_code FROM transactions WHERE round_id = ? OR round_id = ?', [roundIds[0], roundIds[1] || roundIds[0]]) || [];
       } else if (sb && !isAppOffline()) {
         const { data: roundTx } = await sb.from('transactions')
           .select('net_weight, final_weight, total_price, member_code')
@@ -2522,8 +2593,9 @@ function renderRoundReportContent(round, transactions, format) {
     const weight = Number(t.final_weight || t.net_weight || 0);
     const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * (t.price_per_kg || 0)));
     const netRate = Number(t.price_per_kg || 0);
-    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && Number(t.yard_fee) > 0) ? Number(t.yard_fee) : 0.50;
-    const auctionRate = (t.auction_price && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+    // FIX M1: Allow yard_fee = 0 (do not force fallback to 0.50 if fee is explicitly 0)
+    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
+    const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
 
     const grossAmt = weight * auctionRate;
     const feeAmt = (grossAmt - amount) > 0 ? (grossAmt - amount) : (weight * yardFeeRate);
@@ -2548,14 +2620,20 @@ function renderRoundReportContent(round, transactions, format) {
     memberSummary[code].grossAmount += grossAmt;
     memberSummary[code].yardFeeAmount += feeAmt;
     memberSummary[code].totalAmount += amount;
-    memberSummary[code].auctionPrice = auctionRate;
-    memberSummary[code].yardFeeRate = yardFeeRate;
-    memberSummary[code].netPrice = netRate;
 
     grandTotalWeight += weight;
     grandTotalGross += grossAmt;
     grandTotalYardFee += feeAmt;
     grandTotalAmount += amount;
+  });
+
+  // FIX M5: Calculate weighted average prices for members with multiple sales
+  Object.values(memberSummary).forEach(m => {
+    if (m.totalWeight > 0) {
+      m.auctionPrice = m.grossAmount / m.totalWeight;
+      m.yardFeeRate = m.yardFeeAmount / m.totalWeight;
+      m.netPrice = m.totalAmount / m.totalWeight;
+    }
   });
 
   const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
@@ -2712,8 +2790,9 @@ async function exportRoundToExcel(roundId = null) {
       const wt = Number(t.final_weight || t.net_weight || 0);
       const amt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * (t.price_per_kg || 0)));
       const netRate = Number(t.price_per_kg || 0);
-      const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && Number(t.yard_fee) > 0) ? Number(t.yard_fee) : 0.50;
-      const auctionRate = (t.auction_price && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+      // FIX M1: Allow yard_fee = 0
+      const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
+      const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
 
       const grossAmt = wt * auctionRate;
       const feeAmt = (grossAmt - amt) > 0 ? (grossAmt - amt) : (wt * yardFeeRate);
@@ -2736,14 +2815,20 @@ async function exportRoundToExcel(roundId = null) {
       memberSummary[code].grossAmount += grossAmt;
       memberSummary[code].yardFeeAmount += feeAmt;
       memberSummary[code].totalAmount += amt;
-      memberSummary[code].auctionPrice = auctionRate;
-      memberSummary[code].yardFeeRate = yardFeeRate;
-      memberSummary[code].netPrice = netRate;
 
       grandTotalWeight += wt;
       grandTotalGross += grossAmt;
       grandTotalYardFee += feeAmt;
       grandTotalAmount += amt;
+    });
+
+    // FIX M5: Calculate weighted average prices for members with multiple sales
+    Object.values(memberSummary).forEach(m => {
+      if (m.totalWeight > 0) {
+        m.auctionPrice = m.grossAmount / m.totalWeight;
+        m.yardFeeRate = m.yardFeeAmount / m.totalWeight;
+        m.netPrice = m.totalAmount / m.totalWeight;
+      }
     });
 
     const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
@@ -2935,8 +3020,9 @@ async function printRoundReport(roundId = null) {
     const weight = Number(t.final_weight || t.net_weight || 0);
     const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * (t.price_per_kg || 0)));
     const netRate = Number(t.price_per_kg || 0);
-    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && Number(t.yard_fee) > 0) ? Number(t.yard_fee) : 0.50;
-    const auctionRate = (t.auction_price && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+    // FIX M1: Allow yard_fee = 0
+    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
+    const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
 
     const grossAmt = weight * auctionRate;
     const feeAmt = (grossAmt - amount) > 0 ? (grossAmt - amount) : (weight * yardFeeRate);
@@ -2961,14 +3047,20 @@ async function printRoundReport(roundId = null) {
     memberSummary[code].grossAmount += grossAmt;
     memberSummary[code].yardFeeAmount += feeAmt;
     memberSummary[code].totalAmount += amount;
-    memberSummary[code].auctionPrice = auctionRate;
-    memberSummary[code].yardFeeRate = yardFeeRate;
-    memberSummary[code].netPrice = netRate;
 
     grandTotalWeight += weight;
     grandTotalGross += grossAmt;
     grandTotalYardFee += feeAmt;
     grandTotalAmount += amount;
+  });
+
+  // FIX M5: Calculate weighted average prices for members with multiple sales
+  Object.values(memberSummary).forEach(m => {
+    if (m.totalWeight > 0) {
+      m.auctionPrice = m.grossAmount / m.totalWeight;
+      m.yardFeeRate = m.yardFeeAmount / m.totalWeight;
+      m.netPrice = m.totalAmount / m.totalWeight;
+    }
   });
 
   const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
@@ -3201,7 +3293,7 @@ async function showMemberSalesHistory(memberCode) {
       const mList = await window.desktopDB.select('members', ['*'], { code: memberCode });
       member = mList && mList.length > 0 ? mList[0] : null;
       transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE member_code = ? ORDER BY date DESC', [memberCode]) || [];
-      rounds = await window.desktopDB.query('SELECT id, title FROM purchase_rounds') || [];
+      rounds = await window.desktopDB.query('SELECT id, title, supabase_id FROM purchase_rounds') || [];
     } else if (sb && !isAppOffline()) {
       const { data: mData } = await sb.from('members').select('*').eq('code', memberCode).single();
       member = mData;
@@ -3216,8 +3308,12 @@ async function showMemberSalesHistory(memberCode) {
 
     if (!member) throw new Error('ไม่พบข้อมูลสมาชิก');
 
+    // FIX M3: Support both local integer ID and Supabase UUID in roundTitleMap
     const roundTitleMap = {};
-    (rounds || []).forEach(r => { roundTitleMap[r.id] = r.title; });
+    (rounds || []).forEach(r => {
+      if (r.id) roundTitleMap[String(r.id)] = r.title;
+      if (r.supabase_id) roundTitleMap[String(r.supabase_id)] = r.title;
+    });
 
     // Calculate stats
     const distinctRounds = new Set(transactions.map(t => t.round_id).filter(Boolean)).size;
@@ -3876,6 +3972,7 @@ async function renderMembers(filter = '') {
                   name: cm.name,
                   phone: cm.phone || '',
                   account_no: cm.account_no || '',
+                  password: cm.password || '',  // FIX H4: Sync password to SQLite
                   created_at: cm.created_at || new Date().toISOString()
                 }, { code: cm.code });
               } else {
@@ -3884,6 +3981,7 @@ async function renderMembers(filter = '') {
                   name: cm.name,
                   phone: cm.phone || '',
                   account_no: cm.account_no || '',
+                  password: cm.password || '',  // FIX H4: Sync password to SQLite
                   created_at: cm.created_at || new Date().toISOString()
                 });
               }
@@ -4675,7 +4773,7 @@ async function saveTransaction(confirmedOverride = false) {
       gross_weight: totalGross,
       cart_weight: totalCart,
       net_weight: totalNet,
-      deduction_percent: 0,
+      deduction_percent: deductionPercent,  // FIX H2: Use actual calculated value instead of 0
       final_weight: finalWeight,
       auction_price: auctionPrice,
       yard_fee: yardFee,
@@ -4687,23 +4785,31 @@ async function saveTransaction(confirmedOverride = false) {
       member_code: selectedMember.code,
       member_name: selectedMember.name,
       member_account_no: selectedMember.account_no || '',
+      buyer_name: cachedSettings?.auction_buyer || '',
+      auction_buyer: cachedSettings?.auction_buyer || '',
       truck_number: encodedTruckNumber,
       trailer_type: trailerType,
       confirmed_by_display_name: editorLabel
     };
 
+    // FIX H1: Include ALL important fields in cloud update payload
     const updateDataCloud = {
       rubber_type: rubberType,
       gross_weight: totalGross,
+      cart_weight: totalCart,
       net_weight: totalNet,
-      deduction_percent: 0,
+      deduction_percent: deductionPercent,  // FIX H2
       final_weight: finalWeight,
+      auction_price: auctionPrice,
+      yard_fee: yardFee,
       price_per_kg: netPricePerKg,
       total_price: totalPrice,
       trip_count: tripDetails.length,
       member_code: selectedMember.code,
       member_name: selectedMember.name,
       member_account_no: selectedMember.account_no || '',
+      buyer_name: cachedSettings?.auction_buyer || '',
+      auction_buyer: cachedSettings?.auction_buyer || '',
       truck_number: encodedTruckNumber,
       trailer_type: trailerType,
       confirmed_by_display_name: editorLabel
@@ -5806,16 +5912,11 @@ async function filterHistory() {
     if (isDesktopApp()) {
       if (sb && !isAppOffline()) {
         try {
+          // FIX C1: Download cloud transactions to merge locally WITHOUT destructive delete
           const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
           if (cloudTxs && cloudTxs.length > 0) {
-            const cloudIds = cloudTxs.map(t => String(t.id));
-            const placeholders = cloudIds.map(() => '?').join(',');
-            // Remove local transactions that were deleted from cloud or orphaned test transactions
-            await window.desktopDB.run(`DELETE FROM transactions WHERE supabase_id IS NOT NULL AND supabase_id != '' AND supabase_id NOT IN (${placeholders})`, cloudIds);
-            await window.desktopDB.run(`DELETE FROM transactions WHERE (round_id IS NULL OR round_id = '' OR round_id = 'null') AND synced = 1`);
-
             for (const tx of cloudTxs) {
-              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND date = ?)', [tx.id, tx.member_code, tx.date]);
+              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND date = ? AND ABS(total_price - ?) < 0.01)', [tx.id, tx.member_code, tx.date, tx.total_price || 0]);
               if (!existing || existing.length === 0) {
                 const localTx = {
                   ...tx,
@@ -5827,16 +5928,25 @@ async function filterHistory() {
                 delete localTx.id;
                 await window.desktopDB.insert('transactions', localTx);
               } else {
-                await window.desktopDB.update('transactions', {
+                // Merge cloud data without overwriting valid local values with 0
+                const updateData = {
                   round_id: tx.round_id,
                   supabase_id: tx.id,
                   synced: 1,
                   total_price: tx.total_price,
                   final_weight: tx.final_weight,
                   net_weight: tx.net_weight,
-                  gross_weight: tx.gross_weight || 0,
-                  cart_weight: tx.cart_weight || 0
-                }, { id: existing[0].id });
+                  truck_number: tx.truck_number,
+                  rubber_type: tx.rubber_type,
+                  price_per_kg: tx.price_per_kg
+                };
+                if (tx.gross_weight && Number(tx.gross_weight) > 0) updateData.gross_weight = tx.gross_weight;
+                if (tx.cart_weight && Number(tx.cart_weight) > 0) updateData.cart_weight = tx.cart_weight;
+                if (tx.auction_price) updateData.auction_price = tx.auction_price;
+                if (tx.yard_fee !== undefined && tx.yard_fee !== null) updateData.yard_fee = tx.yard_fee;
+                if (tx.buyer_name) updateData.buyer_name = tx.buyer_name;
+                if (tx.auction_buyer) updateData.auction_buyer = tx.auction_buyer;
+                await window.desktopDB.update('transactions', updateData, { id: existing[0].id });
               }
             }
           }
@@ -6742,20 +6852,37 @@ async function editTransactionOnPurchasePage(txId) {
     if (selCode) selCode.textContent = `รหัส: ${tx.member_code || '-'}`;
     if (selAvatar) selAvatar.textContent = (tx.member_name || '?').charAt(0);
 
-    // Populate Settings / Prices
-    const yardFee = cachedSettings && cachedSettings.yard_fee !== undefined ? parseFloat(cachedSettings.yard_fee) : 0.50;
+    // FIX C5+H3: Use HISTORICAL yard_fee from the transaction, not current settings
+    const yardFee = (tx.yard_fee !== undefined && tx.yard_fee !== null && !isNaN(Number(tx.yard_fee))) ? parseFloat(tx.yard_fee) : (cachedSettings && cachedSettings.yard_fee !== undefined ? parseFloat(cachedSettings.yard_fee) : 0.50);
     const cartEl = document.getElementById('cart-weight');
     const priceEl = document.getElementById('price-per-kg');
     if (cartEl) cartEl.value = tx.cart_weight || cachedSettings?.default_cart_weight || 0;
-    if (priceEl) priceEl.value = (Number(tx.price_per_kg || 0) + yardFee).toFixed(2);
+    // Use tx.auction_price if available, otherwise reconstruct from price_per_kg + yard_fee
+    if (priceEl) priceEl.value = tx.auction_price ? Number(tx.auction_price).toFixed(2) : (Number(tx.price_per_kg || 0) + yardFee).toFixed(2);
 
-    // Populate Trips
+    // FIX C5: Set rubber_type dropdown to match original transaction
+    const rubberTypeEl = document.getElementById('rubber-type');
+    if (rubberTypeEl && tx.rubber_type) {
+      rubberTypeEl.value = tx.rubber_type;
+    }
+
+    // FIX C5: Decode trips from truck_number FIRST (primary source of truth)
     let tripsArr = [];
     try {
-      if (tx.trips && typeof tx.trips === 'string' && tx.trips.startsWith('[')) tripsArr = JSON.parse(tx.trips);
-      else if (tx.trips_detail && typeof tx.trips_detail === 'string' && tx.trips_detail.startsWith('[')) tripsArr = JSON.parse(tx.trips_detail);
-      else if (Array.isArray(tx.trips)) tripsArr = tx.trips;
-      else if (Array.isArray(tx.trips_detail)) tripsArr = tx.trips_detail;
+      // Priority 1: Decode from truck_number (same as buildReceiptCopyHTML)
+      if (tx.truck_number && typeof decodeTripsFromTruckNumber === 'function') {
+        const decoded = decodeTripsFromTruckNumber(tx.truck_number);
+        if (decoded.trips && decoded.trips.length > 0) {
+          tripsArr = decoded.trips;
+        }
+      }
+      // Priority 2: Parse from trips/trips_detail fields
+      if (tripsArr.length === 0) {
+        if (tx.trips && typeof tx.trips === 'string' && tx.trips.startsWith('[')) tripsArr = JSON.parse(tx.trips);
+        else if (tx.trips_detail && typeof tx.trips_detail === 'string' && tx.trips_detail.startsWith('[')) tripsArr = JSON.parse(tx.trips_detail);
+        else if (Array.isArray(tx.trips)) tripsArr = tx.trips;
+        else if (Array.isArray(tx.trips_detail)) tripsArr = tx.trips_detail;
+      }
     } catch (e) {}
 
     if (!tripsArr || tripsArr.length === 0) {
@@ -6823,7 +6950,7 @@ async function showReceiptFromHistory(txId) {
   try {
     let tx = null;
     if (isDesktopApp()) {
-      const res = await window.desktopDB.select('transactions', ['*'], { id: txId });
+      const res = await window.desktopDB.query('SELECT * FROM transactions WHERE id = ? OR supabase_id = ?', [txId, String(txId)]);
       tx = res && res.length > 0 ? res[0] : null;
     } else if (sb && !isAppOffline()) {
       const { data } = await sb.from('transactions').select('*').eq('id', txId).single();
@@ -6873,6 +7000,20 @@ async function deleteTransaction(id) {
           }
         } catch (cloudErr) {
           console.warn('Cloud deleteTransaction error:', cloudErr);
+        }
+      } else if (isAppOffline() && tx && tx.supabase_id) {
+        // FIX C2: Queue DELETE for cloud sync when back online (prevent resurrection)
+        try {
+          await window.desktopDB.insert('sync_queue', {
+            table_name: 'transactions',
+            local_id: id,
+            action: 'DELETE',
+            row_data: JSON.stringify({ supabase_id: tx.supabase_id, member_code: tx.member_code, date: tx.date, total_price: tx.total_price }),
+            retry_count: 0,
+            created_at: new Date().toISOString()
+          });
+        } catch (qErr) {
+          console.warn('Failed to queue offline delete:', qErr);
         }
       }
     } else if (sb && !isAppOffline()) {
@@ -7636,14 +7777,36 @@ document.addEventListener('keydown', (e) => {
     handleLogin();
   }
   if (e.key === 'Escape') {
-    closeMemberModal();
-    closeMemberSalesModal();
-    closeImportMemberModal();
-    closeUserModal();
-    closeStartRoundModal();
-    closeConfirmModal();
-    closeReceiptModal();
-    closeRoundReportModal();
+    // FIX M2: Close only the topmost active modal in priority order
+    const confirmModal = document.getElementById('confirm-modal');
+    if (confirmModal && confirmModal.classList.contains('show')) { closeConfirmModal(); return; }
+
+    const weightModal = document.getElementById('weight-warning-modal');
+    if (weightModal && weightModal.classList.contains('show')) { weightModal.classList.remove('show'); return; }
+
+    const receiptModal = document.getElementById('receipt-modal');
+    if (receiptModal && receiptModal.classList.contains('show')) { closeReceiptModal(); return; }
+
+    const roundReportModal = document.getElementById('round-report-modal');
+    if (roundReportModal && roundReportModal.classList.contains('show')) { closeRoundReportModal(); return; }
+
+    const truckMembersModal = document.getElementById('truck-members-modal');
+    if (truckMembersModal && truckMembersModal.classList.contains('show')) { truckMembersModal.classList.remove('show'); return; }
+
+    const memberSalesModal = document.getElementById('member-sales-modal');
+    if (memberSalesModal && memberSalesModal.classList.contains('show')) { closeMemberSalesModal(); return; }
+
+    const startRoundModal = document.getElementById('start-round-modal');
+    if (startRoundModal && startRoundModal.classList.contains('show')) { closeStartRoundModal(); return; }
+
+    const memberModal = document.getElementById('member-modal');
+    if (memberModal && memberModal.classList.contains('show')) { closeMemberModal(); return; }
+
+    const userModal = document.getElementById('user-modal');
+    if (userModal && userModal.classList.contains('show')) { closeUserModal(); return; }
+
+    const importMemberModal = document.getElementById('import-member-modal');
+    if (importMemberModal && importMemberModal.classList.contains('show')) { closeImportMemberModal(); return; }
   }
 });
 
@@ -8126,6 +8289,7 @@ async function init() {
                   name: cm.name,
                   phone: cm.phone || '',
                   account_no: cm.account_no || '',
+                  password: cm.password || '',  // FIX H4: Sync password to SQLite
                   created_at: cm.created_at || new Date().toISOString()
                 }, { code: cm.code });
               } else {
@@ -8134,6 +8298,7 @@ async function init() {
                   name: cm.name,
                   phone: cm.phone || '',
                   account_no: cm.account_no || '',
+                  password: cm.password || '',  // FIX H4: Sync password to SQLite
                   created_at: cm.created_at || new Date().toISOString()
                 });
               }
