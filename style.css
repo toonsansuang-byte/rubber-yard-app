@@ -820,6 +820,19 @@ select.form-input option {
   animation: fadeIn 0.3s ease;
 }
 
+/* Modal Stacking Layers (Ensures nested modals like Receipt and Confirm always appear on top) */
+#receipt-modal {
+  z-index: 1200 !important;
+}
+
+#weight-warning-modal {
+  z-index: 1300 !important;
+}
+
+#confirm-modal {
+  z-index: 1500 !important;
+}
+
 .modal-content {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
