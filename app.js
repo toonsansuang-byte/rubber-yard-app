@@ -4717,7 +4717,7 @@ async function saveTransaction(confirmedOverride = false) {
         trailer_type: trailerType,
         created_by_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
         created_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
-        confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ',
+        confirmed_by_display_name: '',
         date: new Date().toISOString()
       };
 
@@ -5767,12 +5767,13 @@ async function filterHistory() {
           : `<span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>รอซิงค์</span>`;
 
         const createdBy = t.created_by_display_name || t.created_by_name || 'ผู้ดูแลระบบ';
-        const editedBy = t.confirmed_by_display_name || '';
-        const authorHtml = editedBy
+        const rawConfirmed = (t.confirmed_by_display_name || '').trim();
+        const isEdited = rawConfirmed && rawConfirmed.includes('(');
+        const authorHtml = isEdited
           ? `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:3px;">
                <span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>
-               <span style="font-size:0.72rem; color:#fbbf24; font-weight:500; display:inline-flex; align-items:center; gap:2px; background:rgba(245,158,11,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);" title="แก้ไขโดย: ${editedBy}">
-                 ✏️ ${editedBy}
+               <span style="font-size:0.72rem; color:#fbbf24; font-weight:500; display:inline-flex; align-items:center; gap:2px; background:rgba(245,158,11,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);" title="แก้ไขโดย: ${rawConfirmed}">
+                 ✏️ ${rawConfirmed}
                </span>
              </div>`
           : `<span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>`;
@@ -6946,7 +6947,7 @@ async function saveUser() {
         await window.desktopDB.insert('sync_queue', {
           table_name: 'app_users',
           action: 'UPDATE',
-          row_data: JSON.stringify({ id: hiddenId, ...updatePayload }),
+          row_data: JSON.stringify({ id: hiddenId, username, ...updatePayload }),
           local_id: hiddenId
         });
 
