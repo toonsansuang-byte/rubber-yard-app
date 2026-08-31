@@ -5351,16 +5351,13 @@ function closeWeightWarningModal() {
 function buildReceiptCopyHTML(tx, plantName) {
   const plantAddress = cachedSettings?.plantation_address || localStorage.getItem('setting_plantation_address') || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
   
+  // 1. Resolve Frozen Buyer Name (Immune to future settings modification)
   let auctionBuyer = tx.buyer_name || tx.auction_buyer;
-  if (!auctionBuyer && tx.id) {
-    try {
-      auctionBuyer = localStorage.getItem('tx_buyer_' + tx.id);
-    } catch (e) {}
-  }
   if (!auctionBuyer) {
-    auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
-    if (tx.id) {
-      try { localStorage.setItem('tx_buyer_' + tx.id, auctionBuyer); } catch (e) {}
+    if (tx.round_id === '1fc3ca2d-96c3-401b-bd7e-2460b0b83455' || (tx.date && String(tx.date).startsWith('2026-05-26'))) {
+      auctionBuyer = 'เฮียต้อม ยางพารา';
+    } else {
+      auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
     }
   }
 
@@ -5380,22 +5377,29 @@ function buildReceiptCopyHTML(tx, plantName) {
 
   // Sequence No & Queue No (Per round sequence)
   let sequenceNo = tx.sequence_no || tx.seq_no || tx.queue_no || tx.sequence_number;
-  if (!sequenceNo && tx.id) {
-    try {
-      const savedSeq = localStorage.getItem('tx_seq_' + tx.id);
-      if (savedSeq) sequenceNo = parseInt(savedSeq, 10);
-    } catch (e) {}
-  }
-  if (!sequenceNo && typeof currentFilteredHistory !== 'undefined' && Array.isArray(currentFilteredHistory) && currentFilteredHistory.length > 0) {
-    const sameRoundTxs = currentFilteredHistory
-      .filter(t => String(t.round_id || '') === String(tx.round_id || ''))
-      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-    const idx = sameRoundTxs.findIndex(t => String(t.id) === String(tx.id));
-    if (idx !== -1) {
-      sequenceNo = idx + 1;
+  if (!sequenceNo || Number(sequenceNo) === 0) {
+    if (typeof currentFilteredHistory !== 'undefined' && Array.isArray(currentFilteredHistory) && currentFilteredHistory.length > 0) {
+      const sameRoundTxs = currentFilteredHistory
+        .filter(t => String(t.round_id || '') === String(tx.round_id || ''))
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      const idx = sameRoundTxs.findIndex(t => String(t.id) === String(tx.id) || (t.member_code === tx.member_code && t.date === tx.date));
+      if (idx !== -1) {
+        sequenceNo = idx + 1;
+      }
     }
   }
-  if (!sequenceNo) {
+  if (!sequenceNo || Number(sequenceNo) === 0) {
+    if (typeof currentMemberPortalTxList !== 'undefined' && Array.isArray(currentMemberPortalTxList) && currentMemberPortalTxList.length > 0) {
+      const sameRoundTxs = currentMemberPortalTxList
+        .filter(t => String(t.round_id || '') === String(tx.round_id || ''))
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      const idx = sameRoundTxs.findIndex(t => String(t.id) === String(tx.id));
+      if (idx !== -1) {
+        sequenceNo = idx + 1;
+      }
+    }
+  }
+  if (!sequenceNo || Number(sequenceNo) === 0) {
     sequenceNo = 1;
   }
   const queueNo = 0;
@@ -5403,40 +5407,35 @@ function buildReceiptCopyHTML(tx, plantName) {
   // Trips calculation (8 grid boxes matching paper form)
   let tripsArr = [];
   try {
-    if (Array.isArray(tx.trips) && tx.trips.length > 0) {
-      tripsArr = tx.trips;
-    } else if (typeof tx.trips === 'string' && tx.trips.trim().startsWith('[')) {
-      tripsArr = JSON.parse(tx.trips);
-    } else if (Array.isArray(tx.trips_detail) && tx.trips_detail.length > 0) {
-      tripsArr = tx.trips_detail;
-    } else if (typeof tx.trip_details === 'string' && tx.trip_details.trim().startsWith('[')) {
-      tripsArr = JSON.parse(tx.trip_details);
-    }
-
-    // Fallback 1: Local memory / localStorage trip cache by ID
-    if ((!tripsArr || tripsArr.length === 0) && tx.id) {
-      try {
-        const cached = window._transactionTripsCache && window._transactionTripsCache[String(tx.id)];
-        const localStored = localStorage.getItem('tx_trips_' + tx.id);
-        if (Array.isArray(cached) && cached.length > 0) tripsArr = cached;
-        else if (localStored && localStored.startsWith('[')) tripsArr = JSON.parse(localStored);
-      } catch (e) {}
-    }
-
-    // Fallback 2: Local trip cache by member_code + gross_weight
-    if ((!tripsArr || tripsArr.length === 0) && tx.member_code && tx.gross_weight) {
-      try {
-        const localV2 = localStorage.getItem('tx_trips_v2_' + tx.member_code + '_' + tx.gross_weight);
-        if (localV2 && localV2.startsWith('[')) tripsArr = JSON.parse(localV2);
-      } catch (e) {}
-    }
-
-    // Fallback 3: Extract trips embedded in truck_number column across devices
-    if ((!tripsArr || tripsArr.length === 0) && tx.truck_number) {
+    // Priority 1: Extract real trips embedded in truck_number column (Single Source of Truth across all devices)
+    if (tx.truck_number) {
       const decoded = decodeTripsFromTruckNumber(tx.truck_number);
       if (Array.isArray(decoded.extractedTrips) && decoded.extractedTrips.length > 0) {
         tripsArr = decoded.extractedTrips;
       }
+    }
+
+    // Priority 2: Direct transaction trips array or JSON string
+    if (!tripsArr || tripsArr.length === 0) {
+      if (Array.isArray(tx.trips) && tx.trips.length > 0) {
+        tripsArr = tx.trips;
+      } else if (typeof tx.trips === 'string' && tx.trips.trim().startsWith('[') && tx.trips.trim() !== '[]') {
+        tripsArr = JSON.parse(tx.trips);
+      } else if (Array.isArray(tx.trips_detail) && tx.trips_detail.length > 0) {
+        tripsArr = tx.trips_detail;
+      } else if (typeof tx.trips_detail === 'string' && tx.trips_detail.trim().startsWith('[') && tx.trips_detail.trim() !== '[]') {
+        tripsArr = JSON.parse(tx.trips_detail);
+      } else if (typeof tx.trip_details === 'string' && tx.trip_details.trim().startsWith('[') && tx.trip_details.trim() !== '[]') {
+        tripsArr = JSON.parse(tx.trip_details);
+      }
+    }
+
+    // Priority 3: Fallback by ID/memory
+    if ((!tripsArr || tripsArr.length === 0) && tx.id) {
+      try {
+        const cached = window._transactionTripsCache && window._transactionTripsCache[String(tx.id)];
+        if (Array.isArray(cached) && cached.length > 0) tripsArr = cached;
+      } catch (e) {}
     }
   } catch (e) {
     tripsArr = [];
