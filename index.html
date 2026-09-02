@@ -510,6 +510,8 @@
                     <option value="คันที่ 1">คันที่ 1</option>
                     <option value="คันที่ 2">คันที่ 2</option>
                     <option value="คันที่ 3">คันที่ 3</option>
+                    <option value="คันที่ 4">คันที่ 4</option>
+                    <option value="คันที่ 5">คันที่ 5</option>
                     <option value="NEW">➕ เพิ่มรถคันใหม่...</option>
                   </select>
                 </div>
@@ -1277,6 +1279,34 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeConfirmModal()">ยกเลิก</button>
         <button class="btn btn-danger" id="confirm-action-btn" onclick="">ยืนยัน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ADD TRUCK MODAL ===== -->
+  <div class="modal-overlay" id="add-truck-modal" style="z-index: 1400;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; display:flex; align-items:center; gap:8px; margin:0; color:var(--text-main);">
+          <span>🚚</span> เพิ่มรถพ่วงคันใหม่
+        </h3>
+        <button class="modal-close" onclick="closeAddTruckModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:12px;">
+          ระบุชื่อหรือหมายเลขรถคันใหม่สำหรับจัดขึ้นรถพ่วงในรอบนี้
+        </p>
+        <div class="form-group mb-2">
+          <label class="form-label" for="new-truck-input" style="font-size:0.85rem;">ชื่อ/หมายเลขรถ หรือ ทะเบียนรถ</label>
+          <input type="text" id="new-truck-input" class="form-input" placeholder="เช่น คันที่ 4 หรือ ทะเบียน 82-1234" onkeydown="if(event.key==='Enter') confirmAddTruck();">
+        </div>
+        <div style="font-size:0.8rem; color:var(--gold); background:rgba(234, 179, 8, 0.1); padding:8px 12px; border-radius:6px; border:1px solid rgba(234, 179, 8, 0.2); margin-top:10px;">
+          💡 ตัวอย่าง: <strong>คันที่ 4</strong>, <strong>คันที่ 5</strong> หรือ <strong>ทะเบียน 70-1234 กทม.</strong>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeAddTruckModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="confirmAddTruck()">💾 ยืนยันเพิ่มรถ</button>
       </div>
     </div>
   </div>

@@ -4309,31 +4309,70 @@ async function initPurchase(forceReset = false) {
   const savedTruck = truckSelect ? truckSelect.value : '';
   const savedTrailer = trailerSelect ? trailerSelect.value : 'head';
 
-  if (currentRound && truckSelect) {
+  if (truckSelect) {
     try {
-      const { data: tData } = await sb.from('transactions')
-        .select('truck_number')
-        .eq('round_id', currentRound.id)
-        .neq('truck_number', '');
+      let existingTrucks = [];
+      if (isDesktopApp()) {
+        let rows = [];
+        if (currentRound) {
+          rows = await window.desktopDB.query('SELECT DISTINCT truck_number FROM transactions WHERE (round_id = ? OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?)) AND truck_number != ""', [currentRound.id, currentRound.id]);
+        } else {
+          rows = await window.desktopDB.query('SELECT DISTINCT truck_number FROM transactions WHERE truck_number != "" ORDER BY id DESC LIMIT 100');
+        }
+        existingTrucks = Array.from(new Set((rows || []).map(t => decodeTripsFromTruckNumber(t.truck_number).cleanTruckNumber).filter(Boolean)));
+      } else if (sb && !isAppOffline()) {
+        let query = sb.from('transactions').select('truck_number').neq('truck_number', '');
+        if (currentRound) query = query.eq('round_id', currentRound.id);
+        const { data: tData } = await query;
+        existingTrucks = Array.from(new Set((tData || []).map(t => decodeTripsFromTruckNumber(t.truck_number).cleanTruckNumber).filter(Boolean)));
+      }
 
-      const existingTrucks = Array.from(new Set((tData || []).map(t => decodeTripsFromTruckNumber(t.truck_number).cleanTruckNumber).filter(Boolean)));
-      const defaultSet = new Set(['คันที่ 1', 'คันที่ 2', 'คันที่ 3', ...existingTrucks]);
+      // Filter out invalid/NEW values
+      const validExistingTrucks = existingTrucks.filter(t => t && t !== 'NEW');
+
+      // Find max truck number (e.g. คันที่ 3 -> max is 3)
+      let maxTruckNo = 3;
+      for (const t of validExistingTrucks) {
+        const m = t.match(/คันที่\s*(\d+)/);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (n > maxTruckNo) maxTruckNo = n;
+        }
+      }
+
+      // Provide at least คันที่ 1 ถึง คันที่ 5 by default, or up to maxTruckNo + 1
+      const targetLimit = Math.max(5, maxTruckNo + 1);
+      const truckList = [];
+      for (let i = 1; i <= targetLimit; i++) {
+        truckList.push(`คันที่ ${i}`);
+      }
+      for (const t of validExistingTrucks) {
+        if (!truckList.includes(t)) {
+          truckList.push(t);
+        }
+      }
 
       if (savedTruck && savedTruck !== 'NEW') {
         const cleanSaved = decodeTripsFromTruckNumber(savedTruck).cleanTruckNumber;
-        defaultSet.add(cleanSaved);
+        if (cleanSaved && !truckList.includes(cleanSaved)) {
+          truckList.push(cleanSaved);
+        }
       }
 
       truckSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>' +
-        Array.from(defaultSet).map(t => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('') +
+        truckList.map(t => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('') +
         '<option value="NEW">➕ เพิ่มรถคันใหม่...</option>';
 
       if (savedTruck && savedTruck !== 'NEW') {
         truckSelect.value = savedTruck;
+        truckSelect.dataset.prevTruck = savedTruck;
       } else {
         truckSelect.value = '';
+        truckSelect.dataset.prevTruck = '';
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      console.warn('Populate truck options error:', e);
+    }
   }
 
   if (trailerSelect && savedTrailer) {
@@ -4370,22 +4409,84 @@ function updatePurchaseTruckIndicator() {
   }
 }
 
-function onPurchaseTruckSelect(val) {
-  if (val === 'NEW') {
-    const name = window.prompt('กรุณากรอกชื่อหรือหมายเลขรถคันใหม่ (เช่น คันที่ 4 หรือ ทะเบียนรถ):', 'คันที่ 4');
-    const selectEl = document.getElementById('purchase-truck-number');
-    if (name && name.trim() && selectEl) {
-      const trimmed = name.trim();
-      const newOpt = document.createElement('option');
-      newOpt.value = trimmed;
-      newOpt.textContent = trimmed;
-      newOpt.selected = true;
-      selectEl.insertBefore(newOpt, selectEl.lastElementChild);
-    } else if (selectEl) {
-      selectEl.value = '';
+function openAddTruckModal() {
+  const selectEl = document.getElementById('purchase-truck-number');
+  const modal = document.getElementById('add-truck-modal');
+  const input = document.getElementById('new-truck-input');
+
+  if (!modal || !selectEl) return;
+
+  // Calculate next suggested truck number from select options
+  let maxNo = 3;
+  for (const opt of selectEl.options) {
+    const m = opt.value.match(/คันที่\s*(\d+)/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > maxNo) maxNo = n;
     }
   }
+  const nextSuggested = `คันที่ ${maxNo + 1}`;
+
+  if (input) {
+    input.value = nextSuggested;
+  }
+
+  modal.classList.add('show');
+  setTimeout(() => {
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 100);
+}
+
+function closeAddTruckModal() {
+  const modal = document.getElementById('add-truck-modal');
+  if (modal) modal.classList.remove('show');
+
+  const selectEl = document.getElementById('purchase-truck-number');
+  if (selectEl && selectEl.value === 'NEW') {
+    selectEl.value = selectEl.dataset.prevTruck || '';
+    updatePurchaseTruckIndicator();
+  }
+}
+
+function confirmAddTruck() {
+  const input = document.getElementById('new-truck-input');
+  const name = (input?.value || '').trim();
+  const selectEl = document.getElementById('purchase-truck-number');
+
+  if (!name || name === 'NEW') {
+    showToast('กรุณาระบุชื่อหรือหมายเลขรถ', 'warning');
+    return;
+  }
+
+  if (selectEl) {
+    let existingOpt = Array.from(selectEl.options).find(o => o.value === name);
+    if (!existingOpt) {
+      existingOpt = document.createElement('option');
+      existingOpt.value = name;
+      existingOpt.textContent = name;
+      selectEl.insertBefore(existingOpt, selectEl.lastElementChild);
+    }
+    existingOpt.selected = true;
+    selectEl.value = name;
+    selectEl.dataset.prevTruck = name;
+  }
+
+  closeAddTruckModal();
   updatePurchaseTruckIndicator();
+  showToast(`✅ เพิ่มและเลือก "${name}" เรียบร้อยแล้ว`, 'success');
+}
+
+function onPurchaseTruckSelect(val) {
+  const selectEl = document.getElementById('purchase-truck-number');
+  if (val === 'NEW') {
+    openAddTruckModal();
+  } else {
+    if (selectEl) selectEl.dataset.prevTruck = val;
+    updatePurchaseTruckIndicator();
+  }
 }
 
 function addTrip() {
@@ -4715,7 +4816,10 @@ async function saveTransaction(confirmedOverride = false) {
     return;
   }
 
-  const truckNumber = document.getElementById('purchase-truck-number')?.value || '';
+  let truckNumber = document.getElementById('purchase-truck-number')?.value || '';
+  if (truckNumber === 'NEW') {
+    truckNumber = '';
+  }
   const trailerType = document.getElementById('purchase-trailer-type')?.value || 'head';
 
   if (!truckNumber && !confirmedOverride) {
@@ -5982,7 +6086,7 @@ async function filterHistory() {
     currentFilteredHistory = filtered || [];
 
     const totalCount = filtered.length;
-    const syncedCount = filtered.filter(t => t.synced === 1 || !!t.supabase_id).length;
+    const syncedCount = filtered.filter(t => t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id)).length;
     const pendingCount = totalCount - syncedCount;
     const totalWeight = filtered.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
     const totalAmount = filtered.reduce((s, t) => s + Number(t.total_price || 0), 0);
@@ -6022,7 +6126,7 @@ async function filterHistory() {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
       tbody.innerHTML = filtered.map(t => {
-        const isSynced = t.synced === 1 || !!t.supabase_id;
+        const isSynced = t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id);
         const statusBadge = isSynced
           ? `<span class="badge" style="background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block;"></span>ซิงค์แล้ว</span>`
           : `<span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>รอซิงค์</span>`;
@@ -6229,23 +6333,6 @@ async function deleteAllFilteredHistory() {
 }
 
 // ========== TRUCK WEIGHTS (ข้อมูลน้ำหนักรถพ่วง อัตโนมัติ 100%) ==========
-function onPurchaseTruckSelect(val) {
-  if (val === 'NEW') {
-    const name = window.prompt('กรุณากรอกชื่อหรือหมายเลขรถคันใหม่ (เช่น คันที่ 4 หรือ ทะเบียน 82-1234):', 'คันที่ 4');
-    const selectEl = document.getElementById('purchase-truck-number');
-    if (name && name.trim() && selectEl) {
-      const trimmed = name.trim();
-      const newOpt = document.createElement('option');
-      newOpt.value = trimmed;
-      newOpt.textContent = trimmed;
-      newOpt.selected = true;
-      selectEl.insertBefore(newOpt, selectEl.lastElementChild);
-    } else if (selectEl) {
-      selectEl.value = '';
-    }
-  }
-}
-
 let currentTruckWeightsRoundId = null;
 
 async function renderTruckWeights(targetRoundId = null) {
@@ -6341,7 +6428,8 @@ async function renderTruckWeights(targetRoundId = null) {
       const wt = Number(t.final_weight || t.net_weight || 0);
       const rawTruck = (t.truck_number || '').trim();
       const decoded = decodeTripsFromTruckNumber(rawTruck);
-      const cleanTruckNum = decoded.cleanTruckNumber;
+      let cleanTruckNum = decoded.cleanTruckNumber;
+      if (cleanTruckNum === 'NEW') cleanTruckNum = 'คันที่ 4';
 
       if (!cleanTruckNum || cleanTruckNum === '-- ไม่ระบุ --') {
         unassignedWeight += wt;
@@ -6436,21 +6524,24 @@ async function renderTruckWeights(targetRoundId = null) {
 }
 
 async function showTruckMembersModal(truckNum) {
-  const cleanTruckNum = decodeTripsFromTruckNumber(truckNum).cleanTruckNumber;
+  let cleanTruckNum = decodeTripsFromTruckNumber(truckNum).cleanTruckNumber;
+  if (cleanTruckNum === 'NEW') cleanTruckNum = 'คันที่ 4';
   showLoading();
   try {
     let list = [];
     if (isDesktopApp()) {
+      const pattern = `%${cleanTruckNum}%`;
+      const extraPattern = cleanTruckNum === 'คันที่ 4' ? '%NEW%' : pattern;
       if (currentTruckWeightsRoundId && currentTruckWeightsRoundId !== 'all') {
         const rObj = (await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [currentTruckWeightsRoundId, String(currentTruckWeightsRoundId)]))?.[0];
         const sId = rObj?.supabase_id || null;
         const localId = rObj?.id || null;
         list = await window.desktopDB.query(
-          'SELECT * FROM transactions WHERE truck_number LIKE ? AND (round_id = ? OR round_id = ? OR round_id = ? OR round_id = ?)',
-          [`%${cleanTruckNum}%`, String(localId), String(sId), String(currentTruckWeightsRoundId), currentTruckWeightsRoundId]
+          'SELECT * FROM transactions WHERE (truck_number LIKE ? OR truck_number LIKE ?) AND (round_id = ? OR round_id = ? OR round_id = ? OR round_id = ?)',
+          [pattern, extraPattern, String(localId), String(sId), String(currentTruckWeightsRoundId), currentTruckWeightsRoundId]
         ) || [];
       } else {
-        list = await window.desktopDB.query('SELECT * FROM transactions WHERE truck_number LIKE ? ORDER BY date DESC', [`%${cleanTruckNum}%`]) || [];
+        list = await window.desktopDB.query('SELECT * FROM transactions WHERE truck_number LIKE ? OR truck_number LIKE ? ORDER BY date DESC', [pattern, extraPattern]) || [];
       }
     } else if (sb && !isAppOffline()) {
       let query = sb.from('transactions').select('*').ilike('truck_number', `${cleanTruckNum}%`).order('date', { ascending: false });
@@ -7780,6 +7871,9 @@ document.addEventListener('keydown', (e) => {
     // FIX M2: Close only the topmost active modal in priority order
     const confirmModal = document.getElementById('confirm-modal');
     if (confirmModal && confirmModal.classList.contains('show')) { closeConfirmModal(); return; }
+
+    const addTruckModal = document.getElementById('add-truck-modal');
+    if (addTruckModal && addTruckModal.classList.contains('show')) { closeAddTruckModal(); return; }
 
     const weightModal = document.getElementById('weight-warning-modal');
     if (weightModal && weightModal.classList.contains('show')) { weightModal.classList.remove('show'); return; }
