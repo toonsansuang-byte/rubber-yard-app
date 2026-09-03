@@ -3603,20 +3603,54 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
 
-    if (isDesktopApp()) {
-      if (currentRound) {
-        todayTx = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? ORDER BY date DESC, id DESC', [currentRound.id]) || [];
-        recentTx = todayTx.slice(0, 10);
-      } else {
-        recentTx = await window.desktopDB.query('SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT 10') || [];
+    // Determine active display round: use current open round, or find latest round with transactions
+    let latestDisplayRound = currentRound;
+    if (!latestDisplayRound) {
+      try {
+        if (isDesktopApp()) {
+          const rounds = await window.desktopDB.query('SELECT * FROM purchase_rounds ORDER BY id DESC LIMIT 10');
+          for (const r of (rounds || [])) {
+            const check = await window.desktopDB.query('SELECT id FROM transactions WHERE round_id = ? OR round_id = ? LIMIT 1', [r.id, r.supabase_id || '']);
+            if (check && check.length > 0) {
+              latestDisplayRound = r;
+              break;
+            }
+          }
+          if (!latestDisplayRound && rounds && rounds.length > 0) latestDisplayRound = rounds[0];
+        } else if (sb && !isAppOffline()) {
+          const { data: rounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false }).limit(10);
+          for (const r of (rounds || [])) {
+            const { data: check } = await sb.from('transactions').select('id').or(`round_id.eq.${r.id},round_id.eq.${r.supabase_id || r.id}`).limit(1);
+            if (check && check.length > 0) {
+              latestDisplayRound = r;
+              break;
+            }
+          }
+          if (!latestDisplayRound && rounds && rounds.length > 0) latestDisplayRound = rounds[0];
+        }
+      } catch (e) {
+        console.warn('Find latest display round error:', e);
       }
+    }
+
+    if (isDesktopApp()) {
+      if (latestDisplayRound) {
+        todayTx = await window.desktopDB.query(
+          'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? ORDER BY date DESC, id DESC',
+          [latestDisplayRound.id, latestDisplayRound.supabase_id || '']
+        ) || [];
+      } else {
+        todayTx = await window.desktopDB.query('SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT 50') || [];
+      }
+      recentTx = todayTx.slice(0, 10);
       monthTx = await window.desktopDB.query('SELECT total_price FROM transactions WHERE date >= ?', [startOfMonth]) || [];
       memberCount = await window.desktopDB.count('members') || 0;
     } else {
-      if (currentRound && sb && !isAppOffline()) {
+      if (latestDisplayRound && sb && !isAppOffline()) {
+        const targetId = latestDisplayRound.supabase_id || latestDisplayRound.id;
         const { data: rTx } = await sb.from('transactions')
           .select('*')
-          .eq('round_id', currentRound.id)
+          .or(`round_id.eq.${targetId},round_id.eq.${latestDisplayRound.id}`)
           .order('date', { ascending: false });
 
         todayTx = rTx || [];
@@ -3637,14 +3671,37 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
 
     const roundCount = todayTx.length;
     const roundWeight = todayTx.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-    const roundAmount = todayTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
-    const monthAmount = monthTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
+
+    // ยอดเงินรวมในรอบนี้: ราคายางจากพ่อค้า ก่อนหักค่าจัดการ (final_weight * auction_price)
+    const roundGrossMerchantAmount = todayTx.reduce((s, t) => {
+      const wt = Number(t.final_weight || t.net_weight || 0);
+      const auctionPrice = Number(t.auction_price || 0);
+      const yardFee = Number(t.yard_fee !== undefined && t.yard_fee !== null ? t.yard_fee : (cachedSettings?.yard_fee || 0.5));
+      const pricePerKg = Number(t.price_per_kg || 0);
+      const merchantPrice = auctionPrice > 0 ? auctionPrice : (pricePerKg + yardFee);
+      return s + (wt * merchantPrice);
+    }, 0);
+
+    // ยอดจ่ายสมาชิก (รอบนี้): ราคาขายทั้งหมดให้สมาชิก (หักค่าจัดการแล้ว)
+    const roundNetMemberAmount = todayTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
 
     document.getElementById('stat-round-count').innerHTML = `${roundCount} <span class="unit">รายการ</span>`;
     document.getElementById('stat-round-weight').innerHTML = `${formatNumber(roundWeight)} <span class="unit">กก.</span>`;
-    document.getElementById('stat-round-amount').innerHTML = `${formatNumber(roundAmount)} <span class="unit">บาท</span>`;
-    document.getElementById('stat-month-amount').innerHTML = `${formatNumber(monthAmount)} <span class="unit">บาท</span>`;
+    document.getElementById('stat-round-amount').innerHTML = `${formatNumber(roundGrossMerchantAmount)} <span class="unit">บาท</span>`;
+    document.getElementById('stat-month-amount').innerHTML = `${formatNumber(roundNetMemberAmount)} <span class="unit">บาท</span>`;
     document.getElementById('stat-total-members').innerHTML = `${memberCount || 0} <span class="unit">คน</span>`;
+
+    // Update subtitle under แดชบอร์ด
+    const subtitleEl = document.getElementById('dashboard-subtitle');
+    if (subtitleEl) {
+      if (currentRound && currentRound.status === 'open') {
+        subtitleEl.innerHTML = `<span style="color:#22c55e;">🟢 รอบเปิดรับซื้อปัจจุบัน:</span> <strong>${escapeHTML(currentRound.title)}</strong>`;
+      } else if (latestDisplayRound) {
+        subtitleEl.innerHTML = `<span style="color:#f59e0b;">🔒 รอบล่าสุด:</span> <strong>${escapeHTML(latestDisplayRound.title)}</strong> (ปิดรอบแล้ว)`;
+      } else {
+        subtitleEl.textContent = 'ยังไม่มีรอบการรับซื้อที่เปิดใช้งาน';
+      }
+    }
 
     // Populate scope filter and render Leaderboard
     try {
@@ -3742,7 +3799,6 @@ async function populateDashboardScopeFilter() {
 
   let html = `
     <option value="current">⚡ รอบส่งมอบปัจจุบัน</option>
-    <option value="month">📅 รวมทั้ง 2 รอบในเดือนนี้</option>
     <option value="season">🏆 รวมตลอดทั้งปี / ปิดหน้ายาง</option>
   `;
 
@@ -3776,18 +3832,25 @@ async function renderDashboardLeaderboard() {
   try {
     let txs = [];
     const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
     const startOfYear = new Date(today.getFullYear(), 0, 1).toISOString();
 
     if (isDesktopApp()) {
       if (scope === 'current') {
-        if (currentRound) {
-          txs = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ?', [currentRound.id]) || [];
+        let targetRound = currentRound;
+        if (!targetRound) {
+          const rounds = await window.desktopDB.query('SELECT * FROM purchase_rounds ORDER BY id DESC LIMIT 10');
+          for (const r of (rounds || [])) {
+            const check = await window.desktopDB.query('SELECT id FROM transactions WHERE round_id = ? OR round_id = ? LIMIT 1', [r.id, r.supabase_id || '']);
+            if (check && check.length > 0) { targetRound = r; break; }
+          }
+          if (!targetRound && rounds && rounds.length > 0) targetRound = rounds[0];
+        }
+
+        if (targetRound) {
+          txs = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ?', [targetRound.id, targetRound.supabase_id || '']) || [];
         } else {
           txs = await window.desktopDB.query('SELECT * FROM transactions ORDER BY id DESC LIMIT 50') || [];
         }
-      } else if (scope === 'month') {
-        txs = await window.desktopDB.query('SELECT * FROM transactions WHERE date >= ?', [startOfMonth]) || [];
       } else if (scope === 'season') {
         txs = await window.desktopDB.query('SELECT * FROM transactions WHERE date >= ?', [startOfYear]) || [];
         if (txs.length === 0) {
@@ -3795,20 +3858,31 @@ async function renderDashboardLeaderboard() {
         }
       } else if (scope.startsWith('round_')) {
         const targetRoundId = scope.replace('round_', '');
-        txs = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ?', [targetRoundId]) || [];
+        txs = await window.desktopDB.query(
+          'SELECT * FROM transactions WHERE round_id = ? OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?)',
+          [targetRoundId, targetRoundId, targetRoundId]
+        ) || [];
       }
     } else if (sb && !isAppOffline()) {
       if (scope === 'current') {
-        if (currentRound) {
-          const { data } = await sb.from('transactions').select('*').eq('round_id', currentRound.id);
+        let targetRound = currentRound;
+        if (!targetRound) {
+          const { data: rounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false }).limit(10);
+          for (const r of (rounds || [])) {
+            const { data: check } = await sb.from('transactions').select('id').or(`round_id.eq.${r.id},round_id.eq.${r.supabase_id || r.id}`).limit(1);
+            if (check && check.length > 0) { targetRound = r; break; }
+          }
+          if (!targetRound && rounds && rounds.length > 0) targetRound = rounds[0];
+        }
+
+        if (targetRound) {
+          const tId = targetRound.supabase_id || targetRound.id;
+          const { data } = await sb.from('transactions').select('*').or(`round_id.eq.${tId},round_id.eq.${targetRound.id}`);
           txs = data || [];
         } else {
           const { data } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(50);
           txs = data || [];
         }
-      } else if (scope === 'month') {
-        const { data } = await sb.from('transactions').select('*').gte('date', startOfMonth);
-        txs = data || [];
       } else if (scope === 'season') {
         const { data } = await sb.from('transactions').select('*').gte('date', startOfYear);
         txs = data || [];
@@ -3818,7 +3892,10 @@ async function renderDashboardLeaderboard() {
         }
       } else if (scope.startsWith('round_')) {
         const targetRoundId = scope.replace('round_', '');
-        const { data } = await sb.from('transactions').select('*').eq('round_id', targetRoundId);
+        const { data: rList } = await sb.from('purchase_rounds').select('*');
+        const rObj = (rList || []).find(r => String(r.id) === String(targetRoundId) || String(r.supabase_id) === String(targetRoundId));
+        const sId = rObj?.supabase_id || targetRoundId;
+        const { data } = await sb.from('transactions').select('*').or(`round_id.eq.${sId},round_id.eq.${targetRoundId}`);
         txs = data || [];
       }
     }
@@ -6085,15 +6162,35 @@ async function filterHistory() {
 
     currentFilteredHistory = filtered || [];
 
-    const totalCount = filtered.length;
-    const syncedCount = filtered.filter(t => t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id)).length;
+    // Count unassigned transactions across current filtered set
+    const unassignedCount = (filtered || []).filter(t => {
+      const rawTruck = (t.truck_number || '').trim();
+      const clean = decodeTripsFromTruckNumber(rawTruck).cleanTruckNumber;
+      return !clean || clean === '-- ไม่ระบุ --' || clean === 'NEW';
+    }).length;
+
+    const unassignedCountBadge = document.getElementById('history-unassigned-truck-count');
+    if (unassignedCountBadge) unassignedCountBadge.textContent = unassignedCount;
+
+    let displayList = filtered || [];
+    if (historyFilterOnlyUnassigned) {
+      displayList = displayList.filter(t => {
+        const rawTruck = (t.truck_number || '').trim();
+        const clean = decodeTripsFromTruckNumber(rawTruck).cleanTruckNumber;
+        return !clean || clean === '-- ไม่ระบุ --' || clean === 'NEW';
+      });
+    }
+
+    const totalCount = displayList.length;
+    const syncedCount = displayList.filter(t => t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id)).length;
     const pendingCount = totalCount - syncedCount;
-    const totalWeight = filtered.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-    const totalAmount = filtered.reduce((s, t) => s + Number(t.total_price || 0), 0);
+    const totalWeight = displayList.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const totalAmount = displayList.reduce((s, t) => s + Number(t.total_price || 0), 0);
 
     const countSummaryEl = document.getElementById('summary-count');
     if (countSummaryEl) {
-      countSummaryEl.innerHTML = `${totalCount} <span style="font-size:0.8rem; font-weight:400; color:var(--text-muted); display:block; margin-top:2px;">(ซิงค์แล้ว ${syncedCount} | รอซิงค์ ${pendingCount})</span>`;
+      const filterNote = historyFilterOnlyUnassigned ? ' <span style="color:#f59e0b; font-weight:700;">(เฉพาะยังไม่ระบุรถ)</span>' : '';
+      countSummaryEl.innerHTML = `${totalCount}${filterNote} <span style="font-size:0.8rem; font-weight:400; color:var(--text-muted); display:block; margin-top:2px;">(ซิงค์แล้ว ${syncedCount} | รอซิงค์ ${pendingCount})</span>`;
     }
     document.getElementById('summary-weight').innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
     document.getElementById('summary-amount').innerHTML = `${formatNumber(totalAmount)} <span class="unit">บาท</span>`;
@@ -6102,7 +6199,7 @@ async function filterHistory() {
     const deleteAllBtn = document.getElementById('history-delete-all-btn');
     const totalBadge = document.getElementById('history-total-count-badge');
     if (deleteAllBtn) {
-      if (currentUser?.role === 'admin' && filtered.length > 0) {
+      if (currentUser?.role === 'admin' && displayList.length > 0) {
         deleteAllBtn.style.display = 'inline-flex';
         if (totalBadge) totalBadge.textContent = totalCount;
       } else {
@@ -6118,14 +6215,14 @@ async function filterHistory() {
     if (selectAllCb) selectAllCb.checked = false;
     updateHistoryBatchDeleteUI();
 
-    if (filtered.length === 0) {
+    if (displayList.length === 0) {
       tbody.innerHTML = '';
       emptyState.style.display = 'block';
       tbody.closest('.table-container').style.display = 'none';
     } else {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = filtered.map(t => {
+      tbody.innerHTML = displayList.map(t => {
         const isSynced = t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id);
         const statusBadge = isSynced
           ? `<span class="badge" style="background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block;"></span>ซิงค์แล้ว</span>`
@@ -6143,14 +6240,27 @@ async function filterHistory() {
              </div>`
           : `<span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>`;
 
+        const rawTruck = (t.truck_number || '').trim();
+        const cleanTruck = decodeTripsFromTruckNumber(rawTruck).cleanTruckNumber;
+        const isUnassignedTruck = !cleanTruck || cleanTruck === '-- ไม่ระบุ --' || cleanTruck === 'NEW';
+
+        const truckBadge = isUnassignedTruck
+          ? `<span class="badge-no-truck" style="margin-left:6px;" title="รายการนี้ยังไม่ได้เลือกรถพ่วง">⚠️ ยังไม่ระบุรถ</span>`
+          : `<span class="badge" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); font-size:0.75rem; padding:2px 6px; border-radius:8px; margin-left:6px;" title="รถพ่วง: ${escapeHTML(cleanTruck)}">🚚 ${escapeHTML(cleanTruck)}</span>`;
+
         return `
-        <tr>
+        <tr class="${isUnassignedTruck ? 'row-no-truck' : ''}">
           <td style="text-align:center;">
             <input type="checkbox" class="history-row-cb" value="${t.id}" onchange="updateHistoryBatchDeleteUI()">
           </td>
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${t.member_code}</span></td>
-          <td>${t.member_name}</td>
+          <td>
+            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+              <strong>${escapeHTML(t.member_name)}</strong>
+              ${truckBadge}
+            </div>
+          </td>
           <td>${getRubberTypeBadge(t.rubber_type)}</td>
           <td>${t.trip_count || 1}</td>
           <td>${formatNumber(t.net_weight)} กก.</td>
@@ -6489,9 +6599,9 @@ async function renderTruckWeights(targetRoundId = null) {
       if (discrepancySubtext) discrepancySubtext.textContent = 'ไม่มีคงเหลือในลาน';
     } else {
       if (discrepancyBadge) discrepancyBadge.innerHTML = '<span class="badge badge-warning">🟡 ยางคงเหลือในลาน</span>';
-      if (discrepancyText) discrepancyText.innerHTML = `ยางรับซื้อคงเหลือในลานยังไม่ได้ติดป้ายขึ้นรถอีก <strong>${formatNumber(discrepancy)} กก.</strong>`;
+      if (discrepancyText) discrepancyText.innerHTML = `ยางรับซื้อคงเหลือในลานยังไม่ได้ติดป้ายขึ้นรถอีก <strong>${formatNumber(discrepancy)} กก.</strong> <button class="btn btn-warning btn-sm" onclick="goToHistoryForUnassignedTruck('${escapeHTML(selectedRoundId)}')" style="margin-left:8px; padding:2px 10px; font-size:0.75rem; font-weight:600;">🔍 ดูรายการ & แก้ไข</button>`;
       if (discrepancyWeight) { discrepancyWeight.textContent = `${formatNumber(discrepancy)} กก.`; discrepancyWeight.style.color = 'var(--warning)'; }
-      if (discrepancySubtext) discrepancySubtext.textContent = 'ยางที่ชั่งแล้วแต่ยังไม่ระบุรถ';
+      if (discrepancySubtext) discrepancySubtext.innerHTML = `ยางที่ชั่งแล้วแต่ยังไม่ระบุรถ <a href="javascript:void(0)" onclick="goToHistoryForUnassignedTruck('${escapeHTML(selectedRoundId)}')" style="color:#f59e0b; text-decoration:underline; font-weight:600; margin-left:4px;">(คลิกดูรายการ)</a>`;
     }
 
     // Populate table
@@ -6886,11 +6996,57 @@ async function printTruckWeightsReport() {
   hideLoading();
 }
 
+let historyFilterOnlyUnassigned = false;
+
+function toggleHistoryOnlyUnassignedTruck() {
+  historyFilterOnlyUnassigned = !historyFilterOnlyUnassigned;
+  const btn = document.getElementById('history-unassigned-truck-btn');
+  if (btn) {
+    if (historyFilterOnlyUnassigned) {
+      btn.className = 'btn btn-warning';
+      btn.style.background = '#f59e0b';
+      btn.style.color = '#000';
+      btn.style.fontWeight = '700';
+    } else {
+      btn.className = 'btn btn-secondary';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.fontWeight = 'normal';
+    }
+  }
+  filterHistory();
+}
+
+function goToHistoryForUnassignedTruck(roundId) {
+  navigateTo('history');
+  if (roundId && roundId !== 'all') {
+    const roundSelect = document.getElementById('history-round-filter');
+    if (roundSelect) roundSelect.value = roundId;
+  }
+  historyFilterOnlyUnassigned = true;
+  const btn = document.getElementById('history-unassigned-truck-btn');
+  if (btn) {
+    btn.className = 'btn btn-warning';
+    btn.style.background = '#f59e0b';
+    btn.style.color = '#000';
+    btn.style.fontWeight = '700';
+  }
+  filterHistory();
+}
+
 function clearHistoryFilter() {
   document.getElementById('history-round-filter').value = '';
   document.getElementById('history-date-from').value = '';
   document.getElementById('history-date-to').value = '';
   document.getElementById('history-member-filter').value = '';
+  historyFilterOnlyUnassigned = false;
+  const unassignedBtn = document.getElementById('history-unassigned-truck-btn');
+  if (unassignedBtn) {
+    unassignedBtn.className = 'btn btn-secondary';
+    unassignedBtn.style.background = '';
+    unassignedBtn.style.color = '';
+    unassignedBtn.style.fontWeight = 'normal';
+  }
   filterHistory();
 }
 

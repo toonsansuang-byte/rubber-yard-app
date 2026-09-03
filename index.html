@@ -216,12 +216,12 @@
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💰</div>
-            <div class="card-title">ยอดเงินรวมในรอบนี้</div>
+            <div class="card-title">ยอดเงินพ่อค้า (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(ก่อนหักค่าจัดการ)</span></div>
             <div class="card-value" id="stat-round-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
-            <div class="stat-icon">📅</div>
-            <div class="card-title">ยอดเงินเดือนนี้</div>
+            <div class="stat-icon">💵</div>
+            <div class="card-title">ยอดจ่ายสมาชิก (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(หักค่าจัดการแล้ว)</span></div>
             <div class="card-value" id="stat-month-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
@@ -249,7 +249,6 @@
               <span style="font-size:0.85rem; color:var(--text-secondary); font-weight:600;">📅 ช่วงเวลา / รอบ:</span>
               <select id="dashboard-scope-filter" class="form-input" style="padding:6px 12px; font-size:0.85rem; width:auto; min-width:220px; background:var(--bg-input); border-color:var(--border);" onchange="renderDashboardLeaderboard()">
                 <option value="current">⚡ รอบส่งมอบปัจจุบัน</option>
-                <option value="month">📅 รวมทั้ง 2 รอบในเดือนนี้</option>
                 <option value="season">🏆 รวมตลอดทั้งปี / ปิดหน้ายาง</option>
               </select>
             </div>
@@ -736,6 +735,9 @@
               <option value="">สมาชิกทั้งหมด</option>
             </select>
           </div>
+          <button type="button" class="btn btn-secondary" id="history-unassigned-truck-btn" onclick="toggleHistoryOnlyUnassignedTruck()" style="align-self: flex-end; display:inline-flex; align-items:center; gap:6px;">
+            <span>⚠️</span> เฉพาะยังไม่ระบุรถ (<span id="history-unassigned-truck-count">0</span>)
+          </button>
           <button class="btn btn-secondary" onclick="clearHistoryFilter()" style="align-self: flex-end;">
             🔄 ล้างตัวกรอง
           </button>
