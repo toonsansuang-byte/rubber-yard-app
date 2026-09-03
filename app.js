@@ -5880,6 +5880,14 @@ function renderReceiptContent() {
 
 function closeReceiptModal() {
   document.getElementById('receipt-modal').classList.remove('show');
+  if (window.returnToHistoryAfterEdit) {
+    window.returnToHistoryAfterEdit = false;
+    navigateTo('history');
+    if (typeof filterHistory === 'function') {
+      filterHistory();
+    }
+    return;
+  }
   if (receiptSourceSection === 'purchase') {
     navigateTo('purchase');
     if (typeof initPurchase === 'function') {
@@ -6245,8 +6253,8 @@ async function filterHistory() {
         const isUnassignedTruck = !cleanTruck || cleanTruck === '-- ไม่ระบุ --' || cleanTruck === 'NEW';
 
         const truckBadge = isUnassignedTruck
-          ? `<span class="badge-no-truck" style="margin-left:6px;" title="รายการนี้ยังไม่ได้เลือกรถพ่วง">⚠️ ยังไม่ระบุรถ</span>`
-          : `<span class="badge" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); font-size:0.75rem; padding:2px 6px; border-radius:8px; margin-left:6px;" title="รถพ่วง: ${escapeHTML(cleanTruck)}">🚚 ${escapeHTML(cleanTruck)}</span>`;
+          ? `<span class="badge-no-truck" style="margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อระบุรถพ่วง">⚠️ ยังไม่ระบุรถ (คลิกเลือกรถ) 🚚</span>`
+          : `<span class="badge" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); font-size:0.75rem; padding:2px 6px; border-radius:8px; margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อเปลี่ยนรถพ่วง">🚚 ${escapeHTML(cleanTruck)}</span>`;
 
         return `
         <tr class="${isUnassignedTruck ? 'row-no-truck' : ''}">
@@ -6271,6 +6279,7 @@ async function filterHistory() {
           <td style="text-align:center;">${statusBadge}</td>
           <td>
             <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
+            <button class="btn btn-warning btn-sm btn-icon" onclick="openQuickAssignTruckModal('${t.id}')" title="ระบุรถพ่วง" style="margin-left:4px;">🚚</button>
             <button class="btn btn-primary btn-sm btn-icon" onclick="editTransactionOnPurchasePage('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
           </td>
@@ -7050,6 +7059,168 @@ function clearHistoryFilter() {
   filterHistory();
 }
 
+// ========== QUICK ASSIGN TRUCK (MODAL IN HISTORY) ==========
+let quickAssignTargetTxId = null;
+
+async function openQuickAssignTruckModal(txId) {
+  if (!txId) return;
+  quickAssignTargetTxId = txId;
+  showLoading();
+  try {
+    let tx = null;
+    if (isDesktopApp()) {
+      const res = await window.desktopDB.select('transactions', ['*'], { id: txId });
+      tx = res && res.length > 0 ? res[0] : null;
+    } else if (sb && !isAppOffline()) {
+      const { data } = await sb.from('transactions').select('*').eq('id', txId).single();
+      tx = data;
+    }
+    if (!tx) {
+      showToast('ไม่พบข้อมูลรายการนี้', 'error');
+      return;
+    }
+
+    const nameEl = document.getElementById('qat-member-name');
+    const detailsEl = document.getElementById('qat-tx-details');
+    if (nameEl) nameEl.textContent = `[${tx.member_code}] ${tx.member_name}`;
+    if (detailsEl) detailsEl.textContent = `น้ำหนักสุทธิ: ${formatNumber(tx.final_weight || tx.net_weight)} กก. | ยอดเงิน: ${formatNumber(tx.total_price)} บาท`;
+
+    const truckSelect = document.getElementById('qat-truck-number');
+    const trailerSelect = document.getElementById('qat-trailer-type');
+
+    // Populate truck options
+    let trucks = ['คันที่ 1', 'คันที่ 2', 'คันที่ 3', 'คันที่ 4', 'คันที่ 5'];
+    if (isDesktopApp() && tx.round_id) {
+      try {
+        const rows = await window.desktopDB.query('SELECT DISTINCT truck_number FROM transactions WHERE (round_id = ? OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?)) AND truck_number != ""', [tx.round_id, tx.round_id]);
+        const existing = (rows || []).map(r => decodeTripsFromTruckNumber(r.truck_number).cleanTruckNumber).filter(Boolean);
+        trucks = Array.from(new Set([...trucks, ...existing])).filter(t => t !== 'NEW');
+      } catch (e) {}
+    }
+    if (truckSelect) {
+      truckSelect.innerHTML = trucks.map(t => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('');
+      const currentClean = decodeTripsFromTruckNumber(tx.truck_number).cleanTruckNumber;
+      if (currentClean && currentClean !== 'NEW' && trucks.includes(currentClean)) {
+        truckSelect.value = currentClean;
+      } else {
+        truckSelect.value = 'คันที่ 4';
+      }
+    }
+
+    if (trailerSelect) {
+      trailerSelect.value = tx.trailer_type || 'head';
+    }
+
+    document.getElementById('quick-assign-truck-modal').classList.add('show');
+  } catch (err) {
+    console.error('openQuickAssignTruckModal error:', err);
+    showToast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function closeQuickAssignTruckModal() {
+  const modal = document.getElementById('quick-assign-truck-modal');
+  if (modal) modal.classList.remove('show');
+  quickAssignTargetTxId = null;
+}
+
+async function confirmQuickAssignTruck() {
+  if (!quickAssignTargetTxId) return;
+  const truckSelect = document.getElementById('qat-truck-number');
+  const trailerSelect = document.getElementById('qat-trailer-type');
+  const chosenTruck = truckSelect?.value?.trim();
+  const chosenTrailer = trailerSelect?.value || 'head';
+
+  if (!chosenTruck) {
+    showToast('กรุณาเลือกรถพ่วง', 'warning');
+    return;
+  }
+
+  showLoading();
+  try {
+    let tx = null;
+    if (isDesktopApp()) {
+      const res = await window.desktopDB.select('transactions', ['*'], { id: quickAssignTargetTxId });
+      tx = res && res.length > 0 ? res[0] : null;
+    } else if (sb && !isAppOffline()) {
+      const { data } = await sb.from('transactions').select('*').eq('id', quickAssignTargetTxId).single();
+      tx = data;
+    }
+    if (!tx) throw new Error('ไม่พบข้อมูลรายการ');
+
+    // Decode trips from existing truck_number or parse trips
+    let tripsArr = [];
+    if (tx.truck_number) {
+      const decoded = decodeTripsFromTruckNumber(tx.truck_number);
+      if (decoded.extractedTrips && decoded.extractedTrips.length > 0) {
+        tripsArr = decoded.extractedTrips;
+      }
+    }
+    if (tripsArr.length === 0 && tx.trips_detail) {
+      try { tripsArr = typeof tx.trips_detail === 'string' ? JSON.parse(tx.trips_detail) : tx.trips_detail; } catch(e){}
+    }
+    if (tripsArr.length === 0 && tx.trips) {
+      try { tripsArr = typeof tx.trips === 'string' ? JSON.parse(tx.trips) : tx.trips; } catch(e){}
+    }
+
+    const newEncodedTruck = encodeTripsIntoTruckNumber(chosenTruck, tripsArr);
+    const editorName = currentUser?.display_name || currentUser?.username || 'admin';
+    const editorLabel = `${editorName} (${formatDateTime(new Date().toISOString())})`;
+
+    if (isDesktopApp()) {
+      await window.desktopDB.update('transactions', {
+        truck_number: newEncodedTruck,
+        trailer_type: chosenTrailer,
+        confirmed_by_display_name: editorLabel,
+        synced: 0
+      }, { id: tx.id });
+
+      await window.desktopDB.insert('sync_queue', {
+        table_name: 'transactions',
+        action: 'UPDATE',
+        row_data: JSON.stringify({
+          ...tx,
+          truck_number: newEncodedTruck,
+          trailer_type: chosenTrailer,
+          confirmed_by_display_name: editorLabel,
+          id: tx.supabase_id || tx.id
+        }),
+        local_id: tx.id
+      });
+
+      if (sb && !isAppOffline()) {
+        try {
+          const targetCloudId = tx.supabase_id || tx.id;
+          await sb.from('transactions').update({
+            truck_number: newEncodedTruck,
+            trailer_type: chosenTrailer,
+            confirmed_by_display_name: editorLabel
+          }).eq('id', targetCloudId);
+        } catch (e) {
+          console.warn('Supabase cloud update quick truck failed:', e);
+        }
+      }
+    } else if (sb && !isAppOffline()) {
+      await sb.from('transactions').update({
+        truck_number: newEncodedTruck,
+        trailer_type: chosenTrailer,
+        confirmed_by_display_name: editorLabel
+      }).eq('id', tx.id);
+    }
+
+    closeQuickAssignTruckModal();
+    showToast(`✅ ระบุ "${chosenTruck}" ให้คุณ ${tx.member_name} เรียบร้อยแล้ว!`, 'success');
+    await filterHistory();
+  } catch (err) {
+    console.error('confirmQuickAssignTruck error:', err);
+    showToast('เกิดข้อผิดพลาดในการบันทึก: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
 // ========== EDIT TRANSACTION ON PURCHASE PAGE ==========
 let editingTransaction = null;
 
@@ -7073,6 +7244,7 @@ async function editTransactionOnPurchasePage(txId) {
     }
 
     editingTransaction = tx;
+    window.returnToHistoryAfterEdit = true;
 
     // Navigate to purchase page
     navigateTo('purchase');
@@ -7148,7 +7320,11 @@ async function editTransactionOnPurchasePage(txId) {
     const trailerSelect = document.getElementById('purchase-trailer-type');
     if (truckSelect && tx.truck_number) {
       const cleanTruck = decodeTripsFromTruckNumber(tx.truck_number).cleanTruckNumber;
-      if (cleanTruck) truckSelect.value = cleanTruck;
+      if (cleanTruck && cleanTruck !== 'NEW') {
+        truckSelect.value = cleanTruck;
+      } else {
+        truckSelect.value = '';
+      }
     }
     if (trailerSelect && tx.trailer_type) {
       trailerSelect.value = tx.trailer_type;
