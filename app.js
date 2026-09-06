@@ -2057,7 +2057,6 @@ async function loadCurrentRound() {
 function updateRoundBanner() {
   const titleEl = document.getElementById('banner-round-title');
   const actionsEl = document.getElementById('banner-round-actions');
-  const subtitleEl = document.getElementById('dashboard-subtitle');
 
   if (currentRound) {
     titleEl.textContent = `${currentRound.title} (เริ่มเมื่อ ${formatDateTime(currentRound.start_date)})`;
@@ -2065,13 +2064,11 @@ function updateRoundBanner() {
       <button class="btn btn-secondary btn-sm" onclick="navigateTo('rounds')">🔍 ดูรายละเอียดรอบ</button>
       <button class="btn btn-danger btn-sm" onclick="confirmCloseRound('${currentRound.id}')">🔒 ปิดรอบนี้</button>
     `;
-    if (subtitleEl) subtitleEl.textContent = `ภาพรวมของ ${currentRound.title}`;
   } else {
     titleEl.textContent = 'ยังไม่มีรอบการรับซื้อเปิดอยู่';
     actionsEl.innerHTML = `
       <button class="btn btn-gold btn-sm" onclick="openStartRoundModal()">▶️ เริ่มรอบใหม่</button>
     `;
-    if (subtitleEl) subtitleEl.textContent = 'ยังไม่มีรอบการรับซื้อที่เปิดใช้งาน';
   }
 }
 
@@ -2529,14 +2526,14 @@ async function showRoundReport(roundId) {
       }
 
       transactions = await window.desktopDB.query(
-        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY date ASC',
+        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY sequence_no ASC, id ASC',
         [String(roundId), String(round?.supabase_id || roundId), String(roundId), roundId]
       ) || [];
 
       if ((!transactions || transactions.length === 0) && sb && !isAppOffline() && round) {
         try {
           const targetRId = round.supabase_id || round.id;
-          const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('date');
+          const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('sequence_no');
           if (txList && txList.length > 0) {
             transactions = txList;
           }
@@ -2548,7 +2545,7 @@ async function showRoundReport(roundId) {
       const { data: txList } = await sb.from('transactions')
         .select('*')
         .eq('round_id', roundId)
-        .order('date');
+        .order('sequence_no');
       transactions = txList || [];
     }
     if (!round) throw new Error('ไม่พบข้อมูลรอบการรับซื้อ');
@@ -2570,6 +2567,15 @@ async function showRoundReport(roundId) {
 
 let currentReportRound = null;
 let currentReportTxList = [];
+let currentReportView = 'queue'; // 'queue' (default - เรียงตามคิวชั่ง) or 'member' (สรุปรายสมาชิก)
+
+function switchRoundReportView(view) {
+  currentReportView = view;
+  const format = localStorage.getItem('print_pref_round_report') || '1';
+  if (currentReportRound) {
+    renderRoundReportContent(currentReportRound, currentReportTxList, format);
+  }
+}
 
 function onRoundReportFormatChange(format) {
   localStorage.setItem('print_pref_round_report', format);
@@ -2581,6 +2587,13 @@ function onRoundReportFormatChange(format) {
 function renderRoundReportContent(round, transactions, format) {
   const plantationName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
 
+  // Ensure transactions are sorted by sequence_no ASC (คิวชั่ง)
+  const sortedTxs = [...transactions].sort((a, b) => {
+    const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
+    const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
+    return seqA - seqB;
+  });
+
   // Group transactions by member (using transaction's own historical saved rates)
   const memberSummary = {};
   let grandTotalWeight = 0;
@@ -2588,17 +2601,16 @@ function renderRoundReportContent(round, transactions, format) {
   let grandTotalYardFee = 0;
   let grandTotalAmount = 0;
 
-  transactions.forEach(t => {
+  sortedTxs.forEach(t => {
     const code = t.member_code;
     const weight = Number(t.final_weight || t.net_weight || 0);
-    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * (t.price_per_kg || 0)));
     const netRate = Number(t.price_per_kg || 0);
-    // FIX M1: Allow yard_fee = 0 (do not force fallback to 0.50 if fee is explicitly 0)
     const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
     const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
 
-    const grossAmt = weight * auctionRate;
-    const feeAmt = (grossAmt - amount) > 0 ? (grossAmt - amount) : (weight * yardFeeRate);
+    const grossAmt = Math.round((weight * auctionRate) * 100) / 100;
+    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((weight * netRate) * 100) / 100));
+    const feeAmt = Math.round((grossAmt - amount) * 100) / 100;
 
     if (!memberSummary[code]) {
       memberSummary[code] = {
@@ -2627,7 +2639,12 @@ function renderRoundReportContent(round, transactions, format) {
     grandTotalAmount += amount;
   });
 
-  // FIX M5: Calculate weighted average prices for members with multiple sales
+  grandTotalWeight = Math.round(grandTotalWeight * 100) / 100;
+  grandTotalGross = Math.round(grandTotalGross * 100) / 100;
+  grandTotalYardFee = Math.round(grandTotalYardFee * 100) / 100;
+  grandTotalAmount = Math.round(grandTotalAmount * 100) / 100;
+
+  // Calculate weighted average prices for members with multiple sales
   Object.values(memberSummary).forEach(m => {
     if (m.totalWeight > 0) {
       m.auctionPrice = m.grossAmount / m.totalWeight;
@@ -2638,10 +2655,122 @@ function renderRoundReportContent(round, transactions, format) {
 
   const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
 
+  // Determine Table HTML based on active view mode
+  let tableHtml = '';
+  if (currentReportView === 'queue') {
+    tableHtml = `
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th style="text-align:center; width:55px;">คิวที่</th>
+            <th style="text-align:center; width:65px;">รหัส</th>
+            <th>ชื่อ-นามสกุลสมาชิก</th>
+            <th style="text-align:right;">น้ำหนัก (กก.)</th>
+            <th style="text-align:right;">ราคาประมูล</th>
+            <th style="text-align:right;">ยอดรวมก่อนหัก</th>
+            <th style="text-align:right;">หักเข้ากลุ่ม</th>
+            <th style="text-align:right;">ราคาจ่าย/กก.</th>
+            <th style="text-align:right;">ยอดสุทธิ (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedTxs.length === 0 ? '<tr><td colspan="9" style="text-align:center;color:#64748b;">ไม่มีข้อมูลธุรกรรมในรอบนี้</td></tr>' : 
+            sortedTxs.map((t, idx) => {
+              const seq = t.sequence_no || t.seq_no || t.queue_no || (idx + 1);
+              const wt = Number(t.final_weight || t.net_weight || 0);
+              const netRate = Number(t.price_per_kg || 0);
+              const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
+              const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+              const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
+              const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+              const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
+
+              return `
+                <tr>
+                  <td style="text-align:center; font-weight:bold; color:#0f172a; background:#f8fafc;">${seq}</td>
+                  <td style="text-align:center;"><strong>${escapeHTML(t.member_code)}</strong></td>
+                  <td>${escapeHTML(t.member_name)}</td>
+                  <td style="text-align:right; font-weight:600;">${formatNumber(wt)}</td>
+                  <td style="text-align:right;">${formatNumber(auctionRate)}</td>
+                  <td style="text-align:right; font-weight:600;">${formatNumber(grossAmt)}</td>
+                  <td style="text-align:right; color:#b45309; font-weight:600;">${formatNumber(feeAmt)}</td>
+                  <td style="text-align:right;">${formatNumber(netRate)}</td>
+                  <td style="text-align:right; font-weight:700; color:#059669;">${formatNumber(netAmt)}</td>
+                </tr>
+              `;
+            }).join('')
+          }
+          <tr class="total-row">
+            <td colspan="3" style="text-align:right;">ยอดรวมสุทธิทั้งรอบ:</td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalWeight)} กก.</td>
+            <td></td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalGross)}</td>
+            <td style="text-align:right; color:#b45309; font-weight:bold;">${formatNumber(grandTotalYardFee)}</td>
+            <td></td>
+            <td style="text-align:right; color:#059669; font-weight:bold;">${formatNumber(grandTotalAmount)} บาท</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  } else {
+    tableHtml = `
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th style="text-align:center; width:65px;">รหัส</th>
+            <th>ชื่อ-นามสกุลสมาชิก</th>
+            <th style="text-align:center; width:130px;">เลขที่บัญชี</th>
+            <th style="text-align:right;">น้ำหนัก (กก.)</th>
+            <th style="text-align:right;">ราคาประมูล</th>
+            <th style="text-align:right;">ยอดรวมก่อนหัก</th>
+            <th style="text-align:right;">หักเข้ากลุ่ม</th>
+            <th style="text-align:right;">ราคาจ่าย/กก.</th>
+            <th style="text-align:right;">ยอดสุทธิ (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${memberRows.length === 0 ? '<tr><td colspan="9" style="text-align:center;color:#64748b;">ไม่มีข้อมูลธุรกรรมในรอบนี้</td></tr>' : 
+            memberRows.map(m => `
+              <tr>
+                <td style="text-align:center;"><strong>${escapeHTML(m.code)}</strong></td>
+                <td>${escapeHTML(m.name)}</td>
+                <td style="text-align:center; font-family:monospace;">${escapeHTML(m.account_no)}</td>
+                <td style="text-align:right;">${formatNumber(m.totalWeight)}</td>
+                <td style="text-align:right;">${formatNumber(m.auctionPrice)}</td>
+                <td style="text-align:right; font-weight:600;">${formatNumber(m.grossAmount)}</td>
+                <td style="text-align:right; color:#b45309; font-weight:600;">${formatNumber(m.yardFeeAmount)}</td>
+                <td style="text-align:right;">${formatNumber(m.netPrice)}</td>
+                <td style="text-align:right; font-weight:700; color:#059669;">${formatNumber(m.totalAmount)}</td>
+              </tr>
+            `).join('')
+          }
+          <tr class="total-row">
+            <td colspan="3" style="text-align:right;">ยอดรวมสุทธิทั้งรอบ:</td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalWeight)} กก.</td>
+            <td></td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalGross)}</td>
+            <td style="text-align:right; color:#b45309; font-weight:bold;">${formatNumber(grandTotalYardFee)}</td>
+            <td></td>
+            <td style="text-align:right; color:#059669; font-weight:bold;">${formatNumber(grandTotalAmount)} บาท</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+
   const singleReportHtml = `
+    <div class="no-print" style="display:flex; justify-content:center; gap:10px; margin-bottom:16px;">
+      <button class="btn btn-sm ${currentReportView === 'queue' ? 'btn-primary' : 'btn-secondary'}" onclick="switchRoundReportView('queue')" style="${currentReportView === 'queue' ? 'font-weight:bold; box-shadow: 0 0 8px rgba(16,185,129,0.3);' : ''}">
+        🚚 เรียงตามลำดับคิวชั่ง (${sortedTxs.length} คิว)
+      </button>
+      <button class="btn btn-sm ${currentReportView === 'member' ? 'btn-primary' : 'btn-secondary'}" onclick="switchRoundReportView('member')" style="${currentReportView === 'member' ? 'font-weight:bold; box-shadow: 0 0 8px rgba(16,185,129,0.3);' : ''}">
+        👤 รวมยอดรายสมาชิก (${memberRows.length} คน)
+      </button>
+    </div>
+
     <div class="round-report-header">
       <h2>🌿 ${plantationName}</h2>
-      <p>เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ</p>
+      <p>เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ ${currentReportView === 'queue' ? '(เรียงตามลำดับคิวชั่ง)' : '(สรุปยอดรายสมาชิก)'}</p>
       <h3 style="margin-top:6px; color:#0f172a;">${round.title}</h3>
     </div>
 
@@ -2651,8 +2780,8 @@ function renderRoundReportContent(round, transactions, format) {
         <div class="meta-val">${formatDate(round.start_date)}</div>
       </div>
       <div class="report-meta-item">
-        <div class="meta-label">สมาชิกที่ขาย</div>
-        <div class="meta-val">${memberRows.length} คน (${transactions.length} เที่ยว)</div>
+        <div class="meta-label">จำนวนรายการ</div>
+        <div class="meta-val">${sortedTxs.length} คิว (${memberRows.length} คน)</div>
       </div>
       <div class="report-meta-item">
         <div class="meta-label">น้ำหนักสุทธิรวม</div>
@@ -2664,47 +2793,7 @@ function renderRoundReportContent(round, transactions, format) {
       </div>
     </div>
 
-    <table class="report-table">
-      <thead>
-        <tr>
-          <th>รหัส</th>
-          <th>ชื่อ-นามสกุลสมาชิก</th>
-          <th>เลขที่บัญชี</th>
-          <th style="text-align:right;">น้ำหนัก (กก.)</th>
-          <th style="text-align:right;">ราคาประมูล</th>
-          <th style="text-align:right;">ยอดรวมก่อนหัก</th>
-          <th style="text-align:right;">หักเข้ากลุ่ม</th>
-          <th style="text-align:right;">ราคาโอน/กก.</th>
-          <th style="text-align:right;">ยอดสุทธิที่ต้องโอน</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${memberRows.length === 0 ? '<tr><td colspan="9" style="text-align:center;color:#64748b;">ไม่มีข้อมูลธุรกรรมในรอบนี้</td></tr>' : 
-          memberRows.map(m => `
-            <tr>
-              <td><strong>${m.code}</strong></td>
-              <td>${m.name}</td>
-              <td>${m.account_no}</td>
-              <td style="text-align:right;">${formatNumber(m.totalWeight)}</td>
-              <td style="text-align:right;">${formatNumber(m.auctionPrice)}</td>
-              <td style="text-align:right; font-weight:600;">${formatNumber(m.grossAmount)}</td>
-              <td style="text-align:right; color:#b45309; font-weight:600;">${formatNumber(m.yardFeeAmount)}</td>
-              <td style="text-align:right;">${formatNumber(m.netPrice)}</td>
-              <td style="text-align:right; font-weight:700; color:#059669;">${formatNumber(m.totalAmount)}</td>
-            </tr>
-          `).join('')
-        }
-        <tr class="total-row">
-          <td colspan="3" style="text-align:right;">ยอดรวมสุทธิทั้งรอบ:</td>
-          <td style="text-align:right;">${formatNumber(grandTotalWeight)} กก.</td>
-          <td></td>
-          <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalGross)}</td>
-          <td style="text-align:right; color:#b45309; font-weight:bold;">${formatNumber(grandTotalYardFee)}</td>
-          <td></td>
-          <td style="text-align:right; color:#059669; font-weight:bold;">${formatNumber(grandTotalAmount)} บาท</td>
-        </tr>
-      </tbody>
-    </table>
+    ${tableHtml}
 
     <div class="report-footer-sign">
       <div class="sign-box">
@@ -2742,11 +2831,11 @@ async function exportRoundToExcel(roundId = null) {
       if (isDesktopApp()) {
         const r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
         if (r && r.length > 0) round = r[0];
-        transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) ORDER BY member_code ASC', [roundId, String(round?.supabase_id || roundId), String(roundId)]) || [];
+        transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) ORDER BY sequence_no ASC, id ASC', [roundId, String(round?.supabase_id || roundId), String(roundId)]) || [];
       } else if (sb && !isAppOffline()) {
         const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
         if (data) round = data;
-        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', roundId).order('member_code');
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', roundId).order('sequence_no');
         transactions = txList || [];
       }
     } catch (e) { /* ignore */ }
@@ -2760,14 +2849,14 @@ async function exportRoundToExcel(roundId = null) {
   if (!transactions || transactions.length === 0) {
     if (isDesktopApp()) {
       transactions = await window.desktopDB.query(
-        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY member_code ASC',
+        'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) OR round_id = (SELECT supabase_id FROM purchase_rounds WHERE id = ?) ORDER BY sequence_no ASC, id ASC',
         [round.id, String(round.supabase_id || round.id), String(round.id), round.id]
       ) || [];
     }
     if ((!transactions || transactions.length === 0) && sb && !isAppOffline()) {
       try {
         const targetRId = round.supabase_id || round.id;
-        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('member_code');
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('sequence_no');
         transactions = txList || [];
       } catch (e) {}
     }
@@ -2778,24 +2867,29 @@ async function exportRoundToExcel(roundId = null) {
     const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
     const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
 
-    // Group transactions by member (using transaction's own historical saved rates)
-    const memberSummary = {};
+    // Sort by sequence_no ASC
+    const sortedTxs = [...transactions].sort((a, b) => {
+      const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
+      const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
+      return seqA - seqB;
+    });
+
     let grandTotalWeight = 0;
     let grandTotalGross = 0;
     let grandTotalYardFee = 0;
     let grandTotalAmount = 0;
 
-    transactions.forEach(t => {
+    const memberSummary = {};
+
+    sortedTxs.forEach(t => {
       const code = t.member_code;
       const wt = Number(t.final_weight || t.net_weight || 0);
-      const amt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * (t.price_per_kg || 0)));
       const netRate = Number(t.price_per_kg || 0);
-      // FIX M1: Allow yard_fee = 0
-      const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
+      const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
       const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
-
-      const grossAmt = wt * auctionRate;
-      const feeAmt = (grossAmt - amt) > 0 ? (grossAmt - amt) : (wt * yardFeeRate);
+      const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
+      const amt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+      const feeAmt = Math.round((grossAmt - amt) * 100) / 100;
 
       if (!memberSummary[code]) {
         memberSummary[code] = {
@@ -2822,7 +2916,11 @@ async function exportRoundToExcel(roundId = null) {
       grandTotalAmount += amt;
     });
 
-    // FIX M5: Calculate weighted average prices for members with multiple sales
+    grandTotalWeight = Math.round(grandTotalWeight * 100) / 100;
+    grandTotalGross = Math.round(grandTotalGross * 100) / 100;
+    grandTotalYardFee = Math.round(grandTotalYardFee * 100) / 100;
+    grandTotalAmount = Math.round(grandTotalAmount * 100) / 100;
+
     Object.values(memberSummary).forEach(m => {
       if (m.totalWeight > 0) {
         m.auctionPrice = m.grossAmount / m.totalWeight;
@@ -2833,7 +2931,90 @@ async function exportRoundToExcel(roundId = null) {
 
     const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
 
-    // Construct full MSO-styled Excel HTML Document
+    let tableRowsHtml = '';
+    let tableHeaderHtml = '';
+    let sheetName = '';
+    let filePrefix = '';
+
+    if (currentReportView === 'queue') {
+      sheetName = 'สรุปตามคิวชั่ง';
+      filePrefix = 'สรุปผลส่งมอบยาง_ตามคิวชั่ง';
+      tableHeaderHtml = `
+        <tr>
+          <th style="width: 55px;">คิวที่</th>
+          <th style="width: 80px;">รหัสสมาชิก</th>
+          <th style="width: 220px;">ชื่อ-นามสกุลสมาชิก</th>
+          <th style="width: 130px;">น้ำหนักยางสุทธิ (กก.)</th>
+          <th style="width: 110px;">ราคาประมูล (บาท)</th>
+          <th style="width: 150px;">ยอดรวมก่อนหัก (บาท)</th>
+          <th style="width: 140px;">หักเข้ากลุ่ม (บาท)</th>
+          <th style="width: 110px;">ราคาจ่าย/กก. (บาท)</th>
+          <th style="width: 170px;">ยอดสุทธิ (บาท)</th>
+        </tr>
+      `;
+      tableRowsHtml = sortedTxs.map((t, idx) => {
+        const seq = t.sequence_no || t.seq_no || t.queue_no || (idx + 1);
+        const wt = Number(t.final_weight || t.net_weight || 0);
+        const netRate = Number(t.price_per_kg || 0);
+        const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
+        const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+        const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
+        const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+        const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
+        const rowClass = idx % 2 === 1 ? 'class="even-row"' : '';
+
+        return `
+          <tr ${rowClass}>
+            <td class="text-center" style="font-weight:bold;">${seq}</td>
+            <td class="member-code">${t.member_code}</td>
+            <td class="text-left"><b>${t.member_name}</b></td>
+            <td class="num-format">${wt.toFixed(2)}</td>
+            <td class="num-format">${auctionRate.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:600; color:#1e293b;">${grossAmt.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:600; color:#b45309;">${feeAmt.toFixed(2)}</td>
+            <td class="num-format">${netRate.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:bold; color:#047857;">${netAmt.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      sheetName = 'สรุปรายสมาชิก';
+      filePrefix = 'สรุปผลส่งมอบยาง_รายสมาชิก';
+      tableHeaderHtml = `
+        <tr>
+          <th style="width: 55px;">ลำดับ</th>
+          <th style="width: 100px;">รหัสสมาชิก</th>
+          <th style="width: 240px;">ชื่อ-นามสกุลสมาชิก</th>
+          <th style="width: 180px;">เลขที่บัญชีธนาคาร</th>
+          <th style="width: 140px;">น้ำหนักยางสุทธิ (กก.)</th>
+          <th style="width: 130px;">ราคาประมูล (บาท)</th>
+          <th style="width: 170px;">ยอดรวมก่อนหัก (บาท)</th>
+          <th style="width: 170px;">หักค่าจัดการเข้ากลุ่ม (บาท)</th>
+          <th style="width: 130px;">ราคาโอน/กก. (บาท)</th>
+          <th style="width: 200px;">จำนวนเงินที่ต้องโอน (บาท)</th>
+        </tr>
+      `;
+      tableRowsHtml = memberRows.map((m, idx) => {
+        const rowClass = idx % 2 === 1 ? 'class="even-row"' : '';
+        return `
+          <tr ${rowClass}>
+            <td class="text-center">${idx + 1}</td>
+            <td class="member-code">${m.code}</td>
+            <td class="text-left"><b>${m.name}</b></td>
+            <td class="bank-acc">${m.account_no}</td>
+            <td class="num-format">${m.totalWeight.toFixed(2)}</td>
+            <td class="num-format">${m.auctionPrice.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:600; color:#1e293b;">${m.grossAmount.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:600; color:#b45309;">${m.yardFeeAmount.toFixed(2)}</td>
+            <td class="num-format">${m.netPrice.toFixed(2)}</td>
+            <td class="num-format" style="font-weight:bold; color:#047857;">${m.totalAmount.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    const docTitle = currentReportView === 'queue' ? 'เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ (เรียงตามลำดับคิวชั่ง)' : 'เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ (สรุปยอดรายสมาชิก)';
+
     const excelHtml = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -2843,7 +3024,7 @@ async function exportRoundToExcel(roundId = null) {
           <x:ExcelWorkbook>
             <x:ExcelWorksheets>
               <x:ExcelWorksheet>
-                <x:Name>สรุปยอดโอนเงินธนาคาร</x:Name>
+                <x:Name>${sheetName}</x:Name>
                 <x:WorksheetOptions>
                   <x:DisplayGridlines/>
                 </x:WorksheetOptions>
@@ -2858,75 +3039,39 @@ async function exportRoundToExcel(roundId = null) {
           .subtitle-header { font-size: 12px; color: #475569; text-align: center; height: 22px; }
           .doc-title { font-size: 14px; font-weight: bold; color: #0f172a; text-align: center; background-color: #ecfdf5; height: 28px; border: 1px solid #10b981; }
           .meta-info { font-size: 12px; color: #334155; height: 24px; text-align: center; }
-          
           table { border-collapse: collapse; width: 100%; font-family: 'Sarabun', 'Segoe UI', sans-serif; }
           th { background-color: #064e3b; color: #ffffff; font-weight: bold; font-size: 13px; text-align: center; border: 1px solid #000000; padding: 8px; height: 32px; }
           td { border: 1px solid #cbd5e1; padding: 6px 10px; font-size: 12px; vertical-align: middle; }
-          
           .text-center { text-align: center; }
           .text-right { text-align: right; }
           .text-left { text-align: left; }
-          
           .member-code { mso-number-format:"\\@"; text-align: center; font-weight: bold; background-color: #f1f5f9; }
           .bank-acc { mso-number-format:"\\@"; text-align: center; font-family: monospace; font-weight: bold; }
           .num-format { mso-number-format:"\\#\\,\\#\\#0\\.00"; text-align: right; }
-          
           tr.even-row td { background-color: #f8fafc; }
           tr.total-row td { background-color: #d1fae5; font-weight: bold; font-size: 13px; border-top: 2px solid #047857; border-bottom: 2px double #047857; height: 35px; }
         </style>
       </head>
       <body>
         <table>
-          <tr>
-            <td colspan="10" class="title-header">${plantationName}</td>
-          </tr>
-          <tr>
-            <td colspan="10" class="subtitle-header">${plantationAddress}</td>
-          </tr>
-          <tr>
-            <td colspan="10" class="doc-title">เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</td>
-          </tr>
+          <tr><td colspan="10" class="title-header">${plantationName}</td></tr>
+          <tr><td colspan="10" class="subtitle-header">${plantationAddress}</td></tr>
+          <tr><td colspan="10" class="doc-title">${docTitle}</td></tr>
           <tr>
             <td colspan="10" class="meta-info">
               <b>รอบส่งมอบยาง:</b> ${round.title} &nbsp;&nbsp;|&nbsp;&nbsp; 
-              <b>วันที่:</b> ${formatDate(round.start_date)}
+              <b>วันที่:</b> ${formatDate(round.start_date)} &nbsp;&nbsp;|&nbsp;&nbsp;
+              <b>จำนวนรายการ:</b> ${sortedTxs.length} คิว (${memberRows.length} คน)
             </td>
           </tr>
-          <tr><td colspan="10"></td></tr>
+          <tr><td colspan="${currentReportView === 'queue' ? 9 : 10}"></td></tr>
           <thead>
-            <tr>
-              <th style="width: 55px;">ลำดับ</th>
-              <th style="width: 100px;">รหัสสมาชิก</th>
-              <th style="width: 240px;">ชื่อ-นามสกุลสมาชิก</th>
-              <th style="width: 180px;">เลขที่บัญชีธนาคาร</th>
-              <th style="width: 140px;">น้ำหนักยางสุทธิ (กก.)</th>
-              <th style="width: 130px;">ราคาประมูล (บาท)</th>
-              <th style="width: 170px;">ยอดรวมก่อนหัก (บาท)</th>
-              <th style="width: 170px;">หักค่าจัดการเข้ากลุ่ม (บาท)</th>
-              <th style="width: 130px;">ราคาโอน/กก. (บาท)</th>
-              <th style="width: 200px;">จำนวนเงินที่ต้องโอน (บาท)</th>
-            </tr>
+            ${tableHeaderHtml}
           </thead>
           <tbody>
-            ${memberRows.map((m, idx) => {
-              const rowClass = idx % 2 === 1 ? 'class="even-row"' : '';
-              return `
-                <tr ${rowClass}>
-                  <td class="text-center">${idx + 1}</td>
-                  <td class="member-code">${m.code}</td>
-                  <td class="text-left"><b>${m.name}</b></td>
-                  <td class="bank-acc">${m.account_no}</td>
-                  <td class="num-format">${m.totalWeight.toFixed(2)}</td>
-                  <td class="num-format">${m.auctionPrice.toFixed(2)}</td>
-                  <td class="num-format" style="font-weight:600; color:#1e293b;">${m.grossAmount.toFixed(2)}</td>
-                  <td class="num-format" style="font-weight:600; color:#b45309;">${m.yardFeeAmount.toFixed(2)}</td>
-                  <td class="num-format">${m.netPrice.toFixed(2)}</td>
-                  <td class="num-format" style="font-weight:bold; color:#047857;">${m.totalAmount.toFixed(2)}</td>
-                </tr>
-              `;
-            }).join('')}
+            ${tableRowsHtml}
             <tr class="total-row">
-              <td colspan="4" class="text-right"><b>ยอดรวมสุทธิทั้งรอบ:</b></td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" class="text-right"><b>ยอดรวมสุทธิทั้งรอบ:</b></td>
               <td class="num-format" style="font-weight:bold;">${grandTotalWeight.toFixed(2)}</td>
               <td></td>
               <td class="num-format" style="font-weight:bold; color:#1e293b;">${grandTotalGross.toFixed(2)}</td>
@@ -2934,25 +3079,25 @@ async function exportRoundToExcel(roundId = null) {
               <td></td>
               <td class="num-format" style="font-weight:bold; color:#047857;">${grandTotalAmount.toFixed(2)}</td>
             </tr>
-            <tr><td colspan="10"></td></tr>
+            <tr><td colspan="${currentReportView === 'queue' ? 9 : 10}"></td></tr>
             <tr>
-              <td colspan="4" style="background:#f1f5f9; border:1px solid #94a3b8; padding:8px 12px; font-size:13px;"><b>สรุปภาพรวมการเงินประจำรอบ:</b></td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="background:#f1f5f9; border:1px solid #94a3b8; padding:8px 12px; font-size:13px;"><b>สรุปภาพรวมการเงินประจำรอบ:</b></td>
               <td colspan="6" style="background:#f8fafc; border:1px solid #94a3b8;"></td>
             </tr>
             <tr>
-              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px;">⚖️ น้ำหนักยางส่งมอบรวมทั้งรอบ:</td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px;">⚖️ น้ำหนักยางส่งมอบรวมทั้งรอบ:</td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#0f172a;">${grandTotalWeight.toFixed(2)} กิโลกรัม</td>
             </tr>
             <tr>
-              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px;">💰 ยอดเงินรวมก่อนหักค่าจัดการ (ยอดขายยางรวม):</td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px;">💰 ยอดเงินรวมก่อนหักค่าจัดการ (ยอดขายยางรวม):</td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#1e293b;">${grandTotalGross.toFixed(2)} บาท</td>
             </tr>
             <tr>
-              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px; background:#fef3c7;">🏢 <b>เงินค่าจัดการคงเหลือเข้ากลุ่ม (รายได้กลุ่มเกษตรกร):</b></td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px; background:#fef3c7;">🏢 <b>เงินค่าจัดการคงเหลือเข้ากลุ่ม (รายได้กลุ่มเกษตรกร):</b></td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#b45309; background:#fef3c7;">${grandTotalYardFee.toFixed(2)} บาท</td>
             </tr>
             <tr>
-              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px; background:#d1fae5;">💳 <b>ยอดเงินสุทธิที่ต้องโอนให้สมาชิกทุกคน (ยื่นธนาคาร):</b></td>
+              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px; background:#d1fae5;">💳 <b>ยอดเงินสุทธิจ่ายสมาชิกทุกคน:</b></td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#047857; background:#d1fae5;">${grandTotalAmount.toFixed(2)} บาท</td>
             </tr>
           </tbody>
@@ -2962,7 +3107,7 @@ async function exportRoundToExcel(roundId = null) {
     `;
 
     const cleanTitle = round.title.replace(/[\/\s]/g, '_');
-    const fileName = `สรุปยอดโอนเงินธนาคาร_${cleanTitle}.xls`;
+    const fileName = `${filePrefix}_${cleanTitle}.xls`;
 
     const blob = new Blob(['\ufeff' + excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const link = document.createElement('a');
@@ -2972,7 +3117,7 @@ async function exportRoundToExcel(roundId = null) {
     link.click();
     document.body.removeChild(link);
 
-    showToast('ดาวน์โหลดไฟล์ Excel สำหรับธนาคารสำเร็จ!');
+    showToast('ดาวน์โหลดไฟล์ Excel สำเร็จ!');
   } catch (err) {
     showToast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + err.message, 'error');
   }
@@ -2986,10 +3131,16 @@ async function printRoundReport(roundId = null) {
   if (roundId && (!round || round.id !== roundId)) {
     showLoading();
     try {
-      const { data: rData } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
-      const { data: tData } = await sb.from('transactions').select('*').eq('round_id', roundId).order('member_code');
-      round = rData;
-      transactions = tData || [];
+      if (isDesktopApp()) {
+        const r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
+        if (r && r.length > 0) round = r[0];
+        transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) ORDER BY sequence_no ASC, id ASC', [roundId, String(round?.supabase_id || roundId), String(roundId)]) || [];
+      } else if (sb && !isAppOffline()) {
+        const { data: rData } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
+        const { data: tData } = await sb.from('transactions').select('*').eq('round_id', roundId).order('sequence_no');
+        round = rData;
+        transactions = tData || [];
+      }
     } catch (e) { /* ignore */ }
     hideLoading();
   }
@@ -3008,24 +3159,28 @@ async function printRoundReport(roundId = null) {
   const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
   const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
 
-  // Group transactions by member (using transaction's own historical saved rates)
+  // Sort by sequence_no ASC
+  const sortedTxs = [...transactions].sort((a, b) => {
+    const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
+    const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
+    return seqA - seqB;
+  });
+
   const memberSummary = {};
   let grandTotalWeight = 0;
   let grandTotalGross = 0;
   let grandTotalYardFee = 0;
   let grandTotalAmount = 0;
 
-  transactions.forEach(t => {
+  sortedTxs.forEach(t => {
     const code = t.member_code;
     const weight = Number(t.final_weight || t.net_weight || 0);
-    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * (t.price_per_kg || 0)));
     const netRate = Number(t.price_per_kg || 0);
-    // FIX M1: Allow yard_fee = 0
-    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee !== undefined ? Number(cachedSettings.yard_fee) : 0.50);
+    const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
     const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
-
-    const grossAmt = weight * auctionRate;
-    const feeAmt = (grossAmt - amount) > 0 ? (grossAmt - amount) : (weight * yardFeeRate);
+    const grossAmt = Math.round((weight * auctionRate) * 100) / 100;
+    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((weight * netRate) * 100) / 100));
+    const feeAmt = Math.round((grossAmt - amount) * 100) / 100;
 
     if (!memberSummary[code]) {
       memberSummary[code] = {
@@ -3054,7 +3209,11 @@ async function printRoundReport(roundId = null) {
     grandTotalAmount += amount;
   });
 
-  // FIX M5: Calculate weighted average prices for members with multiple sales
+  grandTotalWeight = Math.round(grandTotalWeight * 100) / 100;
+  grandTotalGross = Math.round(grandTotalGross * 100) / 100;
+  grandTotalYardFee = Math.round(grandTotalYardFee * 100) / 100;
+  grandTotalAmount = Math.round(grandTotalAmount * 100) / 100;
+
   Object.values(memberSummary).forEach(m => {
     if (m.totalWeight > 0) {
       m.auctionPrice = m.grossAmount / m.totalWeight;
@@ -3068,93 +3227,74 @@ async function printRoundReport(roundId = null) {
   // Resolve President name for dynamic signature
   let presidentName = '';
   try {
-    const { data: presUser } = await sb.from('app_users').select('display_name').eq('position', 'ประธานกรรมการ').limit(1);
-    if (presUser && presUser.length > 0) {
-      presidentName = presUser[0].display_name;
+    if (sb) {
+      const { data: presUser } = await sb.from('app_users').select('display_name').eq('position', 'ประธานกรรมการ').limit(1);
+      if (presUser && presUser.length > 0) presidentName = presUser[0].display_name;
     }
   } catch (e) { /* ignore */ }
 
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html lang="th">
-    <head>
-      <meta charset="UTF-8">
-      <title>เอกสารสรุปยอดโอนเงินธนาคาร - ${round.title}</title>
-      <style>
-        @page { size: A4 landscape; margin: 10mm 12mm; }
-        * { box-sizing: border-box; }
-        body {
-          font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
-          font-size: 12px;
-          color: #0f172a;
-          margin: 0;
-          padding: 0;
-          background: #fff;
-        }
-        .header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 6px; }
-        .header h2 { margin: 0 0 3px 0; font-size: 18px; font-weight: bold; color: #064e3b; }
-        .header p { margin: 0 0 3px 0; font-size: 11px; color: #475569; }
-        .header h3 { margin: 4px 0 0 0; font-size: 14px; font-weight: bold; color: #0f172a; }
+  let printTableHtml = '';
+  const printDocTitle = currentReportView === 'queue'
+    ? 'เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ (เรียงตามลำดับคิวชั่ง)'
+    : 'เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ (สรุปยอดรายสมาชิก)';
 
-        .meta-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-          margin-bottom: 12px;
-          border: 1px solid #cbd5e1;
-          padding: 8px 12px;
-          border-radius: 6px;
-          background: #f8fafc;
-          font-size: 11px;
-        }
-        .meta-item strong { display: block; font-size: 10px; color: #64748b; margin-bottom: 2px; }
-        .meta-item span { font-size: 13px; font-weight: bold; color: #0f172a; }
+  if (currentReportView === 'queue') {
+    printTableHtml = `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">คิวที่</th>
+            <th style="width:55px;">รหัส</th>
+            <th>ชื่อ-นามสกุลสมาชิก</th>
+            <th style="width:90px; text-align:right;">น้ำหนัก (กก.)</th>
+            <th style="width:80px; text-align:right;">ราคาประมูล</th>
+            <th style="width:105px; text-align:right;">ยอดรวมก่อนหัก</th>
+            <th style="width:95px; text-align:right;">หักเข้ากลุ่ม</th>
+            <th style="width:80px; text-align:right;">ราคาจ่าย/กก.</th>
+            <th style="width:110px; text-align:right;">ยอดสุทธิ (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedTxs.length === 0 ? '<tr><td colspan="9" style="text-align:center; padding:15px; color:#64748b;">ไม่มีข้อมูลธุรกรรมในรอบนี้</td></tr>' :
+            sortedTxs.map((t, idx) => {
+              const seq = t.sequence_no || t.seq_no || t.queue_no || (idx + 1);
+              const wt = Number(t.final_weight || t.net_weight || 0);
+              const netRate = Number(t.price_per_kg || 0);
+              const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
+              const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
+              const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
+              const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+              const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
 
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
-        th, td { border: 1px solid #cbd5e1; padding: 5px 8px; }
-        th { background-color: #f1f5f9; text-align: center; font-weight: bold; color: #1e293b; }
-        tr:nth-child(even) td { background-color: #f8fafc; }
-        tr.total-row td { font-weight: bold; background-color: #ecfdf5; font-size: 12px; border-top: 2px solid #047857; border-bottom: 2px double #047857; }
-
-        .code-badge {
-          display: inline-block;
-          background: #e2e8f0;
-          color: #0f172a;
-          padding: 1px 6px;
-          border-radius: 4px;
-          font-family: monospace;
-          font-weight: bold;
-        }
-
-        .signatures {
-          margin-top: 25px;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 40px;
-          text-align: center;
-          page-break-inside: avoid;
-        }
-        .sig-box { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #fff; }
-        .sig-line { margin-top: 30px; border-bottom: 1px dotted #0f172a; display: inline-block; width: 75%; }
-        .sig-name { margin-top: 6px; font-size: 11px; color: #334155; }
-        .sig-role { font-size: 12px; font-weight: bold; color: #0f172a; margin-bottom: 2px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2>${plantationName}</h2>
-        <p>${plantationAddress}</p>
-        <h3>เอกสารสรุปยอดเงินส่งมอบยางพาราประจำรอบ (สำหรับยื่นโอนเงินธนาคาร)</h3>
-        <p style="margin-top:3px;"><strong>รอบส่งมอบยาง:</strong> ${round.title} &nbsp;|&nbsp; <strong>วันที่:</strong> ${formatDate(round.start_date)}</p>
-      </div>
-
-      <div class="meta-grid">
-        <div class="meta-item"><strong>จำนวนสมาชิกที่ขาย:</strong> <span>${memberRows.length} คน (${transactions.length} เที่ยว)</span></div>
-        <div class="meta-item"><strong>น้ำหนักสุทธิรวม:</strong> <span style="color:#0f172a;">${formatNumber(grandTotalWeight)} กก.</span></div>
-        <div class="meta-item"><strong>เงินคงเหลือเข้ากลุ่ม (ค่าลาน):</strong> <span style="color:#b45309;">${formatNumber(grandTotalYardFee)} บาท</span></div>
-        <div class="meta-item"><strong>ยอดเงินต้องโอนรวม:</strong> <span style="color:#047857;">${formatNumber(grandTotalAmount)} บาท</span></div>
-      </div>
-
+              return `
+                <tr>
+                  <td style="text-align:center; font-weight:bold;">${seq}</td>
+                  <td style="text-align:center;"><span class="code-badge">${escapeHTML(t.member_code)}</span></td>
+                  <td><strong>${escapeHTML(t.member_name)}</strong></td>
+                  <td style="text-align:right; font-weight:600;">${formatNumber(wt)}</td>
+                  <td style="text-align:right;">${formatNumber(auctionRate)}</td>
+                  <td style="text-align:right; font-weight:600;">${formatNumber(grossAmt)}</td>
+                  <td style="text-align:right; color:#b45309; font-weight:600;">${formatNumber(feeAmt)}</td>
+                  <td style="text-align:right;">${formatNumber(netRate)}</td>
+                  <td style="text-align:right; font-weight:bold; color:#047857;">${formatNumber(netAmt)}</td>
+                </tr>
+              `;
+            }).join('')
+          }
+          <tr class="total-row">
+            <td colspan="3" style="text-align:right;">ยอดรวมสุทธิทั้งรอบ:</td>
+            <td style="text-align:right;">${formatNumber(grandTotalWeight)} กก.</td>
+            <td></td>
+            <td style="text-align:right; font-weight:bold;">${formatNumber(grandTotalGross)}</td>
+            <td style="text-align:right; color:#b45309; font-weight:bold;">${formatNumber(grandTotalYardFee)}</td>
+            <td></td>
+            <td style="text-align:right; color:#047857; font-size:13px; font-weight:bold;">${formatNumber(grandTotalAmount)} บาท</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  } else {
+    printTableHtml = `
       <table>
         <thead>
           <tr>
@@ -3167,7 +3307,7 @@ async function printRoundReport(roundId = null) {
             <th style="width:110px; text-align:right;">ยอดรวมก่อนหัก</th>
             <th style="width:105px; text-align:right;">หักเข้ากลุ่ม</th>
             <th style="width:85px; text-align:right;">ราคาโอน/กก.</th>
-            <th style="width:120px; text-align:right;">ยอดสุทธิที่ต้องโอน (บาท)</th>
+            <th style="width:120px; text-align:right;">ยอดสุทธิ (บาท)</th>
           </tr>
         </thead>
         <tbody>
@@ -3198,15 +3338,109 @@ async function printRoundReport(roundId = null) {
           </tr>
         </tbody>
       </table>
+    `;
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="UTF-8">
+      <title>${printDocTitle} - ${round.title}</title>
+      <style>
+        @page { size: A4 landscape; margin: 8mm 10mm; }
+        * { box-sizing: border-box; }
+        body {
+          font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+          font-size: 11px;
+          color: #0f172a;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+        }
+        .header { text-align: center; margin-bottom: 10px; border-bottom: 2px solid #0f172a; padding-bottom: 6px; }
+        .header h2 { margin: 0 0 3px 0; font-size: 17px; font-weight: bold; color: #064e3b; }
+        .header p { margin: 0 0 3px 0; font-size: 11px; color: #475569; }
+        .header h3 { margin: 4px 0 0 0; font-size: 13px; font-weight: bold; color: #0f172a; }
+
+        .meta-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-bottom: 10px;
+          border: 1px solid #cbd5e1;
+          padding: 6px 10px;
+          border-radius: 6px;
+          background: #f8fafc;
+          font-size: 11px;
+        }
+        .meta-item strong { display: block; font-size: 10px; color: #64748b; margin-bottom: 1px; }
+        .meta-item span { font-size: 12px; font-weight: bold; color: #0f172a; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 4px 6px; }
+        th { background-color: #f1f5f9; text-align: center; font-weight: bold; color: #1e293b; }
+        tr:nth-child(even) td { background-color: #f8fafc; }
+        tr.total-row td { font-weight: bold; background-color: #ecfdf5; font-size: 11px; border-top: 2px solid #047857; border-bottom: 2px double #047857; }
+
+        .code-badge {
+          display: inline-block;
+          background: #e2e8f0;
+          color: #0f172a;
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-family: monospace;
+          font-weight: bold;
+        }
+        .badge {
+          display: inline-block;
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 9.5px;
+          font-weight: 600;
+          background: #e0f2fe;
+          color: #0369a1;
+        }
+
+        .signatures {
+          margin-top: 20px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 40px;
+          text-align: center;
+          page-break-inside: avoid;
+        }
+        .sig-box { border: 1px solid #cbd5e1; padding: 8px; border-radius: 6px; background: #fff; }
+        .sig-line { margin-top: 25px; border-bottom: 1px dotted #0f172a; display: inline-block; width: 75%; }
+        .sig-name { margin-top: 5px; font-size: 10.5px; color: #334155; }
+        .sig-role { font-size: 11px; font-weight: bold; color: #0f172a; margin-bottom: 2px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>${plantationName}</h2>
+        <p>${plantationAddress}</p>
+        <h3>${printDocTitle}</h3>
+        <p style="margin-top:3px;"><strong>รอบส่งมอบยาง:</strong> ${round.title} &nbsp;|&nbsp; <strong>วันที่:</strong> ${formatDate(round.start_date)}</p>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item"><strong>จำนวนรายการ:</strong> <span>${sortedTxs.length} คิว (${memberRows.length} คน)</span></div>
+        <div class="meta-item"><strong>น้ำหนักสุทธิรวม:</strong> <span style="color:#0f172a;">${formatNumber(grandTotalWeight)} กก.</span></div>
+        <div class="meta-item"><strong>เงินคงเหลือเข้ากลุ่ม (ค่าลาน):</strong> <span style="color:#b45309;">${formatNumber(grandTotalYardFee)} บาท</span></div>
+        <div class="meta-item"><strong>ยอดเงินสุทธิจ่ายสมาชิก:</strong> <span style="color:#047857;">${formatNumber(grandTotalAmount)} บาท</span></div>
+      </div>
+
+      ${printTableHtml}
 
       <div class="signatures">
         <div class="sig-box">
-          <div class="sig-role">ผู้สรุปรายงาน / ผู้จัดทำ</div>
+          <div class="sig-role">ผู้สรุปรอบส่งมอบยาง</div>
           <div class="sig-line"></div>
-          <div class="sig-name">(${round.closed_by_name || currentUser?.display_name || '...................................................'})</div>
+          <div class="sig-name">(${round.closed_by_name || currentUser?.display_name || 'ผู้สรุปรอบ'})</div>
         </div>
         <div class="sig-box">
-          <div class="sig-role">ประธานกรรมการ / ผู้ตรวจสอบอนุมัติ</div>
+          <div class="sig-role">ประธาน / ผู้ตรวจสอบ</div>
           <div class="sig-line"></div>
           <div class="sig-name">(${presidentName || '...................................................'})</div>
         </div>
@@ -3595,111 +3829,69 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
   try {
     await loadCurrentRound();
 
-    let todayTx = [];
-    let monthTx = [];
+    let allTx = [];
     let recentTx = [];
     let memberCount = 0;
-
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
-
-    // Determine active display round: use current open round, or find latest round with transactions
-    let latestDisplayRound = currentRound;
-    if (!latestDisplayRound) {
-      try {
-        if (isDesktopApp()) {
-          const rounds = await window.desktopDB.query('SELECT * FROM purchase_rounds ORDER BY id DESC LIMIT 10');
-          for (const r of (rounds || [])) {
-            const check = await window.desktopDB.query('SELECT id FROM transactions WHERE round_id = ? OR round_id = ? LIMIT 1', [r.id, r.supabase_id || '']);
-            if (check && check.length > 0) {
-              latestDisplayRound = r;
-              break;
-            }
-          }
-          if (!latestDisplayRound && rounds && rounds.length > 0) latestDisplayRound = rounds[0];
-        } else if (sb && !isAppOffline()) {
-          const { data: rounds } = await sb.from('purchase_rounds').select('*').order('created_at', { ascending: false }).limit(10);
-          for (const r of (rounds || [])) {
-            const { data: check } = await sb.from('transactions').select('id').or(`round_id.eq.${r.id},round_id.eq.${r.supabase_id || r.id}`).limit(1);
-            if (check && check.length > 0) {
-              latestDisplayRound = r;
-              break;
-            }
-          }
-          if (!latestDisplayRound && rounds && rounds.length > 0) latestDisplayRound = rounds[0];
-        }
-      } catch (e) {
-        console.warn('Find latest display round error:', e);
-      }
-    }
+    let totalRoundsCount = 0;
 
     if (isDesktopApp()) {
-      if (latestDisplayRound) {
-        todayTx = await window.desktopDB.query(
-          'SELECT * FROM transactions WHERE round_id = ? OR round_id = ? ORDER BY date DESC, id DESC',
-          [latestDisplayRound.id, latestDisplayRound.supabase_id || '']
-        ) || [];
-      } else {
-        todayTx = await window.desktopDB.query('SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT 50') || [];
-      }
-      recentTx = todayTx.slice(0, 10);
-      monthTx = await window.desktopDB.query('SELECT total_price FROM transactions WHERE date >= ?', [startOfMonth]) || [];
+      allTx = await window.desktopDB.query(
+        'SELECT * FROM transactions ORDER BY date DESC, id DESC'
+      ) || [];
+      recentTx = allTx.slice(0, 10);
       memberCount = await window.desktopDB.count('members') || 0;
+      const rounds = await window.desktopDB.query('SELECT id FROM purchase_rounds') || [];
+      totalRoundsCount = rounds.length;
     } else {
-      if (latestDisplayRound && sb && !isAppOffline()) {
-        const targetId = latestDisplayRound.supabase_id || latestDisplayRound.id;
-        const { data: rTx } = await sb.from('transactions')
-          .select('*')
-          .or(`round_id.eq.${targetId},round_id.eq.${latestDisplayRound.id}`)
-          .order('date', { ascending: false });
-
-        todayTx = rTx || [];
-        recentTx = (rTx || []).slice(0, 10);
-      }
-
       if (sb && !isAppOffline()) {
-        const { data: mTx } = await sb.from('transactions')
-          .select('total_price')
-          .gte('date', startOfMonth);
-        monthTx = mTx || [];
+        const { data: txList } = await sb.from('transactions')
+          .select('*')
+          .order('date', { ascending: false });
+        allTx = txList || [];
+        recentTx = allTx.slice(0, 10);
 
-        const { count } = await sb.from('members')
+        const { count: mCount } = await sb.from('members')
           .select('*', { count: 'exact', head: true });
-        memberCount = count || 0;
+        memberCount = mCount || 0;
+
+        const { count: rCount } = await sb.from('purchase_rounds')
+          .select('*', { count: 'exact', head: true });
+        totalRoundsCount = rCount || 0;
       }
     }
 
-    const roundCount = todayTx.length;
-    const roundWeight = todayTx.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+    const totalTxCount = allTx.length;
+    const totalWeight = allTx.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
 
-    // ยอดเงินรวมในรอบนี้: ราคายางจากพ่อค้า ก่อนหักค่าจัดการ (final_weight * auction_price)
-    const roundGrossMerchantAmount = todayTx.reduce((s, t) => {
+    // ยอดเงินรวมทุกรอบ: ราคายางจากพ่อค้า ก่อนหักค่าจัดการ (final_weight * auction_price)
+    const totalGrossMerchantAmount = allTx.reduce((s, t) => {
       const wt = Number(t.final_weight || t.net_weight || 0);
       const auctionPrice = Number(t.auction_price || 0);
-      const yardFee = Number(t.yard_fee !== undefined && t.yard_fee !== null ? t.yard_fee : (cachedSettings?.yard_fee || 0.5));
+      const yardFee = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : (cachedSettings?.yard_fee || 0.5);
       const pricePerKg = Number(t.price_per_kg || 0);
       const merchantPrice = auctionPrice > 0 ? auctionPrice : (pricePerKg + yardFee);
-      return s + (wt * merchantPrice);
+      return s + Math.round((wt * merchantPrice) * 100) / 100;
     }, 0);
 
-    // ยอดจ่ายสมาชิก (รอบนี้): ราคาขายทั้งหมดให้สมาชิก (หักค่าจัดการแล้ว)
-    const roundNetMemberAmount = todayTx.reduce((s, t) => s + Number(t.total_price || 0), 0);
+    // ยอดจ่ายสมาชิกรวมทุกรอบ: ราคาขายทั้งหมดให้สมาชิก (หักค่าจัดการแล้ว)
+    const totalNetMemberAmount = allTx.reduce((s, t) => {
+      const price = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : 0);
+      return s + price;
+    }, 0);
 
-    document.getElementById('stat-round-count').innerHTML = `${roundCount} <span class="unit">รายการ</span>`;
-    document.getElementById('stat-round-weight').innerHTML = `${formatNumber(roundWeight)} <span class="unit">กก.</span>`;
-    document.getElementById('stat-round-amount').innerHTML = `${formatNumber(roundGrossMerchantAmount)} <span class="unit">บาท</span>`;
-    document.getElementById('stat-month-amount').innerHTML = `${formatNumber(roundNetMemberAmount)} <span class="unit">บาท</span>`;
+    document.getElementById('stat-round-count').innerHTML = `${totalTxCount} <span class="unit">รายการ</span>`;
+    document.getElementById('stat-round-weight').innerHTML = `${formatNumber(totalWeight)} <span class="unit">กก.</span>`;
+    document.getElementById('stat-round-amount').innerHTML = `${formatNumber(totalGrossMerchantAmount)} <span class="unit">บาท</span>`;
+    document.getElementById('stat-month-amount').innerHTML = `${formatNumber(totalNetMemberAmount)} <span class="unit">บาท</span>`;
     document.getElementById('stat-total-members').innerHTML = `${memberCount || 0} <span class="unit">คน</span>`;
 
     // Update subtitle under แดชบอร์ด
     const subtitleEl = document.getElementById('dashboard-subtitle');
     if (subtitleEl) {
       if (currentRound && currentRound.status === 'open') {
-        subtitleEl.innerHTML = `<span style="color:#22c55e;">🟢 รอบเปิดรับซื้อปัจจุบัน:</span> <strong>${escapeHTML(currentRound.title)}</strong>`;
-      } else if (latestDisplayRound) {
-        subtitleEl.innerHTML = `<span style="color:#f59e0b;">🔒 รอบล่าสุด:</span> <strong>${escapeHTML(latestDisplayRound.title)}</strong> (ปิดรอบแล้ว)`;
+        subtitleEl.innerHTML = `<span style="color:#0284c7; font-weight:600;">🌐 สรุปภาพรวมสะสมทุกรอบการรับซื้อ (ทั้งหมด ${totalRoundsCount} รอบ)</span> &nbsp;•&nbsp; <span style="color:#22c55e; font-weight:600;">🟢 กำลังเปิดรอบ: ${escapeHTML(currentRound.title)}</span>`;
       } else {
-        subtitleEl.textContent = 'ยังไม่มีรอบการรับซื้อที่เปิดใช้งาน';
+        subtitleEl.innerHTML = `<span style="color:#0284c7; font-weight:600;">🌐 สรุปภาพรวมสะสมทุกรอบการรับซื้อ (ทั้งหมด ${totalRoundsCount} รอบ)</span>`;
       }
     }
 

@@ -1754,6 +1754,12 @@ select.form-input option {
     visibility: hidden;
   }
 
+  .no-print,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
   #receipt-modal,
   #receipt-modal *,
   #round-report-modal .round-report-printable,

@@ -196,7 +196,7 @@
         <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
             <h2>📊 แดชบอร์ด</h2>
-            <p id="dashboard-subtitle">ภาพรวมของรอบส่งมอบยางปัจจุบัน</p>
+            <p id="dashboard-subtitle">สรุปภาพรวมสะสมทุกรอบการรับซื้อ</p>
           </div>
           <div id="realtime-status-badge" class="realtime-status-badge" title="ระบบเชื่อมต่อ Realtime เรียบร้อยแล้ว ข้อมูลจะอัปเดตอัตโนมัติ">
             <span class="live-dot"></span> <span class="live-text">Realtime เชื่อมต่อแล้ว</span>
@@ -206,22 +206,22 @@
         <div class="stats-grid">
           <div class="glass-card stat-card">
             <div class="stat-icon">📦</div>
-            <div class="card-title">ธุรกรรมในรอบนี้</div>
+            <div class="card-title">ธุรกรรมรวมทุกรอบ</div>
             <div class="card-value" id="stat-round-count">0 <span class="unit">รายการ</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">⚖️</div>
-            <div class="card-title">น้ำหนักรวมในรอบนี้</div>
+            <div class="card-title">น้ำหนักรวมทุกรอบ</div>
             <div class="card-value" id="stat-round-weight">0 <span class="unit">กก.</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💰</div>
-            <div class="card-title">ยอดเงินพ่อค้า (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(ก่อนหักค่าจัดการ)</span></div>
+            <div class="card-title">ยอดเงินพ่อค้ารวมทุกรอบ <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(ก่อนหักค่าจัดการ)</span></div>
             <div class="card-value" id="stat-round-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💵</div>
-            <div class="card-title">ยอดจ่ายสมาชิก (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(หักค่าจัดการแล้ว)</span></div>
+            <div class="card-title">ยอดจ่ายสมาชิกรวมทุกรอบ <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(หักค่าจัดการแล้ว)</span></div>
             <div class="card-value" id="stat-month-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
@@ -1379,7 +1379,7 @@
 
   <!-- ===== ROUND SUMMARY REPORT MODAL ===== -->
   <div class="modal-overlay" id="round-report-modal">
-    <div class="modal-content" style="max-width: 750px;">
+    <div class="modal-content" style="max-width: 1020px; width: 95%;">
       <div class="modal-header">
         <h3>📊 เอกสารสรุปรอบส่งมอบยาง</h3>
         <button class="modal-close" onclick="closeRoundReportModal()">✕</button>
@@ -1391,7 +1391,7 @@
       </div>
       <div class="modal-footer" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div style="font-size:0.85rem; color:var(--text-secondary);">
-          📄 เอกสารสรุปสำหรับยื่นธนาคาร (ส่งโอนเงินเข้าบัญชีสมาชิก)
+          📄 เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
