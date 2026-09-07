@@ -2533,7 +2533,7 @@ async function showRoundReport(roundId) {
       if ((!transactions || transactions.length === 0) && sb && !isAppOffline() && round) {
         try {
           const targetRId = round.supabase_id || round.id;
-          const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('sequence_no');
+          const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('created_at', { ascending: true }).limit(2000);
           if (txList && txList.length > 0) {
             transactions = txList;
           }
@@ -2545,7 +2545,8 @@ async function showRoundReport(roundId) {
       const { data: txList } = await sb.from('transactions')
         .select('*')
         .eq('round_id', roundId)
-        .order('sequence_no');
+        .order('created_at', { ascending: true })
+        .limit(2000);
       transactions = txList || [];
     }
     if (!round) throw new Error('ไม่พบข้อมูลรอบการรับซื้อ');
@@ -2587,11 +2588,17 @@ function onRoundReportFormatChange(format) {
 function renderRoundReportContent(round, transactions, format) {
   const plantationName = cachedSettings?.plantation_name || 'ลานยางพาราชุมชน';
 
-  // Ensure transactions are sorted by sequence_no ASC (คิวชั่ง)
+  // Ensure transactions are sorted by sequence_no ASC (คิวชั่ง), falling back to creation time
   const sortedTxs = [...transactions].sort((a, b) => {
-    const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
-    const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
-    return seqA - seqB;
+    const seqA = (a.sequence_no !== undefined && a.sequence_no !== null && !isNaN(Number(a.sequence_no)) && Number(a.sequence_no) > 0) ? Number(a.sequence_no) : null;
+    const seqB = (b.sequence_no !== undefined && b.sequence_no !== null && !isNaN(Number(b.sequence_no)) && Number(b.sequence_no) > 0) ? Number(b.sequence_no) : null;
+    if (seqA !== null && seqB !== null) return seqA - seqB;
+    if (seqA !== null) return -1;
+    if (seqB !== null) return 1;
+    const timeA = new Date(a.date || a.created_at || 0).getTime();
+    const timeB = new Date(b.date || b.created_at || 0).getTime();
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.id || '').localeCompare(String(b.id || ''));
   });
 
   // Group transactions by member (using transaction's own historical saved rates)
@@ -2835,7 +2842,7 @@ async function exportRoundToExcel(roundId = null) {
       } else if (sb && !isAppOffline()) {
         const { data } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
         if (data) round = data;
-        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', roundId).order('sequence_no');
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', roundId).order('created_at', { ascending: true }).limit(2000);
         transactions = txList || [];
       }
     } catch (e) { /* ignore */ }
@@ -2856,7 +2863,7 @@ async function exportRoundToExcel(roundId = null) {
     if ((!transactions || transactions.length === 0) && sb && !isAppOffline()) {
       try {
         const targetRId = round.supabase_id || round.id;
-        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('sequence_no');
+        const { data: txList } = await sb.from('transactions').select('*').eq('round_id', targetRId).order('created_at', { ascending: true }).limit(2000);
         transactions = txList || [];
       } catch (e) {}
     }
@@ -2867,11 +2874,17 @@ async function exportRoundToExcel(roundId = null) {
     const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
     const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
 
-    // Sort by sequence_no ASC
+    // Sort by sequence_no ASC, falling back to creation time
     const sortedTxs = [...transactions].sort((a, b) => {
-      const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
-      const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
-      return seqA - seqB;
+      const seqA = (a.sequence_no !== undefined && a.sequence_no !== null && !isNaN(Number(a.sequence_no)) && Number(a.sequence_no) > 0) ? Number(a.sequence_no) : null;
+      const seqB = (b.sequence_no !== undefined && b.sequence_no !== null && !isNaN(Number(b.sequence_no)) && Number(b.sequence_no) > 0) ? Number(b.sequence_no) : null;
+      if (seqA !== null && seqB !== null) return seqA - seqB;
+      if (seqA !== null) return -1;
+      if (seqB !== null) return 1;
+      const timeA = new Date(a.date || a.created_at || 0).getTime();
+      const timeB = new Date(b.date || b.created_at || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     });
 
     let grandTotalWeight = 0;
@@ -3137,7 +3150,7 @@ async function printRoundReport(roundId = null) {
         transactions = await window.desktopDB.query('SELECT * FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?) ORDER BY sequence_no ASC, id ASC', [roundId, String(round?.supabase_id || roundId), String(roundId)]) || [];
       } else if (sb && !isAppOffline()) {
         const { data: rData } = await sb.from('purchase_rounds').select('*').eq('id', roundId).single();
-        const { data: tData } = await sb.from('transactions').select('*').eq('round_id', roundId).order('sequence_no');
+        const { data: tData } = await sb.from('transactions').select('*').eq('round_id', roundId).order('created_at', { ascending: true }).limit(2000);
         round = rData;
         transactions = tData || [];
       }
@@ -3159,11 +3172,17 @@ async function printRoundReport(roundId = null) {
   const plantationName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
   const plantationAddress = cachedSettings?.plantation_address || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก';
 
-  // Sort by sequence_no ASC
+  // Sort by sequence_no ASC, falling back to creation time
   const sortedTxs = [...transactions].sort((a, b) => {
-    const seqA = a.sequence_no !== undefined && a.sequence_no !== null ? Number(a.sequence_no) : (a.id || 0);
-    const seqB = b.sequence_no !== undefined && b.sequence_no !== null ? Number(b.sequence_no) : (b.id || 0);
-    return seqA - seqB;
+    const seqA = (a.sequence_no !== undefined && a.sequence_no !== null && !isNaN(Number(a.sequence_no)) && Number(a.sequence_no) > 0) ? Number(a.sequence_no) : null;
+    const seqB = (b.sequence_no !== undefined && b.sequence_no !== null && !isNaN(Number(b.sequence_no)) && Number(b.sequence_no) > 0) ? Number(b.sequence_no) : null;
+    if (seqA !== null && seqB !== null) return seqA - seqB;
+    if (seqA !== null) return -1;
+    if (seqB !== null) return 1;
+    const timeA = new Date(a.date || a.created_at || 0).getTime();
+    const timeB = new Date(b.date || b.created_at || 0).getTime();
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.id || '').localeCompare(String(b.id || ''));
   });
 
   const memberSummary = {};
