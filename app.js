@@ -5964,7 +5964,7 @@ function buildReceiptCopyHTML(tx, plantName) {
 
   const totalGross = tripsArr.reduce((s, t) => s + Number(t.gross_weight || t.gross || t.net_weight || 0), 0);
   const totalCart = tripsArr.reduce((s, t) => s + Number(t.cart_weight || 0), 0);
-  const finalNetWeight = Number(tx.final_weight || tx.net_weight || 0);
+  const finalNetWeight = Number(tx.final_weight !== undefined && tx.final_weight !== null ? tx.final_weight : (tx.net_weight !== undefined && tx.net_weight !== null ? tx.net_weight : Math.max(0, totalGross - totalCart)));
 
   const isDual = cachedSettings?.dual_station_mode === true;
   const showPayer = cachedSettings?.show_payer_name !== false;
@@ -6035,6 +6035,10 @@ function buildReceiptCopyHTML(tx, plantName) {
         <tr>
           <td style="font-weight:bold; padding:2px 0;">น้ำหนักรวมรถเข็น</td>
           <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(totalCart)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight:bold; padding:2px 0;">น้ำหนักยางสุทธิ</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${formatNumber(finalNetWeight)}</td>
         </tr>
         <tr>
           <td style="font-weight:bold; padding:2px 0;">ราคา / กิโลกรัม</td>
@@ -8986,7 +8990,7 @@ async function init() {
               const placeholders = cloudIds.map(() => '?').join(',');
               await window.desktopDB.run(`DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != '' AND supabase_id NOT IN (${placeholders})`, cloudIds);
             } else {
-              await window.desktopDB.run('DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != ""');
+              await window.desktopDB.run("DELETE FROM purchase_rounds WHERE supabase_id IS NOT NULL AND supabase_id != ''");
             }
             const hasOpen = cloudRounds.some(r => r.status === 'open');
             if (!hasOpen) {
@@ -8996,6 +9000,42 @@ async function init() {
         } catch (rErr) {
           console.warn('Desktop sync rounds on init error:', rErr);
         }
+      }
+
+      // Auto-heal: normalize UUID round_ids to integer IDs & remove duplicate transactions
+      try {
+        const rounds = await window.desktopDB.query('SELECT id, supabase_id FROM purchase_rounds') || [];
+        for (const r of rounds) {
+          if (r.supabase_id) {
+            await window.desktopDB.run('UPDATE transactions SET round_id = ? WHERE round_id = ?', [r.id, String(r.supabase_id)]);
+          }
+        }
+        const dupes = await window.desktopDB.query(`
+          SELECT member_code, round_id, final_weight, COUNT(*) as cnt, GROUP_CONCAT(id) as ids, GROUP_CONCAT(supabase_id) as sids
+          FROM transactions
+          GROUP BY member_code, round_id, final_weight
+          HAVING COUNT(*) > 1
+        `) || [];
+        for (const d of dupes) {
+          if (!d.ids) continue;
+          const ids = String(d.ids).split(',').map(Number);
+          const sids = d.sids ? String(d.sids).split(',') : [];
+          let keepIdx = 0;
+          for (let i = 0; i < sids.length; i++) {
+            if (sids[i] && sids[i] !== 'null' && sids[i] !== 'undefined') {
+              keepIdx = i;
+              break;
+            }
+          }
+          const keepId = ids[keepIdx] || ids[0];
+          const removeIds = ids.filter(id => id !== keepId);
+          for (const remId of removeIds) {
+            await window.desktopDB.run('DELETE FROM transactions WHERE id = ?', [remId]);
+            await window.desktopDB.run('DELETE FROM sync_queue WHERE local_id = ?', [remId]);
+          }
+        }
+      } catch (healErr) {
+        console.warn('Auto-heal error:', healErr);
       }
     } catch (e) {
       console.warn('Desktop seed check error:', e);
