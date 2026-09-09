@@ -196,7 +196,7 @@ async function handleLogin() {
       // Default Admin User fallback in Desktop mode
       if (!loggedUser) {
         const isDefaultAdmin = (username.toUpperCase() === 'SANSUANG' || username.toLowerCase() === 'admin');
-        if (isDefaultAdmin && (password === 'admin' || password === 'SANSUANG' || password === '1234' || password === '123456')) {
+        if (isDefaultAdmin && (password === 'admin' || password === 'SANSUANG')) {
           loggedUser = {
             id: 'desktop-admin',
             username: username,
@@ -300,6 +300,187 @@ async function handleLogin() {
   }
   hideLoading();
 }
+
+// ========== HISTORY PAGINATION & EXPAND CONTROLS ==========
+let historyCurrentPage = 1;
+const HISTORY_PAGE_SIZE = 100;
+let historyShowAll = false;
+let currentHistoryDisplayList = [];
+
+function renderHistoryRows() {
+  const tbody = document.getElementById('history-table-body');
+  const emptyState = document.getElementById('history-empty');
+  if (!tbody) return;
+
+  // Reset select all checkbox
+  const selectAllCb = document.getElementById('history-select-all');
+  if (selectAllCb) selectAllCb.checked = false;
+  if (typeof updateHistoryBatchDeleteUI === 'function') updateHistoryBatchDeleteUI();
+
+  const displayList = currentHistoryDisplayList || [];
+  const totalCount = displayList.length;
+
+  if (totalCount === 0) {
+    tbody.innerHTML = '';
+    if (emptyState) emptyState.style.display = 'block';
+    if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'none';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'block';
+
+  const totalPages = Math.ceil(totalCount / HISTORY_PAGE_SIZE) || 1;
+  if (historyCurrentPage > totalPages) historyCurrentPage = 1;
+
+  let paginatedList = [];
+  let startItem = 1;
+  let endItem = totalCount;
+
+  if (historyShowAll) {
+    paginatedList = displayList;
+    startItem = 1;
+    endItem = totalCount;
+  } else {
+    const startIndex = (historyCurrentPage - 1) * HISTORY_PAGE_SIZE;
+    paginatedList = displayList.slice(startIndex, startIndex + HISTORY_PAGE_SIZE);
+    startItem = startIndex + 1;
+    endItem = Math.min(startIndex + HISTORY_PAGE_SIZE, totalCount);
+  }
+
+  let rowsHtml = paginatedList.map(t => {
+    const isSynced = t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id);
+    const statusBadge = isSynced
+      ? `<span class="badge" style="background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block;"></span>ซิงค์แล้ว</span>`
+      : `<span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>รอซิงค์</span>`;
+
+    const createdBy = t.created_by_display_name || t.created_by_name || 'ผู้ดูแลระบบ';
+    const rawConfirmed = (t.confirmed_by_display_name || '').trim();
+    const isEdited = rawConfirmed && rawConfirmed.includes('(');
+    const authorHtml = isEdited
+      ? `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:3px;">
+           <span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>
+           <span style="font-size:0.72rem; color:#fbbf24; font-weight:500; display:inline-flex; align-items:center; gap:2px; background:rgba(245,158,11,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);" title="แก้ไขโดย: ${rawConfirmed}">
+             ✏️ ${rawConfirmed}
+           </span>
+         </div>`
+      : `<span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>`;
+
+    const rawTruck = (t.truck_number || '').trim();
+    const cleanTruck = decodeTripsFromTruckNumber(rawTruck).cleanTruckNumber;
+    const isUnassignedTruck = !cleanTruck || cleanTruck === '-- ไม่ระบุ --' || cleanTruck === 'NEW';
+
+    const truckBadge = isUnassignedTruck
+      ? `<span class="badge-no-truck" style="margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อระบุรถพ่วง">⚠️ ยังไม่ระบุรถ (คลิกเลือกรถ) 🚚</span>`
+      : `<span class="badge" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); font-size:0.75rem; padding:2px 6px; border-radius:8px; margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อเปลี่ยนรถพ่วง">🚚 ${escapeHTML(cleanTruck)}</span>`;
+
+    return `
+    <tr class="${isUnassignedTruck ? 'row-no-truck' : ''}">
+      <td style="text-align:center;">
+        <input type="checkbox" class="history-row-cb" value="${t.id}" onchange="updateHistoryBatchDeleteUI()">
+      </td>
+      <td>${formatDateTime(t.date)}</td>
+      <td><span class="badge badge-green">${t.member_code}</span></td>
+      <td>
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+          <strong>${escapeHTML(t.member_name)}</strong>
+          ${truckBadge}
+        </div>
+      </td>
+      <td>${getRubberTypeBadge(t.rubber_type)}</td>
+      <td>${t.trip_count || 1}</td>
+      <td>${formatNumber(t.net_weight)} กก.</td>
+      <td style="font-weight:600;color:var(--text-accent);">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
+      <td>${formatNumber(t.price_per_kg)}</td>
+      <td style="font-weight:600;color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
+      <td>${authorHtml}</td>
+      <td style="text-align:center;">${statusBadge}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
+        <button class="btn btn-warning btn-sm btn-icon" onclick="openQuickAssignTruckModal('${t.id}')" title="ระบุรถพ่วง" style="margin-left:4px;">🚚</button>
+        <button class="btn btn-primary btn-sm btn-icon" onclick="editTransactionOnPurchasePage('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
+      </td>
+    </tr>
+  `;
+  }).join('');
+
+  // แถบควบคุม Pagination และปุ่มแสดงทั้งหมด ท้ายตาราง
+  if (totalCount > HISTORY_PAGE_SIZE) {
+    let pageButtonsHtml = '';
+    for (let p = 1; p <= totalPages; p++) {
+      const isCurrent = !historyShowAll && p === historyCurrentPage;
+      pageButtonsHtml += `
+        <button type="button" class="btn btn-sm ${isCurrent ? 'btn-primary' : 'btn-secondary'}" 
+                onclick="setHistoryPage(${p})" 
+                style="min-width:36px; padding:3px 8px; font-weight:${isCurrent ? '700' : 'normal'};">
+          ${p}
+        </button>
+      `;
+    }
+
+    rowsHtml += `
+      <tr>
+        <td colspan="13" style="text-align:center; padding:14px 18px; background:rgba(59, 130, 246, 0.08); border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <div style="color:var(--text-accent, #60a5fa); font-size:0.88rem; font-weight:500;">
+              ℹ️ แสดงรายการที่ <strong>${startItem} - ${endItem}</strong> จากทั้งหมด <strong>${totalCount}</strong> รายการ
+            </div>
+            <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary btn-sm" 
+                      onclick="setHistoryPage(${Math.max(1, historyCurrentPage - 1)})" 
+                      ${historyCurrentPage === 1 || historyShowAll ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+                ◀ ก่อนหน้า
+              </button>
+              ${pageButtonsHtml}
+              <button type="button" class="btn btn-secondary btn-sm" 
+                      onclick="setHistoryPage(${Math.min(totalPages, historyCurrentPage + 1)})" 
+                      ${historyCurrentPage === totalPages || historyShowAll ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+                ถัดไป ▶
+              </button>
+              <button type="button" class="btn ${historyShowAll ? 'btn-warning' : 'btn-primary'} btn-sm" 
+                      onclick="toggleHistoryShowAll()" 
+                      style="margin-left:8px; font-weight:600; cursor:pointer;">
+                ${historyShowAll ? '📄 ย่อแสดงหน้าละ 100' : `📂 แสดงทั้งหมด (${totalCount} รายการ)`}
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  tbody.innerHTML = rowsHtml;
+}
+
+function scrollHistoryToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && typeof mainContent.scrollTo === 'function') {
+    mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  const tableContainer = document.querySelector('#section-history .table-container');
+  if (tableContainer && typeof tableContainer.scrollTo === 'function') {
+    tableContainer.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function setHistoryPage(page) {
+  historyCurrentPage = page;
+  historyShowAll = false;
+  renderHistoryRows();
+  scrollHistoryToTop();
+}
+
+function toggleHistoryShowAll() {
+  historyShowAll = !historyShowAll;
+  if (!historyShowAll) historyCurrentPage = 1;
+  renderHistoryRows();
+  scrollHistoryToTop();
+}
+
+window.setHistoryPage = setHistoryPage;
+window.toggleHistoryShowAll = toggleHistoryShowAll;
 
 function handleLogout() {
   sessionStorage.removeItem('rb_session');
@@ -1653,7 +1834,10 @@ function initRealtimeSubscriptions() {
           const t = payload.new;
           if (isDesktopApp()) {
             try {
-              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND total_price = ? AND date = ?)', [t.id, t.member_code, t.total_price, t.date]);
+              const existing = await window.desktopDB.query(
+                'SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND (round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?)) AND ABS(final_weight - ?) < 0.01) LIMIT 1',
+                [String(t.id), t.member_code, String(t.round_id), String(t.round_id), t.final_weight || t.net_weight || 0]
+              );
               if (!existing || existing.length === 0) {
                 const localTx = {
                   ...t,
@@ -3594,7 +3778,12 @@ async function showMemberSalesHistory(memberCode) {
     } else {
       emptyState.style.display = 'none';
       tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = transactions.map(t => `
+
+      // UI Optimization: Render max 100 items
+      const renderLimit = 100;
+      const paginatedTx = transactions.slice(0, renderLimit);
+
+      let rowsHtml = paginatedTx.map(t => `
         <tr>
           <td>${formatDateTime(t.date)}</td>
           <td><span class="badge badge-green">${roundTitleMap[t.round_id] || 'นอกรอบ'}</span></td>
@@ -3608,6 +3797,18 @@ async function showMemberSalesHistory(memberCode) {
           </td>
         </tr>
       `).join('');
+
+      if (transactions.length > renderLimit) {
+        rowsHtml += `
+          <tr>
+            <td colspan="8" style="text-align:center; padding:10px 14px; background:rgba(59, 130, 246, 0.08); color:var(--text-accent, #60a5fa); font-size:0.8rem; font-weight:500; border-top:1px solid rgba(255,255,255,0.08);">
+              ℹ️ แสดงข้อมูลล่าสุด 100 รายการ จากทั้งหมด ${txCount} ครั้ง (กรุณาพิมพ์ค้นหาหากต้องการดูข้อมูลที่เก่ากว่านี้)
+            </td>
+          </tr>
+        `;
+      }
+
+      tbody.innerHTML = rowsHtml;
     }
 
     const prefFormat = localStorage.getItem('print_pref_member_summary') || '1';
@@ -3948,6 +4149,8 @@ async function renderDashboard(showSpinner = true, newTransaction = null) {
         </tr>
       `;
       }).join('');
+
+
     }
   } catch (err) {
     showToast('โหลดข้อมูลแดชบอร์ดไม่สำเร็จ: ' + err.message, 'error');
@@ -4855,16 +5058,19 @@ function onTripInput(index, value) {
   calculatePrice();
 }
 
+let searchTimeout;
 let currentSearchMembersResults = [];
 let focusedMemberIndex = -1;
 
-async function searchPurchaseMember(query) {
+async function executeSearchPurchaseMember(q) {
   const listEl = document.getElementById('purchase-member-list');
   focusedMemberIndex = -1;
   currentSearchMembersResults = [];
 
-  const q = query.trim();
-  if (!q) { listEl.innerHTML = ''; return; }
+  if (!q) {
+    if (listEl) listEl.innerHTML = '';
+    return;
+  }
 
   try {
     let members = [];
@@ -4932,7 +5138,27 @@ async function searchPurchaseMember(query) {
   }
 }
 
-function handlePurchaseMemberKeydown(e) {
+function searchPurchaseMember(query) {
+  clearTimeout(searchTimeout);
+
+  const listEl = document.getElementById('purchase-member-list');
+  const q = (query || '').trim();
+
+  // If query is empty, clear results immediately without waiting 300ms
+  if (!q) {
+    if (listEl) listEl.innerHTML = '';
+    focusedMemberIndex = -1;
+    currentSearchMembersResults = [];
+    return;
+  }
+
+  // Debounce 300ms before querying the database
+  searchTimeout = setTimeout(() => {
+    executeSearchPurchaseMember(q);
+  }, 300);
+}
+
+async function handlePurchaseMemberKeydown(e) {
   const listEl = document.getElementById('purchase-member-list');
   const items = listEl ? listEl.querySelectorAll('.member-search-item') : [];
 
@@ -4948,6 +5174,15 @@ function handlePurchaseMemberKeydown(e) {
     updateMemberKeyboardFocus(items);
   } else if (e.key === 'Enter') {
     e.preventDefault();
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+      if (currentSearchMembersResults.length === 0) {
+        const searchInput = document.getElementById('purchase-member-search');
+        if (searchInput && searchInput.value.trim()) {
+          await executeSearchPurchaseMember(searchInput.value.trim());
+        }
+      }
+    }
     if (currentSearchMembersResults.length === 0) return;
 
     const targetIndex = (focusedMemberIndex >= 0 && focusedMemberIndex < currentSearchMembersResults.length)
@@ -5054,7 +5289,7 @@ function calculatePrice() {
 
   const deductionAmount = totalNet * deductionPercent / 100;
   const finalWeight = Math.max(0, totalNet - deductionAmount);
-  const totalPrice = finalWeight * netPricePerKg;
+  const totalPrice = Math.round((finalWeight * netPricePerKg) * 100) / 100;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
   document.getElementById('calc-total-net').textContent = `${formatNumber(totalNet)} กก.`;
@@ -5147,7 +5382,7 @@ async function saveTransaction(confirmedOverride = false) {
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
   const deductionAmount = totalNet * deductionPercent / 100;
   const finalWeight = Math.max(0, totalNet - deductionAmount);
-  const totalPrice = finalWeight * netPricePerKg;
+  const totalPrice = Math.round((finalWeight * netPricePerKg) * 100) / 100;
 
   const isDualMode = cachedSettings?.dual_station_mode === true;
 
@@ -5206,10 +5441,6 @@ async function saveTransaction(confirmedOverride = false) {
       trailer_type: trailerType,
       confirmed_by_display_name: editorLabel
     };
-
-    if (selectedMember.code) {
-      localStorage.setItem('tx_trips_v2_' + selectedMember.code + '_' + totalGross, JSON.stringify(tripDetails));
-    }
 
     try {
       if (isDesktopApp()) {
@@ -5447,21 +5678,13 @@ async function saveTransaction(confirmedOverride = false) {
         yard_fee: yardFee
       };
 
-      // Save to local trips cache & buyer cache & seq cache
+      // Save to local memory trips cache
       if (!window._transactionTripsCache) window._transactionTripsCache = {};
       if (receiptObj.id) {
         window._transactionTripsCache[String(receiptObj.id)] = tripDetails;
-        try {
-          localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(tripDetails));
-          localStorage.setItem('tx_buyer_' + receiptObj.id, currentAuctionBuyer);
-          localStorage.setItem('tx_seq_' + receiptObj.id, nextSeqNo);
-        } catch (e) {}
       }
       if (receiptObj.member_code && receiptObj.date) {
         window._transactionTripsCache[`${receiptObj.member_code}_${receiptObj.date}`] = tripDetails;
-      }
-      if (receiptObj.member_code && receiptObj.gross_weight) {
-        try { localStorage.setItem('tx_trips_v2_' + receiptObj.member_code + '_' + receiptObj.gross_weight, JSON.stringify(tripDetails)); } catch (e) {}
       }
 
       showToast(`บันทึกธุรกรรมสำเร็จ! ${tripDetails.length} เที่ยว ยอดเงิน ${formatNumber(totalPrice)} บาท`);
@@ -5680,7 +5903,7 @@ async function confirmPendingTransaction(pendingId) {
       } catch (e) {}
     }
 
-    const frozenBuyerName = p.buyer_name || p.auction_buyer || (p.id ? localStorage.getItem('tx_buyer_' + p.id) : null) || cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
+    const frozenBuyerName = p.buyer_name || p.auction_buyer || (p.id ? localStorage.getItem('tx_buyer_' + p.id) : null) || cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || '';
 
     let nextSeqNo = p.sequence_no || p.seq_no || p.queue_no;
     if (!nextSeqNo) {
@@ -5788,11 +6011,6 @@ async function confirmPendingTransaction(pendingId) {
       confirmed_by_display_name: currentUser ? currentUser.display_name : 'ผู้ดูแลระบบ'
     };
 
-    // Save to local trips cache for confirmed tx
-    if (receiptObj.id && recoveredTrips) {
-      try { localStorage.setItem('tx_trips_' + receiptObj.id, JSON.stringify(recoveredTrips)); } catch (e) {}
-    }
-
     showToast(`✅ ยืนยันรายการสำเร็จ! ออกใบเสร็จของคุณ${p.member_name}`);
     showReceipt(receiptObj);
     await renderPendingTransactions();
@@ -5852,11 +6070,7 @@ function buildReceiptCopyHTML(tx, plantName) {
   // 1. Resolve Frozen Buyer Name (Immune to future settings modification)
   let auctionBuyer = tx.buyer_name || tx.auction_buyer;
   if (!auctionBuyer) {
-    if (tx.round_id === '1fc3ca2d-96c3-401b-bd7e-2460b0b83455' || (tx.date && String(tx.date).startsWith('2026-05-26'))) {
-      auctionBuyer = 'เฮียต้อม ยางพารา';
-    } else {
-      auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || 'เฮียต้อม ยางพารา';
-    }
+    auctionBuyer = cachedSettings?.auction_buyer || localStorage.getItem('setting_auction_buyer') || '';
   }
 
   // Format date: e.g. "9 มิ.ย. 69"
@@ -6320,7 +6534,10 @@ async function filterHistory() {
           const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
           if (cloudTxs && cloudTxs.length > 0) {
             for (const tx of cloudTxs) {
-              const existing = await window.desktopDB.query('SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND date = ? AND ABS(total_price - ?) < 0.01)', [tx.id, tx.member_code, tx.date, tx.total_price || 0]);
+              const existing = await window.desktopDB.query(
+                'SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND (round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?)) AND ABS(final_weight - ?) < 0.01) LIMIT 1',
+                [String(tx.id), tx.member_code, String(tx.round_id), String(tx.round_id), tx.final_weight || tx.net_weight || 0]
+              );
               if (!existing || existing.length === 0) {
                 const localTx = {
                   ...tx,
@@ -6430,78 +6647,11 @@ async function filterHistory() {
       }
     }
 
-    const tbody = document.getElementById('history-table-body');
-    const emptyState = document.getElementById('history-empty');
-
-    // Reset select all checkbox
-    const selectAllCb = document.getElementById('history-select-all');
-    if (selectAllCb) selectAllCb.checked = false;
-    updateHistoryBatchDeleteUI();
-
-    if (displayList.length === 0) {
-      tbody.innerHTML = '';
-      emptyState.style.display = 'block';
-      tbody.closest('.table-container').style.display = 'none';
-    } else {
-      emptyState.style.display = 'none';
-      tbody.closest('.table-container').style.display = 'block';
-      tbody.innerHTML = displayList.map(t => {
-        const isSynced = t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id);
-        const statusBadge = isSynced
-          ? `<span class="badge" style="background:rgba(34, 197, 94, 0.15); color:#4ade80; border:1px solid rgba(34, 197, 94, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block;"></span>ซิงค์แล้ว</span>`
-          : `<span class="badge" style="background:rgba(245, 158, 11, 0.15); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.75rem; padding:3px 8px; font-weight:500; display:inline-flex; align-items:center; gap:5px; border-radius:12px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>รอซิงค์</span>`;
-
-        const createdBy = t.created_by_display_name || t.created_by_name || 'ผู้ดูแลระบบ';
-        const rawConfirmed = (t.confirmed_by_display_name || '').trim();
-        const isEdited = rawConfirmed && rawConfirmed.includes('(');
-        const authorHtml = isEdited
-          ? `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:3px;">
-               <span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>
-               <span style="font-size:0.72rem; color:#fbbf24; font-weight:500; display:inline-flex; align-items:center; gap:2px; background:rgba(245,158,11,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);" title="แก้ไขโดย: ${rawConfirmed}">
-                 ✏️ ${rawConfirmed}
-               </span>
-             </div>`
-          : `<span class="badge" style="background:rgba(255,255,255,0.08); font-size:0.8rem;">${createdBy}</span>`;
-
-        const rawTruck = (t.truck_number || '').trim();
-        const cleanTruck = decodeTripsFromTruckNumber(rawTruck).cleanTruckNumber;
-        const isUnassignedTruck = !cleanTruck || cleanTruck === '-- ไม่ระบุ --' || cleanTruck === 'NEW';
-
-        const truckBadge = isUnassignedTruck
-          ? `<span class="badge-no-truck" style="margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อระบุรถพ่วง">⚠️ ยังไม่ระบุรถ (คลิกเลือกรถ) 🚚</span>`
-          : `<span class="badge" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); font-size:0.75rem; padding:2px 6px; border-radius:8px; margin-left:6px; cursor:pointer;" onclick="openQuickAssignTruckModal('${t.id}')" title="คลิกเพื่อเปลี่ยนรถพ่วง">🚚 ${escapeHTML(cleanTruck)}</span>`;
-
-        return `
-        <tr class="${isUnassignedTruck ? 'row-no-truck' : ''}">
-          <td style="text-align:center;">
-            <input type="checkbox" class="history-row-cb" value="${t.id}" onchange="updateHistoryBatchDeleteUI()">
-          </td>
-          <td>${formatDateTime(t.date)}</td>
-          <td><span class="badge badge-green">${t.member_code}</span></td>
-          <td>
-            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
-              <strong>${escapeHTML(t.member_name)}</strong>
-              ${truckBadge}
-            </div>
-          </td>
-          <td>${getRubberTypeBadge(t.rubber_type)}</td>
-          <td>${t.trip_count || 1}</td>
-          <td>${formatNumber(t.net_weight)} กก.</td>
-          <td style="font-weight:600;color:var(--text-accent);">${formatNumber(t.final_weight || t.net_weight)} กก.</td>
-          <td>${formatNumber(t.price_per_kg)}</td>
-          <td style="font-weight:600;color:var(--gold);">${formatNumber(t.total_price)} ฿</td>
-          <td>${authorHtml}</td>
-          <td style="text-align:center;">${statusBadge}</td>
-          <td>
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromHistory('${t.id}')" title="ใบเสร็จ">🧾</button>
-            <button class="btn btn-warning btn-sm btn-icon" onclick="openQuickAssignTruckModal('${t.id}')" title="ระบุรถพ่วง" style="margin-left:4px;">🚚</button>
-            <button class="btn btn-primary btn-sm btn-icon" onclick="editTransactionOnPurchasePage('${t.id}')" title="แก้ไขรายการ" style="margin-left:4px;">✏️</button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteTransaction('${t.id}')" title="ลบ" style="margin-left:4px;">🗑️</button>
-          </td>
-        </tr>
-      `;
-      }).join('');
-    }
+    // Store display list and render with pagination / show-all support
+    currentHistoryDisplayList = displayList || [];
+    historyCurrentPage = 1;
+    historyShowAll = false;
+    renderHistoryRows();
   } catch (err) {
     showToast('โหลดประวัติไม่สำเร็จ: ' + err.message, 'error');
   }
@@ -8804,7 +8954,13 @@ if (typeof window !== 'undefined' && window.desktopDB) {
 let isManualUpdateCheck = false;
 
 async function initAutoUpdater() {
-  if (typeof window.desktopUpdater === 'undefined') return;
+  if (typeof window.desktopUpdater === 'undefined') {
+    const verEl = document.getElementById('app-current-version-text');
+    if (verEl) {
+      verEl.textContent = 'เวอร์ชันปัจจุบัน: v1.2.9 (เว็บแอพ)';
+    }
+    return;
+  }
 
   try {
     const version = await window.desktopUpdater.getVersion();
