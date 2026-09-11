@@ -483,6 +483,7 @@ window.setHistoryPage = setHistoryPage;
 window.toggleHistoryShowAll = toggleHistoryShowAll;
 
 function handleLogout() {
+  cleanupRealtimeSubscriptions();
   sessionStorage.removeItem('rb_session');
   sessionStorage.removeItem('rb_user');
   currentUser = null;
@@ -1363,6 +1364,18 @@ async function saveMemberNewPassword() {
     // Save to local cache first so it's guaranteed to work immediately
     setStoredMemberPassword(code, hashedNewPwd);
 
+    // Update SQLite local DB for offline member login
+    if (isDesktopApp()) {
+      try {
+        await window.desktopDB.run(
+          'UPDATE members SET password = ? WHERE code = ? OR code = ?',
+          [hashedNewPwd, code, codeNorm]
+        );
+      } catch (dbErr) {
+        console.warn('desktopDB member password update error:', dbErr);
+      }
+    }
+
     // Try updating Supabase members table (if password column exists)
     try {
       const { error: updateErr } = await sb.from('members')
@@ -1448,6 +1461,18 @@ async function confirmAdminResetMemberPassword() {
 
     // Save to local cache first
     setStoredMemberPassword(member.code, hashedPwd);
+
+    // Update SQLite local DB for offline member login
+    if (isDesktopApp()) {
+      try {
+        await window.desktopDB.run(
+          'UPDATE members SET password = ? WHERE id = ? OR code = ?',
+          [hashedPwd, member.id, member.code]
+        );
+      } catch (dbErr) {
+        console.warn('desktopDB admin reset member password update error:', dbErr);
+      }
+    }
 
     // Try updating Supabase members table
     try {
@@ -1819,8 +1844,22 @@ async function confirmDeleteAnnouncement(id) {
 // ========== REALTIME SUBSCRIPTIONS & AUTO RECONNECT ==========
 let realtimeChannel = null;
 
+function cleanupRealtimeSubscriptions() {
+  if (sb && realtimeChannel) {
+    try {
+      sb.removeChannel(realtimeChannel);
+    } catch (e) {
+      console.warn('Realtime channel remove error:', e);
+    }
+    realtimeChannel = null;
+  }
+}
+
 function initRealtimeSubscriptions() {
-  if (!sb || realtimeChannel) return;
+  if (!sb) return;
+  if (realtimeChannel) {
+    cleanupRealtimeSubscriptions();
+  }
 
   const badgeEl = document.getElementById('realtime-status-badge');
 
@@ -3680,12 +3719,25 @@ async function deleteRound(roundId) {
     if (isDesktopApp()) {
       const r = await window.desktopDB.query('SELECT * FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
       const roundObj = r && r.length > 0 ? r[0] : null;
-      const targetCloudId = roundObj?.supabase_id || roundId;
+      const targetLocalId = roundObj ? roundObj.id : roundId;
+      const targetCloudId = roundObj ? roundObj.supabase_id : roundId;
 
-      await window.desktopDB.run('DELETE FROM transactions WHERE round_id = ? OR round_id = ?', [String(roundId), String(targetCloudId)]);
-      await window.desktopDB.run('DELETE FROM truck_deliveries WHERE round_id = ? OR round_id = ?', [String(roundId), String(targetCloudId)]);
-      await window.desktopDB.run('DELETE FROM purchase_rounds WHERE id = ? OR supabase_id = ?', [roundId, String(roundId)]);
-      await window.desktopDB.run('DELETE FROM sync_queue WHERE (table_name = "transactions" OR table_name = "purchase_rounds" OR table_name = "truck_deliveries") AND (local_id = ? OR row_data LIKE ?)', [roundId, `%${roundId}%`]);
+      await window.desktopDB.run(
+        'DELETE FROM transactions WHERE round_id = ? OR round_id = ? OR round_id = ?',
+        [String(targetLocalId), String(targetCloudId || ''), String(roundId)]
+      );
+      await window.desktopDB.run(
+        'DELETE FROM truck_deliveries WHERE round_id = ? OR round_id = ? OR round_id = ?',
+        [String(targetLocalId), String(targetCloudId || ''), String(roundId)]
+      );
+      await window.desktopDB.run(
+        'DELETE FROM purchase_rounds WHERE id = ? OR supabase_id = ? OR id = ?',
+        [targetLocalId, String(targetCloudId || ''), roundId]
+      );
+      await window.desktopDB.run(
+        'DELETE FROM sync_queue WHERE (table_name = "transactions" OR table_name = "purchase_rounds" OR table_name = "truck_deliveries") AND (local_id = ? OR local_id = ? OR row_data LIKE ? OR row_data LIKE ?)',
+        [targetLocalId, roundId, `%${targetLocalId}%`, `%${targetCloudId || roundId}%`]
+      );
 
       if (sb && !isAppOffline() && targetCloudId) {
         try {
@@ -5559,6 +5611,14 @@ async function saveTransaction(confirmedOverride = false) {
           ...pendingPayload,
           trips_detail: JSON.stringify(tripDetails)
         });
+        // Also send to Supabase so Station 2 sees it in Realtime!
+        if (sb && !isAppOffline()) {
+          try {
+            await sb.from('pending_transactions').insert(pendingPayload);
+          } catch (pe) {
+            console.warn('Pending tx cloud sync error:', pe);
+          }
+        }
       } else {
         let res = await sb.from('pending_transactions').insert(pendingPayload).select().single();
         data = res.data;
@@ -5607,14 +5667,52 @@ async function saveTransaction(confirmedOverride = false) {
         try {
           payload.sequence_no = nextSeqNo;
           payload.seq_no = nextSeqNo;
-          data = await saveOfflineTransaction(payload);
-          // If online, trigger background upload
-          if (!isAppOffline()) {
-            window.desktopDB.syncUpload().catch(() => {});
+
+          let cloudSaved = false;
+          let supabaseId = null;
+
+          // If online, insert directly to Supabase so Machine 2 sees it via Realtime immediately!
+          if (sb && !isAppOffline()) {
+            try {
+              const cloudPayload = { ...payload };
+              if (cloudPayload.round_id && typeof cloudPayload.round_id === 'number') {
+                const r = await window.desktopDB.select('purchase_rounds', ['supabase_id'], { id: cloudPayload.round_id });
+                if (r && r[0] && r[0].supabase_id) cloudPayload.round_id = r[0].supabase_id;
+              }
+              const res = await sb.from('transactions').insert(cloudPayload).select().single();
+              if (!res.error && res.data) {
+                cloudSaved = true;
+                supabaseId = res.data.id;
+              } else {
+                console.warn('Direct Supabase insert error, fallback to local queue:', res.error);
+              }
+            } catch (cloudErr) {
+              console.warn('Direct Supabase insert network error, fallback to local queue:', cloudErr);
+            }
+          }
+
+          if (cloudSaved && supabaseId) {
+            // Save to SQLite as synced
+            const localPayload = { ...payload };
+            delete localPayload.id;
+            const inserted = await window.desktopDB.insert('transactions', {
+              ...localPayload,
+              trips: typeof payload.trips === 'string' ? payload.trips : JSON.stringify(payload.trips || []),
+              trips_detail: typeof payload.trips_detail === 'string' ? payload.trips_detail : JSON.stringify(payload.trips_detail || []),
+              synced: 1,
+              supabase_id: supabaseId
+            });
+            data = { ...payload, id: inserted.id, supabase_id: supabaseId };
+          } else {
+            // Offline or network error during push -> save to SQLite & sync_queue (Failsafe guarantee!)
+            data = await saveOfflineTransaction(payload);
+            if (!isAppOffline()) {
+              window.desktopDB.syncUpload().catch(() => {});
+            }
           }
         } catch (err) {
-          console.error('Desktop transaction save error:', err);
-          error = err;
+          console.error('Desktop transaction save error, emergency fallback:', err);
+          data = await saveOfflineTransaction(payload);
         }
       } else if (isAppOffline()) {
         try {
@@ -5948,29 +6046,37 @@ async function confirmPendingTransaction(pendingId) {
       date: p.date || new Date().toISOString()
     };
 
-    let { data: newTx, error: txErr } = await sb.from('transactions').insert(txPayload).select().single();
+    let newTx = null;
+    let txErr = null;
+    let cloudConfirmed = false;
 
-    if (txErr && txErr.message.includes('column')) {
-      delete txPayload.auction_price;
-      delete txPayload.yard_fee;
-      delete txPayload.created_by_display_name;
-      delete txPayload.confirmed_by_display_name;
-      delete txPayload.trips;
-      delete txPayload.trips_detail;
-      delete txPayload.buyer_name;
-      delete txPayload.auction_buyer;
-      delete txPayload.sequence_no;
-      delete txPayload.seq_no;
-      delete txPayload.queue_no;
-      const res = await sb.from('transactions').insert(txPayload).select().single();
-      newTx = res.data;
-      txErr = res.error;
+    if (sb && !isAppOffline()) {
+      try {
+        let res = await sb.from('transactions').insert(txPayload).select().single();
+        if (res.error && res.error.message && res.error.message.includes('column')) {
+          delete txPayload.auction_price;
+          delete txPayload.yard_fee;
+          delete txPayload.created_by_display_name;
+          delete txPayload.confirmed_by_display_name;
+          delete txPayload.trips;
+          delete txPayload.trips_detail;
+          delete txPayload.buyer_name;
+          delete txPayload.auction_buyer;
+          delete txPayload.sequence_no;
+          delete txPayload.seq_no;
+          delete txPayload.queue_no;
+          res = await sb.from('transactions').insert(txPayload).select().single();
+        }
+        newTx = res.data;
+        txErr = res.error;
+        if (!txErr && newTx) {
+          cloudConfirmed = true;
+          await sb.from('pending_transactions').delete().eq('id', pendingId).catch(() => {});
+        }
+      } catch (netErr) {
+        console.warn('Network dropped during pending confirm, falling back to local queue:', netErr);
+      }
     }
-
-    if (txErr) throw txErr;
-
-    // Delete or remove from pending_transactions
-    await sb.from('pending_transactions').delete().eq('id', pendingId);
 
     if (isDesktopApp()) {
       try {
@@ -5978,18 +6084,30 @@ async function confirmPendingTransaction(pendingId) {
           ...txPayload,
           trips: JSON.stringify(recoveredTrips || []),
           trips_detail: JSON.stringify(recoveredTrips || []),
-          synced: 1,
+          synced: cloudConfirmed ? 1 : 0,
           supabase_id: newTx ? newTx.id : null
         };
         delete localTx.id;
         const inserted = await window.desktopDB.insert('transactions', localTx);
         await window.desktopDB.delete('pending_transactions', { id: pendingId });
+
+        // If network dropped, add to sync_queue to guarantee no data loss!
+        if (!cloudConfirmed) {
+          await window.desktopDB.insert('sync_queue', {
+            table_name: 'transactions',
+            action: 'INSERT',
+            row_data: JSON.stringify(txPayload),
+            local_id: inserted.id
+          });
+        }
         if (inserted && inserted.id && !newTx?.id) {
           txPayload.id = inserted.id;
         }
       } catch (localErr) {
         console.warn('Confirm save to local SQLite error:', localErr);
       }
+    } else if (!cloudConfirmed && txErr) {
+      throw txErr;
     }
 
     const receiptObj = {
@@ -7656,8 +7774,9 @@ async function editTransactionOnPurchasePage(txId) {
       // Priority 1: Decode from truck_number (same as buildReceiptCopyHTML)
       if (tx.truck_number && typeof decodeTripsFromTruckNumber === 'function') {
         const decoded = decodeTripsFromTruckNumber(tx.truck_number);
-        if (decoded.trips && decoded.trips.length > 0) {
-          tripsArr = decoded.trips;
+        const extracted = decoded.extractedTrips || decoded.trips;
+        if (extracted && extracted.length > 0) {
+          tripsArr = extracted;
         }
       }
       // Priority 2: Parse from trips/trips_detail fields
@@ -8957,7 +9076,7 @@ async function initAutoUpdater() {
   if (typeof window.desktopUpdater === 'undefined') {
     const verEl = document.getElementById('app-current-version-text');
     if (verEl) {
-      verEl.textContent = 'เวอร์ชันปัจจุบัน: v1.2.9 (เว็บแอพ)';
+      verEl.textContent = 'เวอร์ชันปัจจุบัน: v1.2.10 (เว็บแอพ)';
     }
     return;
   }
@@ -9051,6 +9170,17 @@ function dismissUpdaterBanner() {
 }
 
 // ========== INITIALIZATION ==========
+// Safe credential loader helper
+function loadRememberedCredentials() {
+  try {
+    const savedUser = localStorage.getItem('rb_remember_user');
+    if (savedUser) {
+      const userEl = document.getElementById('login-username');
+      if (userEl) userEl.value = savedUser;
+    }
+  } catch (e) {}
+}
+
 async function init() {
   updatePlantationLogo();
   initAutoUpdater();
@@ -9225,7 +9355,9 @@ async function init() {
     document.getElementById('app').classList.remove('active');
     const mpPage = document.getElementById('member-portal-page');
     if (mpPage) mpPage.style.display = 'none';
-    loadRememberedCredentials();
+    if (typeof loadRememberedCredentials === 'function') {
+      try { loadRememberedCredentials(); } catch (e) {}
+    }
     try { await loadSettings(); } catch (e) { /* ignore */ }
   }
 }
@@ -9240,4 +9372,9 @@ document.addEventListener('keydown', (e) => {
       saveTransaction();
     }
   }
+});
+
+// Cleanup realtime channel on window close / navigation
+window.addEventListener('beforeunload', () => {
+  cleanupRealtimeSubscriptions();
 });
