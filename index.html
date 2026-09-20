@@ -148,7 +148,7 @@
           <span class="nav-icon">📢</span> จัดการประกาศ
         </a>
 
-        <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
+                <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
         <a class="sidebar-link" onclick="navigateTo('profile')" id="nav-profile">
           <span class="nav-icon">🔑</span> โปรไฟล์ส่วนตัว
         </a>
@@ -899,160 +899,242 @@
         </div>
       </div>
 
+            
       <!-- ===== SETTINGS ===== -->
       <div class="section" id="section-settings">
         <div class="section-header">
-          <h2>⚙️ ตั้งค่าลานยาง</h2>
-          <p>ตั้งค่าราคายาง ข้อมูลลานยาง และน้ำหนักรถเข็นเริ่มต้น</p>
+          <h2>⚙️ ตั้งค่าระบบ (Settings)</h2>
+          <p>จัดการการตั้งค่ารับซื้อ จอแสดงผล ระบบซิงค์ข้อมูล และข้อมูลระบบ</p>
         </div>
 
-        <div class="settings-grid">
-          <!-- Plantation Info -->
-          <div class="glass-card">
-            <div class="settings-section-title">🏠 ข้อมูลลานยาง & ชื่อผู้ประมูล (สำหรับใบเสร็จ)</div>
-            <div class="form-group mb-3">
-              <label class="form-label">🖼️ โลโก้ลานยาง (เปลี่ยนรูปหน้าล็อคอิน & เมนูแถบข้าง)</label>
-              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(255,255,255,0.02); padding:12px 14px; border-radius:var(--radius-md); border:1px solid var(--border);">
-                <div id="setting-logo-preview" style="width:54px; height:54px; border-radius:var(--radius-md); background:var(--primary-glow); display:flex; align-items:center; justify-content:center; font-size:1.8rem; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
-                  🌿
-                </div>
-                <div style="flex:1; min-width:200px;">
-                  <input type="file" id="setting-logo-file" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(event)">
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('setting-logo-file').click()">📁 เลือกรูปภาพจากเครื่อง...</button>
-                    <button type="button" class="btn btn-danger btn-sm" onclick="removeCustomLogo()">🗑️ คืนค่าโลโก้เริ่มต้น (🌿)</button>
-                  </div>
-                  <span style="font-size:0.78rem; color:var(--text-secondary);">รองรับรูปภาพ JPG, PNG, WebP (รูปสี่เหลี่ยมจัตุรัสจะสวยงามที่สุด)</span>
-                </div>
-              </div>
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label" for="setting-plantation-name">ชื่อกลุ่ม / ลานยาง</label>
-              <input type="text" id="setting-plantation-name" class="form-input" placeholder="กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก">
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label" for="setting-plantation-address">ที่อยู่ / เลขที่ หมู่ ตำบล อำเภอ จังหวัด</label>
-              <input type="text" id="setting-plantation-address" class="form-input" placeholder="เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก">
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" for="setting-auction-buyer">ชื่อผู้ประมูล / พ่อค้าปัจจุบัน (แสดงในใบเสร็จ)</label>
-              <input type="text" id="setting-auction-buyer" class="form-input" placeholder="เช่น เฮียต้อม ยางพารา">
-            </div>
-          </div>
-
-          <!-- Prices -->
-          <div class="glass-card">
-            <div class="settings-section-title">💰 ราคายางก้อนถ้วย & ค่าบริหารจัดการ</div>
-            <div class="settings-row">
-              <div class="form-group">
-                <label class="form-label" for="setting-price-cup">ราคาประมูลเริ่มต้น (บาท/กก.)</label>
-                <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-yard-fee">ค่าบริหารจัดการ (บาท/กก.)</label>
-                <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
-              </div>
-            </div>
-          </div>
-
-          <!-- Cart Weight -->
-          <div class="glass-card">
-            <div class="settings-section-title">🛒 น้ำหนักรถเข็นเริ่มต้น</div>
-            <div class="settings-row">
-              <div class="form-group" style="max-width: 320px;">
-                <label class="form-label" for="setting-cart-weight">น้ำหนักรถเข็นเริ่มต้น (กก.)</label>
-                <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
-            </div>
-          </div>
-
-          <!-- Multi-Station & Printing Options -->
-          <div class="glass-card">
-            <div class="settings-section-title">⚡ โหมดการทำงาน & ธีมการแสดงผล</div>
-            
-            <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label" style="font-weight:600;">ธีมการแสดงผลระบบ (Theme Mode)</label>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:6px;">
-                <label style="display:flex; align-items:center; gap:8px; background:var(--bg-input); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                  <input type="radio" name="setting-theme-mode" value="dark" checked onchange="previewThemeMode('dark')">
-                  <span>🌙 โหมดมืด (Dark Mode)</span>
-                </label>
-                <label style="display:flex; align-items:center; gap:8px; background:var(--bg-input); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                  <input type="radio" name="setting-theme-mode" value="light" onchange="previewThemeMode('light')">
-                  <span>☀️ โหมดสว่าง (Light Mode)</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:12px;">
-              <div>
-                <label class="form-label" style="margin:0; font-weight:600;">⚡ โหมดทำงาน 2 เครื่อง (สถานีชั่ง & สถานีออกใบเสร็จ)</label>
-                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อเปิด: เครื่อง 1 ส่งข้อมูลไปรอยืนยันที่เครื่อง 2 เพื่อตรวจสอบและพิมพ์ใบเสร็จ</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-dual-station-mode">
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <div>
-                <label class="form-label" style="margin:0; font-weight:600;">💳 แสดงชื่อผู้จ่ายเงินอัตโนมัติในใบเสร็จ</label>
-                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อปิด: ช่องผู้จ่ายเงินจะเป็นช่องเซ็นเปล่า (สำหรับกรณีโอนตรงผ่านธนาคาร)</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-show-payer-name" checked>
-                <span class="slider round"></span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Cloud Sync Section -->
-          <div class="glass-card">
-            <div class="settings-section-title">☁️ การซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์</div>
-            
-            <div style="display:flex; flex-direction:column; gap:12px;">
-              <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
-                ซิงค์รายการรับซื้อและข้อมูลล่าสุดในเครื่องขึ้นระบบคลาวด์ เพื่อให้สมาชิกสามารถตรวจสอบข้อมูลผ่านมือถือได้แบบเรียลไทม์
-              </p>
-              
-              <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="syncOfflineData()" id="settings-sync-btn" style="padding:12px 24px;">
-                  🔄 ซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- App Version & Auto-Update -->
-          <div class="glass-card">
-            <div class="settings-section-title">📦 เวอร์ชันและการอัปเดตโปรแกรม</div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; background:rgba(255,255,255,0.02); padding:16px 20px; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <div>
-                <div style="font-size:1.05rem; font-weight:700; color:var(--text-accent);" id="app-current-version-text">
-                  เวอร์ชันปัจจุบัน: v1.2.10
-                </div>
-                <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:4px;" id="app-update-status-detail">
-                  ระบบตรวจเช็คอัปเดตอัตโนมัติจาก GitHub Releases (เมื่อต่ออินเทอร์เน็ต)
-                </div>
-              </div>
-              <div style="display:flex; gap:10px; align-items:center;">
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-manual-check-update" onclick="manualCheckForUpdate()">
-                  🔍 ตรวจสอบการอัปเดต
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <button class="btn btn-primary" onclick="saveSettings()" style="justify-self: start; padding: 14px 40px;">
-            💾 บันทึกการตั้งค่า
+        <!-- Settings Tab Navigation -->
+        <div class="settings-tabs" style="display:flex; gap:8px; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:12px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary settings-tab-btn active" id="tab-btn-purchase" onclick="switchSettingsTab('purchase')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🛒 ตั้งค่ารับซื้อ
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-display" onclick="switchSettingsTab('display')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🖥️ จอแสดงผล
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-sync" onclick="switchSettingsTab('sync')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🔄 ซิงค์ข้อมูล
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-system" onclick="switchSettingsTab('system')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            ℹ️ ข้อมูลระบบ
           </button>
         </div>
-      </div>
 
-    </main>
-  </div>
+        <!-- TAB 1: Purchase Settings -->
+        <div id="settings-tab-purchase" class="settings-tab-content">
+          <div class="settings-grid">
+            <!-- Yard Info & Auction Buyer -->
+            <div class="glass-card">
+              <div class="settings-section-title">🏠 ข้อมูลลานยาง & ผู้ประมูล</div>
+              <div class="form-group mb-3">
+                <label class="form-label" for="setting-plantation-name">ชื่อกลุ่ม / ลานยาง</label>
+                <input type="text" id="setting-plantation-name" class="form-input" placeholder="กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก">
+              </div>
+              <div class="form-group mb-3">
+                <label class="form-label" for="setting-plantation-address">ที่อยู่ / เลขที่ หมู่ ตำบล อำเภอ จังหวัด</label>
+                <input type="text" id="setting-plantation-address" class="form-input" placeholder="เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก">
+              </div>
+              <div class="form-group mb-0">
+                <label class="form-label" for="setting-auction-buyer">ชื่อผู้ประมูล / พ่อค้าปัจจุบัน (แสดงในใบเสร็จ)</label>
+                <input type="text" id="setting-auction-buyer" class="form-input" placeholder="เช่น เฮียต้อม ยางพารา">
+              </div>
+            </div>
+
+            <!-- Prices & Deduction -->
+            <div class="glass-card">
+              <div class="settings-section-title">💰 ราคาตั้งต้น, ค่าธรรมเนียม & หัก %</div>
+              <div class="settings-row">
+                <div class="form-group">
+                  <label class="form-label" for="setting-price-cup">ราคาประมูลเริ่มต้น (บาท/กก.)</label>
+                  <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-yard-fee">ค่าบริหารจัดการ (บาท/กก.)</label>
+                  <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
+                </div>
+              </div>
+              <div class="settings-row mt-3">
+                <div class="form-group">
+                  <label class="form-label" for="setting-cart-weight">น้ำหนักรถเข็นเริ่มต้น (กก.)</label>
+                  <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-deduction-percent">หักสิ่งเจือปนเริ่มต้น (%)</label>
+                  <input type="number" id="setting-deduction-percent" class="form-input" step="0.1" min="0" max="100" placeholder="0.0">
+                </div>
+              </div>
+            </div>
+
+            <!-- Dual Station Mode -->
+            <div class="glass-card">
+              <div class="settings-section-title">⚡ โหมดการทำงานรับซื้อ</div>
+              <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:14px 18px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:0;">
+                <div>
+                  <label class="form-label" style="margin:0; font-weight:600; font-size:0.95rem;">⚡ โหมดชั่ง 2 เครื่อง (สถานีชั่ง & สถานีออกใบเสร็จ)</label>
+                  <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:3px;">เมื่อเปิด: เครื่อง 1 ส่งข้อมูลไปรอยืนยันที่เครื่อง 2 เพื่อตรวจสอบและพิมพ์ใบเสร็จ</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setting-dual-station-mode">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveSettings()" style="justify-self:start; padding:14px 40px; font-weight:600;">
+              💾 บันทึกการตั้งค่ารับซื้อ
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 2: Display Settings -->
+        <div id="settings-tab-display" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <!-- Logo Settings -->
+            <div class="glass-card">
+              <div class="settings-section-title">🖼️ โลโก้ลานยาง</div>
+              <div class="form-group mb-0">
+                <label class="form-label">รูปภาพโลโก้ (แสดงที่หน้าจอหลัก, เมนูแถบข้าง และหน้าเข้าสู่ระบบ)</label>
+                <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(255,255,255,0.02); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border); margin-top:6px;">
+                  <div id="setting-logo-preview" style="width:64px; height:64px; border-radius:var(--radius-md); background:var(--primary-glow); display:flex; align-items:center; justify-content:center; font-size:2rem; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
+                    🌿
+                  </div>
+                  <div style="flex:1; min-width:220px;">
+                    <input type="file" id="setting-logo-file" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(event)">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('setting-logo-file').click()">📁 เลือกรูปภาพจากเครื่อง...</button>
+                      <button type="button" class="btn btn-danger btn-sm" onclick="removeCustomLogo()">🗑️ คืนค่าโลโก้เริ่มต้น (🌿)</button>
+                    </div>
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">รองรับรูปภาพ JPG, PNG, WebP (แนะนำรูปสี่เหลี่ยมจัตุรัสเพื่อความสวยงาม)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Theme Mode & Visual Options -->
+            <div class="glass-card">
+              <div class="settings-section-title">🎨 ธีมและหน้าจอแสดงผล</div>
+              <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label" style="font-weight:600;">ธีมการแสดงผลระบบ (Theme Mode)</label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px;">
+                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
+                    <input type="radio" name="setting-theme-mode" value="dark" checked onchange="previewThemeMode('dark')">
+                    <span>🌙 โหมดมืด (Dark Mode)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
+                    <input type="radio" name="setting-theme-mode" value="light" onchange="previewThemeMode('light')">
+                    <span>☀️ โหมดสว่าง (Light Mode)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:14px 18px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:0;">
+                <div>
+                  <label class="form-label" style="margin:0; font-weight:600; font-size:0.95rem;">💳 แสดงชื่อผู้จ่ายเงินอัตโนมัติในใบเสร็จ</label>
+                  <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:3px;">เมื่อปิด: ช่องผู้จ่ายเงินจะเป็นช่องเซ็นเปล่า (สำหรับกรณีโอนตรงผ่านธนาคาร)</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setting-show-payer-name" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveSettings()" style="justify-self:start; padding:14px 40px; font-weight:600;">
+              💾 บันทึกการตั้งค่าจอแสดงผล
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 3: Sync & Network -->
+        <div id="settings-tab-sync" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <div class="glass-card">
+              <div class="settings-section-title">🔄 สถานะการซิงค์ข้อมูล (Sync & Network)</div>
+              <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:18px;">
+                ตรวจสอบคิวข้อมูลที่รอการส่งขึ้น Cloud และบังคับซิงค์ข้อมูลระหว่างเครื่องท้องถิ่น (SQLite) กับเซิร์ฟเวอร์ (Supabase)
+              </p>
+
+              <!-- Two Status Info Boxes -->
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:24px;">
+                <!-- Box 1: Transactions Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(16,185,129,0.12); color:#10b981; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    📝
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">รายการธุรกรรมรอซิงค์</div>
+                    <div id="sync-queue-transactions-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      รายการธุรกรรมรอซิงค์: 0 รายการ
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Box 2: Members Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(59,130,246,0.12); color:#3b82f6; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    👥
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">ข้อมูลสมาชิกรอซิงค์</div>
+                    <div id="sync-queue-members-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      ข้อมูลสมาชิกรอซิงค์: 0 รายการ
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Force Sync Button -->
+              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                <button type="button" class="btn btn-primary" id="btn-force-sync" onclick="forceSyncData()" style="padding:14px 28px; font-weight:600; display:inline-flex; align-items:center; gap:10px; font-size:0.95rem;">
+                  ⚡ บังคับซิงค์ข้อมูลเดี๋ยวนี้ (Force Sync)
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="updateSyncQueueCounts()" style="padding:14px 20px;">
+                  🔄 รีเฟรชสถานะคิว
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: System Info -->
+        <div id="settings-tab-system" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <div class="glass-card">
+              <div class="settings-section-title">ℹ️ ข้อมูลระบบ (System Info)</div>
+              
+              <div style="display:flex; flex-direction:column; gap:14px; background:rgba(255,255,255,0.02); padding:20px; border-radius:var(--radius-md); border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px;">
+                  <span style="color:var(--text-secondary); font-size:0.9rem;">ระบบ / สถาปัตยกรรม:</span>
+                  <span style="font-size:1.05rem; font-weight:700; color:var(--text-accent);">
+                    เวอร์ชัน: v1.1.0 (Dual-Mode ERP)
+                  </span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px;">
+                  <span style="color:var(--text-secondary); font-size:0.9rem;">แพ็กเกจโปรแกรม:</span>
+                  <span style="font-weight:600; color:var(--text-primary);" id="app-current-version-text">
+                    เวอร์ชันปัจจุบัน: v1.2.10
+                  </span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <div>
+                    <div style="font-weight:600; color:var(--text-primary);">การอัปเดตระบบอัตโนมัติ</div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:3px;" id="app-update-status-detail">
+                      ระบบตรวจเช็คอัปเดตอัตโนมัติจาก GitHub Releases (เมื่อต่ออินเทอร์เน็ต)
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-manual-check-update" onclick="manualCheckForUpdate()" style="padding:8px 16px;">
+                    🔍 ตรวจสอบการอัปเดต
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
 
   <!-- ===== MEMBER PORTAL PAGE ===== -->
   <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-dark);">

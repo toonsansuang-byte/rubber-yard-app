@@ -2477,8 +2477,8 @@ async function renderRounds() {
 
       const totalCount = txArr.length;
       const uniqueMembers = new Set(txArr.map(t => t.member_code)).size;
-      const totalPurchasedWeight = txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-      const totalPurchasedAmount = txArr.reduce((s, t) => s + Number(t.total_price || 0), 0);
+      const totalPurchasedWeight = Math.round(txArr.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0) * 100) / 100;
+      const totalPurchasedAmount = Math.round(txArr.reduce((s, t) => s + (Math.round(Number(t.total_price || 0) * 100) / 100), 0) * 100) / 100;
 
       // 2. Query independent truck_deliveries table for active round
       let truckDeliveries = [];
@@ -2839,7 +2839,7 @@ function renderRoundReportContent(round, transactions, format) {
     const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
 
     const grossAmt = Math.round((weight * auctionRate) * 100) / 100;
-    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((weight * netRate) * 100) / 100));
+    const amount = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * netRate)) * 100) / 100;
     const feeAmt = Math.round((grossAmt - amount) * 100) / 100;
 
     if (!memberSummary[code]) {
@@ -2912,7 +2912,7 @@ function renderRoundReportContent(round, transactions, format) {
               const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
               const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
               const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
-              const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+              const netAmt = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * netRate)) * 100) / 100;
               const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
 
               return `
@@ -3124,7 +3124,7 @@ async function exportRoundToExcel(roundId = null) {
       const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
       const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
       const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
-      const amt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+      const amt = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * netRate)) * 100) / 100;
       const feeAmt = Math.round((grossAmt - amt) * 100) / 100;
 
       if (!memberSummary[code]) {
@@ -3195,7 +3195,7 @@ async function exportRoundToExcel(roundId = null) {
         const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
         const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
         const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
-        const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+        const netAmt = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * netRate)) * 100) / 100;
         const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
         const rowClass = idx % 2 === 1 ? 'class="even-row"' : '';
 
@@ -3421,7 +3421,7 @@ async function printRoundReport(roundId = null) {
     const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
     const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
     const grossAmt = Math.round((weight * auctionRate) * 100) / 100;
-    const amount = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((weight * netRate) * 100) / 100));
+    const amount = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (weight * netRate)) * 100) / 100;
     const feeAmt = Math.round((grossAmt - amount) * 100) / 100;
 
     if (!memberSummary[code]) {
@@ -3505,7 +3505,7 @@ async function printRoundReport(roundId = null) {
               const yardFeeRate = (t.yard_fee !== undefined && t.yard_fee !== null && !isNaN(Number(t.yard_fee))) ? Number(t.yard_fee) : 0.50;
               const auctionRate = (t.auction_price !== undefined && t.auction_price !== null && !isNaN(Number(t.auction_price)) && Number(t.auction_price) > 0) ? Number(t.auction_price) : (netRate + yardFeeRate);
               const grossAmt = Math.round((wt * auctionRate) * 100) / 100;
-              const netAmt = Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (Math.round((wt * netRate) * 100) / 100));
+              const netAmt = Math.round(Number(t.total_price !== undefined && t.total_price !== null ? t.total_price : (wt * netRate)) * 100) / 100;
               const feeAmt = Math.round((grossAmt - netAmt) * 100) / 100;
 
               return `
@@ -3807,8 +3807,8 @@ async function showMemberSalesHistory(memberCode) {
     // Calculate stats
     const distinctRounds = new Set(transactions.map(t => t.round_id).filter(Boolean)).size;
     const txCount = transactions.length;
-    const totalWeight = transactions.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-    const totalAmount = transactions.reduce((s, t) => s + Number(t.total_price || 0), 0);
+    const totalWeight = Math.round(transactions.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0) * 100) / 100;
+    const totalAmount = Math.round(transactions.reduce((s, t) => s + (Math.round(Number(t.total_price || 0) * 100) / 100), 0) * 100) / 100;
 
     // Set UI
     document.getElementById('m-history-avatar').textContent = member.name.charAt(0);
@@ -5339,8 +5339,8 @@ function calculatePrice() {
     }
   });
 
-  const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = Math.max(0, totalNet - deductionAmount);
+  const deductionAmount = Math.round((totalNet * deductionPercent / 100) * 100) / 100;
+  const finalWeight = Math.round(Math.max(0, totalNet - deductionAmount) * 100) / 100;
   const totalPrice = Math.round((finalWeight * netPricePerKg) * 100) / 100;
 
   document.getElementById('calc-trips-detail').innerHTML = detailHtml.join('');
@@ -5357,6 +5357,10 @@ function calculatePrice() {
 }
 
 async function saveTransaction(confirmedOverride = false) {
+  if (!currentRound) {
+    showToast('❌ ยังไม่ได้เปิดรอบการรับซื้อ กรุณาเปิดรอบการรับซื้อก่อนทำรายการ', 'error');
+    return;
+  }
   if (!selectedMember) { showToast('กรุณาเลือกสมาชิก', 'error'); return; }
 
   const cartWeight = parseFloat(document.getElementById('cart-weight').value) || 0;
@@ -5432,8 +5436,8 @@ async function saveTransaction(confirmedOverride = false) {
   const totalGross = tripDetails.reduce((s, t) => s + t.gross_weight, 0);
   const totalCart = tripDetails.reduce((s, t) => s + t.cart_weight, 0);
   const totalNet = tripDetails.reduce((s, t) => s + t.net_weight, 0);
-  const deductionAmount = totalNet * deductionPercent / 100;
-  const finalWeight = Math.max(0, totalNet - deductionAmount);
+  const deductionAmount = Math.round((totalNet * deductionPercent / 100) * 100) / 100;
+  const finalWeight = Math.round(Math.max(0, totalNet - deductionAmount) * 100) / 100;
   const totalPrice = Math.round((finalWeight * netPricePerKg) * 100) / 100;
 
   const isDualMode = cachedSettings?.dual_station_mode === true;
@@ -6028,7 +6032,7 @@ async function confirmPendingTransaction(pendingId) {
       auction_price: p.auction_price,
       yard_fee: p.yard_fee,
       price_per_kg: p.price_per_kg,
-      total_price: p.total_price,
+      total_price: Math.round(Number(p.total_price || 0) * 100) / 100,
       buyer_name: frozenBuyerName,
       auction_buyer: frozenBuyerName,
       sequence_no: nextSeqNo,
@@ -6742,8 +6746,8 @@ async function filterHistory() {
     const totalCount = displayList.length;
     const syncedCount = displayList.filter(t => t.synced === 1 || !!t.supabase_id || (!isDesktopApp() && !!t.id)).length;
     const pendingCount = totalCount - syncedCount;
-    const totalWeight = displayList.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
-    const totalAmount = displayList.reduce((s, t) => s + Number(t.total_price || 0), 0);
+    const totalWeight = Math.round(displayList.reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0) * 100) / 100;
+    const totalAmount = Math.round(displayList.reduce((s, t) => s + (Math.round(Number(t.total_price || 0) * 100) / 100), 0) * 100) / 100;
 
     const countSummaryEl = document.getElementById('summary-count');
     if (countSummaryEl) {
@@ -8333,6 +8337,91 @@ async function deleteUser(id, username = null) {
   hideLoading();
 }
 
+
+// ========== SETTINGS TAB NAVIGATION & SYNC QUEUE ==========
+function switchSettingsTab(tabId) {
+  const tabs = ['purchase', 'display', 'sync', 'system'];
+  tabs.forEach(t => {
+    const btn = document.getElementById('tab-btn-' + t);
+    const content = document.getElementById('settings-tab-' + t);
+    if (btn) {
+      if (t === tabId) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+    if (content) {
+      content.style.display = (t === tabId) ? 'block' : 'none';
+    }
+  });
+
+  if (tabId === 'sync') {
+    updateSyncQueueCounts();
+  }
+}
+
+async function updateSyncQueueCounts() {
+  let txQueueCount = 0;
+  let memberQueueCount = 0;
+
+  try {
+    if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.query === 'function') {
+      const txRows = await window.desktopDB.query("SELECT count(*) as cnt FROM sync_queue WHERE table_name = 'transactions'");
+      if (txRows && txRows[0]) {
+        txQueueCount = txRows[0].cnt ?? txRows[0].count ?? 0;
+      }
+      const memRows = await window.desktopDB.query("SELECT count(*) as cnt FROM sync_queue WHERE table_name = 'members'");
+      if (memRows && memRows[0]) {
+        memberQueueCount = memRows[0].cnt ?? memRows[0].count ?? 0;
+      }
+    }
+  } catch (err) {
+    console.warn('Error querying sync_queue counts:', err);
+  }
+
+  const txEl = document.getElementById('sync-queue-transactions-count');
+  if (txEl) {
+    txEl.textContent = `รายการธุรกรรมรอซิงค์: ${txQueueCount} รายการ`;
+  }
+
+  const memEl = document.getElementById('sync-queue-members-count');
+  if (memEl) {
+    memEl.textContent = `ข้อมูลสมาชิกรอซิงค์: ${memberQueueCount} รายการ`;
+  }
+}
+
+async function forceSyncData() {
+  const btn = document.getElementById('btn-force-sync');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ กำลังซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์...';
+  }
+  showLoading();
+
+  try {
+    if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.syncUpload === 'function') {
+      await window.desktopDB.syncUpload();
+      if (typeof window.desktopDB.syncDownload === 'function') {
+        await window.desktopDB.syncDownload();
+      }
+      showToast('⚡ บังคับซิงค์ข้อมูลขึ้น Cloud เรียบร้อยแล้ว!', 'success');
+    } else if (typeof syncOfflineData === 'function') {
+      await syncOfflineData();
+    } else {
+      showToast('ซิงค์ข้อมูลสำเร็จ', 'info');
+    }
+  } catch (err) {
+    console.error('forceSyncData error:', err);
+    showToast('เกิดข้อผิดพลาดในการซิงค์: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+    await updateSyncQueueCounts();
+  }
+}
+
 // ========== SETTINGS ==========
 async function renderSettings() {
   if (!cachedSettings) await loadSettings();
@@ -8369,6 +8458,7 @@ async function renderSettings() {
   applyThemeMode(themeMode);
   updatePlantationLogo();
   initAutoUpdater();
+  updateSyncQueueCounts();
 }
 
 async function saveSettings() {

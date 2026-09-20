@@ -2088,3 +2088,24 @@ input:checked + .slider:before {
   50% { opacity: 0.75; }
 }
 
+
+
+/* ===== SETTINGS TAB NAVIGATION ===== */
+.settings-tab-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.settings-tab-btn:hover {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.settings-tab-btn.active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
