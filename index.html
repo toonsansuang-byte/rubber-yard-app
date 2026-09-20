@@ -926,6 +926,37 @@
         <!-- TAB 1: Purchase Settings -->
         <div id="settings-tab-purchase" class="settings-tab-content">
           <div class="settings-grid">
+            <!-- Season Management -->
+            <div class="glass-card mb-4" id="season-settings-card">
+              <div class="settings-section-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>🌱 จัดการฤดูกาล (Season Management)</span>
+                <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">แยกข้อมูลการรับซื้อรายปี</span>
+              </div>
+              
+              <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px;">สถานะฤดูกาลการรับซื้อ</div>
+                  <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    ฤดูกาลปัจจุบัน: 
+                    <span id="active-season-badge" class="badge badge-green" style="font-size: 0.95rem; padding: 4px 12px;">ฤดูกาล 2569</span>
+                  </div>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                    💡 เมื่อเปิดฤดูกาลใหม่ ระบบจะปิดฤดูกาลเดิม และรอบรับซื้อใหม่ทั้งหมดจะถูกผูกกับฤดูกาลใหม่โดยอัตโนมัติ
+                  </p>
+                </div>
+                
+                <div>
+                  <button type="button" class="btn btn-secondary" onclick="openSeasonSummaryModal()" style="display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 16px;">
+                    <span>📊</span> สรุปข้อมูลฤดูกาล
+                  </button>
+                  <button type="button" class="btn btn-primary" onclick="openCreateSeasonModal()" style="display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 18px;">
+                    <span>➕</span> เปิดฤดูกาลใหม่
+                  </button>
+                </div>
+              </div>
+            </div>
+
+
             <!-- Yard Info & Auction Buyer -->
             <div class="glass-card">
               <div class="settings-section-title">🏠 ข้อมูลลานยาง & ผู้ประมูล</div>
@@ -1140,7 +1171,7 @@
   </div>
 
   <!-- ===== MEMBER PORTAL PAGE ===== -->
-  <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-dark);">
+  <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-primary);">
     <header class="member-header" style="background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px);">
       <div style="display: flex; align-items: center; gap: 12px;">
         <div style="font-size: 1.8rem; background: var(--gradient-green); width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">🌿</div>
@@ -1171,12 +1202,12 @@
               <span class="badge badge-green" id="mp-code-badge" style="font-size: 0.85rem; padding: 4px 10px;">ก00089</span>
               <span class="badge badge-gold" style="font-size: 0.8rem; padding: 3px 8px;">🌱 สมาชิกสวนยาง</span>
             </div>
-            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2px 0 8px 0;">-</h2>
+            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin: 2px 0 8px 0;">-</h2>
 
             <!-- Contact & Bank Info Rows -->
             <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; color: var(--text-secondary);">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: #fff; font-weight: 600;">ยังไม่ได้ระบุ</span></span>
+                <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: var(--text-primary); font-weight: 600;">ยังไม่ได้ระบุ</span></span>
                 <button class="btn btn-secondary btn-sm" onclick="openMemberEditPhoneModal()" style="padding: 2px 8px; font-size: 0.75rem;">✏️ แก้ไขเบอร์โทร</button>
                 <button class="btn btn-secondary btn-sm" onclick="openMemberChangePasswordModal()" style="padding: 2px 8px; font-size: 0.75rem; border-color: rgba(255,255,255,0.2);">🔐 เปลี่ยนรหัสผ่าน</button>
               </div>
@@ -1211,11 +1242,11 @@
       <div class="glass-card">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
           <div>
-            <h3 style="font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0;">📜 ประวัติการขายยางของคุณ</h3>
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0;">📜 ประวัติการขายยางของคุณ</h3>
             <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 2px 0 0 0;">รายการขายยางทั้งหมดของคุณ เรียงลำดับจากล่าสุดไปเก่าสุด</p>
           </div>
           <!-- Period Filter Buttons -->
-          <div style="display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+          <div style="display: flex; gap: 6px; background: var(--bg-input); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border);">
             <button class="btn btn-sm mp-period-btn active" id="mp-btn-all" onclick="setMemberPortalPeriod('all')" style="padding: 6px 14px; font-size: 0.8rem;">ทั้งหมด</button>
             <button class="btn btn-sm mp-period-btn" id="mp-btn-month" onclick="setMemberPortalPeriod('month')" style="padding: 6px 14px; font-size: 0.8rem;">เดือนนี้</button>
             <button class="btn btn-sm mp-period-btn" id="mp-btn-round" onclick="setMemberPortalPeriod('round')" style="padding: 6px 14px; font-size: 0.8rem;">รอบปัจจุบัน</button>
@@ -1930,7 +1961,117 @@
     </div>
   </div>
 
-  <!-- ===== AUTO-UPDATE FLOATING NOTIFICATION BANNER ===== -->
+    <!-- ===== CREATE SEASON MODAL ===== -->
+    <!-- ===== SEASON SUMMARY MODAL ===== -->
+  <div class="modal-overlay" id="season-summary-modal" style="z-index: 1200;">
+    <div class="modal-content" style="max-width: 900px; width: 95%;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.5rem;">📊</span>
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem;">สรุปข้อมูลการรับซื้อประจำฤดูกาล</h3>
+            <div style="font-size: 0.85rem; color: var(--gold); font-weight: 600;" id="season-summary-title">ฤดูกาล 2569 (กำลังเปิดใช้งาน)</div>
+          </div>
+        </div>
+        <button type="button" class="modal-close" onclick="closeSeasonSummaryModal()">✕</button>
+      </div>
+      
+      <div class="modal-body" style="padding: 20px; max-height: 75vh; overflow-y: auto;">
+        <!-- Grand Stats Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">⚖️ น้ำหนักยางรวมทั้งสิ้น</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);" id="season-summary-weight">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">กก.</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">💰 ยอดเงินจ่ายสมาชิกรวม</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--gold);" id="season-summary-amount">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">บาท</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">🏛️ เงินกองทุนลานสะสม (0.50฿)</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--success);" id="season-summary-fee">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">บาท</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">📦 จำนวนรอบ / บิลทั้งหมด</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);" id="season-summary-rounds">0 รอบ <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">(0 บิล)</span></div>
+          </div>
+        </div>
+
+        <!-- Table Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 320px;">
+            <input type="text" id="season-summary-search" class="form-input" placeholder="🔍 ค้นหาสมาชิก (รหัส/ชื่อ)" oninput="filterSeasonMemberSummary(this.value)" style="padding: 8px 12px; font-size: 0.85rem;">
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="exportSeasonToExcel()" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.85rem;">
+              <span>📥</span> ส่งออก Excel
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="printSeasonSummary()" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.85rem;">
+              <span>🖨️</span> พิมพ์รายงาน
+            </button>
+          </div>
+        </div>
+
+        <!-- Member Summary Table -->
+        <div class="table-container" style="max-height: 420px; overflow-y: auto;">
+          <table class="data-table" style="font-size: 0.88rem; width: 100%;">
+            <thead style="position: sticky; top: 0; background: var(--bg-surface); z-index: 2;">
+              <tr>
+                <th style="width: 50px; text-align: center;">ลำดับ</th>
+                <th style="width: 90px; text-align: center;">รหัสสมาชิก</th>
+                <th>ชื่อ-นามสกุล</th>
+                <th style="width: 90px; text-align: center;">จำนวนเที่ยว</th>
+                <th style="width: 140px; text-align: right;">น้ำหนักรวม (กก.)</th>
+                <th style="width: 150px; text-align: right;">ยอดเงินรวม (บาท)</th>
+              </tr>
+            </thead>
+            <tbody id="season-summary-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <button type="button" class="btn btn-danger btn-sm" onclick="confirmCloseSeason()" style="display: flex; align-items: center; gap: 6px;">
+          <span>🔒</span> ปิดฤดูกาลนี้ (สิ้นสุดหน้ายาง)
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeSeasonSummaryModal()">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="create-season-modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem;">
+          <span>🌱</span> เปิดฤดูกาลรับซื้อใหม่
+        </h3>
+        <button type="button" class="modal-close" onclick="closeCreateSeasonModal()">✕</button>
+      </div>
+      
+      <div class="modal-body" style="padding: 20px;">
+        <div style="background: rgba(234, 179, 8, 0.1); border-left: 4px solid var(--warning); padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 0.85rem; color: var(--text-primary);">
+          ⚠️ <strong>คำแนะนำ:</strong> การเปิดฤดูกาลใหม่จะทำการ <span style="color: var(--warning); font-weight: bold;">ปิดสถานะของฤดูกาลเดิม</span> ทันที เพื่อเริ่มต้นบันทึกข้อมูลการรับซื้อของปี/ฤดูกาลใหม่
+        </div>
+        
+        <div class="form-group mb-2">
+          <label class="form-label" for="new-season-name-input" style="font-weight: 600;">ชื่อฤดูกาล <span style="color: var(--danger);">*</span></label>
+          <input type="text" id="new-season-name-input" class="form-input" placeholder="เช่น ฤดูกาล 2567 หรือ ฤดูกาล 2568" autocomplete="off" onkeydown="if(event.key === 'Enter') saveNewSeason()">
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeCreateSeasonModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="btn-save-season" onclick="saveNewSeason()">
+          ✅ ยืนยันเปิดฤดูกาล
+        </button>
+      </div>
+    </div>
+  </div>
+
+<!-- ===== AUTO-UPDATE FLOATING NOTIFICATION BANNER ===== -->
   <div id="auto-updater-banner" style="display:none; position:fixed; bottom:24px; right:24px; z-index:99999; background:rgba(15, 23, 42, 0.96); border:1px solid rgba(56, 189, 248, 0.4); box-shadow:0 12px 30px rgba(0,0,0,0.6); backdrop-filter:blur(14px); padding:16px 20px; border-radius:14px; max-width:440px; color:#f8fafc; font-family:inherit; animation: slideUpFade 0.3s ease-out;">
     <div style="display:flex; align-items:center; gap:14px;">
       <div id="updater-icon" style="font-size:1.6rem; flex-shrink:0;">🔔</div>

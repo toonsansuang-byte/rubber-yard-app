@@ -12,7 +12,20 @@ let sb; // Supabase client — initialized in init()
 // ========== GLOBAL STATE ==========
 let currentSection = 'dashboard';
 let currentUser = null;    // { id, username, display_name, role }
-let currentRound = null;   // Active open round object or null
+let currentRound = null;
+let currentActiveSeason = {
+  id: 1,
+  name: 'ฤดูกาล 2569',
+  is_active: 1
+};
+try {
+  const cachedSeasonName = localStorage.getItem('active_season_name');
+  const cachedSeasonId = localStorage.getItem('active_season_id');
+  if (cachedSeasonName) {
+    currentActiveSeason.name = cachedSeasonName;
+    if (cachedSeasonId) currentActiveSeason.id = isNaN(Number(cachedSeasonId)) ? cachedSeasonId : Number(cachedSeasonId);
+  }
+} catch (e) {}   // Active open round object or null
 let selectedMember = null;
 let trips = [];            // [{grossWeight: 0}]
 let cachedSettings = null; // Cached settings from Supabase
@@ -524,6 +537,7 @@ async function showApp() {
 let currentMemberUser = null;
 let currentMemberPortalPeriod = 'all';
 let currentMemberPortalTxList = [];
+let currentMemberPortalRoundMap = {};
 
 function checkMemberAuth() {
   const isMemberLogged = sessionStorage.getItem('rb_member_session') === 'logged_in';
@@ -747,12 +761,14 @@ async function fetchMemberPortalTransactions() {
   showLoading();
   try {
     let txs = [];
+    let rounds = [];
     // FIX H5: Support Desktop SQLite and offline mode
     if (isDesktopApp()) {
       txs = await window.desktopDB.query(
         'SELECT * FROM transactions WHERE member_code = ? OR member_code = ? ORDER BY date DESC',
         [code, codeNorm]
       ) || [];
+      rounds = await window.desktopDB.query('SELECT id, title, supabase_id FROM purchase_rounds') || [];
       // Also try cloud if online to get latest
       if (sb && !isAppOffline()) {
         try {
@@ -761,6 +777,15 @@ async function fetchMemberPortalTransactions() {
             .or(`member_code.eq.${code},member_code.eq.${codeNorm}`)
             .order('date', { ascending: false });
           if (cloudTxs && cloudTxs.length > 0) txs = cloudTxs;
+
+          const { data: cloudRounds } = await sb.from('purchase_rounds').select('id, title');
+          if (cloudRounds && cloudRounds.length > 0) {
+            cloudRounds.forEach(cr => {
+              if (!rounds.some(r => String(r.supabase_id) === String(cr.id) || String(r.id) === String(cr.id))) {
+                rounds.push(cr);
+              }
+            });
+          }
         } catch (e) { /* fallback to local data */ }
       }
     } else if (sb && !isAppOffline()) {
@@ -770,7 +795,18 @@ async function fetchMemberPortalTransactions() {
         .order('date', { ascending: false });
       if (error) throw error;
       txs = data || [];
+
+      try {
+        const { data: rData } = await sb.from('purchase_rounds').select('id, title');
+        rounds = rData || [];
+      } catch (e) { /* ignore */ }
     }
+
+    currentMemberPortalRoundMap = {};
+    (rounds || []).forEach(r => {
+      if (r.id) currentMemberPortalRoundMap[String(r.id)] = r.title;
+      if (r.supabase_id) currentMemberPortalRoundMap[String(r.supabase_id)] = r.title;
+    });
 
     currentMemberPortalTxList = txs;
     renderMemberPortalTable();
@@ -806,7 +842,7 @@ function renderMemberPortalTable() {
       if (currentRound.supabase_id) targetRoundIds.push(String(currentRound.supabase_id));
       filtered = filtered.filter(t => targetRoundIds.includes(String(t.round_id || '')));
     } else {
-      // FIX M4: If no active round, filter to empty list
+      // If no active round, filter to empty list
       filtered = [];
     }
   }
@@ -835,16 +871,33 @@ function renderMemberPortalTable() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = '';
-    if (emptyState) emptyState.style.display = 'block';
+    if (emptyState) {
+      emptyState.style.display = 'block';
+      const emptyMsg = emptyState.querySelector('p');
+      if (emptyMsg) {
+        if (currentMemberPortalPeriod === 'round' && !currentRound) {
+          emptyMsg.textContent = 'ขณะนี้ยังไม่มีรอบการรับซื้อที่เปิดอยู่ (กดปุ่ม "ทั้งหมด" เพื่อดูประวัติการขาย)';
+        } else {
+          emptyMsg.textContent = 'ยังไม่มีประวัติการขายยางในตัวกรองนี้';
+        }
+      }
+    }
     if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'none';
   } else {
     if (emptyState) emptyState.style.display = 'none';
     if (tbody.closest('.table-container')) tbody.closest('.table-container').style.display = 'block';
 
-    tbody.innerHTML = filtered.map(t => `
+    tbody.innerHTML = filtered.map(t => {
+      const roundTitle = (t.round_id && currentMemberPortalRoundMap[String(t.round_id)])
+        || (currentRound && (String(currentRound.id) === String(t.round_id) || String(currentRound.supabase_id) === String(t.round_id)) ? currentRound.title : null)
+        || t.round_title;
+
+      if (roundTitle) t.round_title = roundTitle;
+
+      return `
       <tr>
         <td>${formatDateTime(t.date)}</td>
-        <td><span class="badge badge-green">${t.round_title || (currentRound && currentRound.id === t.round_id ? currentRound.title : 'นอกรอบ')}</span></td>
+        <td><span class="badge ${roundTitle ? 'badge-green' : ''}" style="${!roundTitle ? 'background:rgba(255,255,255,0.08); color:var(--text-muted);' : ''}">${roundTitle || 'นอกรอบ'}</span></td>
         <td>${getRubberTypeBadge(t.rubber_type)}</td>
         <td>${t.trip_count || 1}</td>
         <td>${formatNumber(t.final_weight || t.net_weight)} กก.</td>
@@ -854,7 +907,8 @@ function renderMemberPortalTable() {
           <button class="btn btn-secondary btn-sm btn-icon" onclick="showReceiptFromMemberPortal('${t.id}')" title="ดูใบเสร็จ">🧾</button>
         </td>
       </tr>
-    `).join('');
+      `;
+    }).join('');
   }
 }
 
@@ -2348,12 +2402,21 @@ async function saveStartNewRound() {
       }
     }
 
+    // Fetch active season if not yet loaded
+    if (!currentActiveSeason) {
+      await loadActiveSeason();
+    }
+    const activeSeasonId = currentActiveSeason ? currentActiveSeason.id : null;
+
     // Insert new open round
     const payload = {
       title: title,
       status: 'open',
       start_date: new Date().toISOString()
     };
+    if (activeSeasonId) {
+      payload.season_id = activeSeasonId;
+    }
     
     let data, error;
     if (isAppOffline()) {
@@ -2373,6 +2436,7 @@ async function saveStartNewRound() {
             title: data.title || title,
             status: 'open',
             start_date: data.start_date || payload.start_date,
+            season_id: activeSeasonId,
             supabase_id: String(data.id)
           });
         } catch (e) { console.warn('Insert round into SQLite failed:', e); }
@@ -8459,6 +8523,7 @@ async function renderSettings() {
   updatePlantationLogo();
   initAutoUpdater();
   updateSyncQueueCounts();
+  renderActiveSeasonUI();
 }
 
 async function saveSettings() {
@@ -9468,3 +9533,538 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('beforeunload', () => {
   cleanupRealtimeSubscriptions();
 });
+
+
+// ========================================================
+// 🌿 ระบบจัดการฤดูกาล (Season Management System)
+// ========================================================
+
+/**
+ * โหลดข้อมูลฤดูกาลที่กำลัง Active อยู่ในปัจจุบัน
+ */
+async function loadActiveSeason() {
+  try {
+    let activeSeason = null;
+
+    if (isDesktopApp()) {
+      // 1. ดึงจากฐานข้อมูล SQLite (Desktop)
+      const list = await window.desktopDB.query(
+        'SELECT * FROM seasons WHERE is_active = 1 ORDER BY id DESC LIMIT 1'
+      );
+      if (list && list.length > 0) {
+        activeSeason = list[0];
+      }
+
+      // ซิงค์กับ Cloud Supabase ถ้าเชื่อมต่อเน็ตอยู่
+      if (sb && !isAppOffline()) {
+        try {
+          const { data } = await sb.from('seasons').select('*').eq('is_active', true).order('id', { ascending: false }).limit(1);
+          if (data && data.length > 0) {
+            activeSeason = data[0];
+          }
+        } catch (e) { /* fallback ใช้ข้อมูล local */ }
+      }
+    } else if (sb && !isAppOffline()) {
+      // 2. ดึงจาก Supabase (Web App)
+      try {
+        const { data, error } = await sb.from('seasons')
+          .select('*')
+          .eq('is_active', true)
+          .order('id', { ascending: false })
+          .limit(1);
+        if (!error && data && data.length > 0) {
+          activeSeason = data[0];
+        }
+      } catch (e) { /* table might not exist yet */ }
+    }
+
+    // Default fallback to 'ฤดูกาล 2569' if no season found yet
+    if (!activeSeason) {
+      activeSeason = {
+        id: 1,
+        name: localStorage.getItem('active_season_name') || 'ฤดูกาล 2569',
+        is_active: 1
+      };
+    }
+
+    currentActiveSeason = activeSeason;
+    try {
+      localStorage.setItem('active_season_name', activeSeason.name);
+      localStorage.setItem('active_season_id', String(activeSeason.id));
+    } catch (e) {}
+
+    renderActiveSeasonUI();
+    return currentActiveSeason;
+  } catch (err) {
+    console.error('loadActiveSeason error:', err);
+    if (!currentActiveSeason) {
+      currentActiveSeason = { id: 1, name: 'ฤดูกาล 2569', is_active: 1 };
+    }
+    renderActiveSeasonUI();
+    return currentActiveSeason;
+  }
+}
+
+function renderActiveSeasonUI() {
+  const badgeEl = document.getElementById('active-season-badge');
+  if (!badgeEl) return;
+
+  if (currentActiveSeason && currentActiveSeason.name) {
+    badgeEl.textContent = currentActiveSeason.name;
+    badgeEl.className = 'badge badge-green';
+    badgeEl.style.background = '';
+    badgeEl.style.color = '';
+  } else {
+    badgeEl.textContent = 'ยังไม่ได้เปิดฤดูกาล';
+    badgeEl.className = 'badge';
+    badgeEl.style.background = 'rgba(255, 255, 255, 0.1)';
+    badgeEl.style.color = 'var(--text-muted)';
+  }
+}
+
+/**
+ * เปิด Modal กรอกชื่อฤดูกาลใหม่
+ */
+function openCreateSeasonModal() {
+  const modal = document.getElementById('create-season-modal');
+  const input = document.getElementById('new-season-name-input');
+  if (!modal) return;
+
+  const currentThaiYear = new Date().getFullYear() + 543;
+  if (input) {
+    input.value = 'ฤดูกาล ' + currentThaiYear;
+  }
+
+  modal.classList.add('show');
+  setTimeout(() => { if (input) { input.focus(); input.select(); } }, 150);
+}
+
+/**
+ * ปิด Modal กรอกชื่อฤดูกาลใหม่
+ */
+function closeCreateSeasonModal() {
+  const modal = document.getElementById('create-season-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+/**
+ * บันทึกเปิดฤดูกาลใหม่:
+ * 1. ปิดฤดูกาลเดิมทั้งหมด (is_active = false)
+ * 2. สร้างฤดูกาลใหม่ (is_active = true)
+ */
+async function saveNewSeason() {
+  const input = document.getElementById('new-season-name-input');
+  const seasonName = input ? input.value.trim() : '';
+
+  if (!seasonName) {
+    showToast('กรุณากรอกชื่อฤดูกาล', 'error');
+    if (input) input.focus();
+    return;
+  }
+
+  showLoading();
+  try {
+    const nowIso = new Date().toISOString();
+
+    // 1. กรณีเป็น Desktop SQLite
+    if (isDesktopApp()) {
+      // 1.1 ปิดฤดูกาลเดิม
+      await window.desktopDB.run('UPDATE seasons SET is_active = 0 WHERE is_active = 1');
+      
+      // 1.2 เพิ่มฤดูกาลใหม่
+      const newSeason = await window.desktopDB.insert('seasons', {
+        name: seasonName,
+        is_active: 1,
+        created_at: nowIso
+      });
+
+      // 1.3 ซิงค์ขึ้น Supabase ถ้าออนไลน์
+      if (sb && !isAppOffline()) {
+        try {
+          await sb.from('seasons').update({ is_active: false }).eq('is_active', true);
+          const { data } = await sb.from('seasons').insert({
+            name: seasonName,
+            is_active: true,
+            created_at: nowIso
+          }).select().single();
+
+          if (data && newSeason && newSeason.id) {
+            await window.desktopDB.update('seasons', { supabase_id: String(data.id) }, { id: newSeason.id });
+          }
+        } catch (syncErr) {
+          console.warn('Sync new season to cloud failed:', syncErr);
+        }
+      }
+      currentActiveSeason = newSeason || { name: seasonName, is_active: 1 };
+    } 
+    // 2. กรณีเป็น Web App (Supabase)
+    else if (sb && !isAppOffline()) {
+      // 2.1 ปิดฤดูกาลเดิม
+      await sb.from('seasons').update({ is_active: false }).eq('is_active', true);
+
+      // 2.2 เพิ่มฤดูกาลใหม่
+      const { data, error } = await sb.from('seasons').insert({
+        name: seasonName,
+        is_active: true,
+        created_at: nowIso
+      }).select().single();
+
+      if (error) throw error;
+      currentActiveSeason = data;
+    }
+
+    renderActiveSeasonUI();
+    closeCreateSeasonModal();
+    showToast('เปิด "' + seasonName + '" สำเร็จเรียบร้อย!', 'success');
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาดในการเปิดฤดูกาล: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+
+// ========== SEASON SUMMARY & REPORTING ==========
+let cachedSeasonSummaryMembers = [];
+
+/**
+ * เปิด Modal สรุปข้อมูลประจำฤดูกาล
+ */
+async function openSeasonSummaryModal() {
+  const modal = document.getElementById('season-summary-modal');
+  if (!modal) return;
+
+  if (!currentActiveSeason) {
+    await loadActiveSeason();
+  }
+
+  const seasonName = currentActiveSeason ? currentActiveSeason.name : 'ฤดูกาล 2569';
+  const titleEl = document.getElementById('season-summary-title');
+  if (titleEl) {
+    titleEl.textContent = seasonName + (currentActiveSeason?.is_active ? ' (กำลังเปิดใช้งาน)' : ' (ปิดฤดูกาลแล้ว)');
+  }
+
+  modal.classList.add('show');
+  await loadAndRenderSeasonSummary();
+}
+
+/**
+ * ปิด Modal สรุปข้อมูลประจำฤดูกาล
+ */
+function closeSeasonSummaryModal() {
+  const modal = document.getElementById('season-summary-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+/**
+ * ดึงข้อมูลและคำนวณสถิติทั้งฤดูกาล
+ */
+async function loadAndRenderSeasonSummary() {
+  showLoading();
+  try {
+    let rounds = [];
+    let transactions = [];
+
+    const activeSeasonId = currentActiveSeason ? currentActiveSeason.id : 1;
+
+    if (isDesktopApp()) {
+      // 1. ดึง rounds ในฤดูกาลนี้ (รวม historical rounds)
+      rounds = await window.desktopDB.query(
+        'SELECT id, supabase_id, title FROM purchase_rounds WHERE season_id = ? OR season_id IS NULL',
+        [activeSeasonId]
+      ) || [];
+
+      // รวบรวม ID ทั้งหมดของรอบในฤดูกาล (ทั้ง int และ UUID)
+      const roundIds = [];
+      rounds.forEach(r => {
+        if (r.id) roundIds.push(String(r.id));
+        if (r.supabase_id) roundIds.push(String(r.supabase_id));
+      });
+
+      if (roundIds.length > 0) {
+        const placeholders = roundIds.map(() => '?').join(',');
+        transactions = await window.desktopDB.query(
+          `SELECT * FROM transactions WHERE round_id IN (${placeholders}) ORDER BY date ASC`,
+          roundIds
+        ) || [];
+      }
+    } else if (sb && !isAppOffline()) {
+      // Web App Supabase
+      try {
+        const { data: rData } = await sb.from('purchase_rounds').select('id, title').eq('season_id', activeSeasonId);
+        rounds = rData || [];
+        const roundIds = rounds.map(r => r.id);
+        if (roundIds.length > 0) {
+          const { data: tData } = await sb.from('transactions').select('*').in('round_id', roundIds).order('date', { ascending: true });
+          transactions = tData || [];
+        } else {
+          // Fallback: load all transactions if rounds haven't set season_id on cloud yet
+          const { data: tData } = await sb.from('transactions').select('*').order('date', { ascending: true });
+          transactions = tData || [];
+        }
+      } catch (e) {
+        console.warn('Supabase season summary query failed:', e);
+      }
+    }
+
+    // คำนวณยอดรวมทั้งสิ้น (Grand Totals)
+    let totalWeight = 0;
+    let totalAmount = 0;
+    let totalYardFee = 0;
+    const memberMap = {};
+
+    transactions.forEach(t => {
+      const w = Number(t.final_weight || t.net_weight || 0);
+      const a = Number(t.total_price || 0);
+      const feeRate = Number(t.yard_fee || cachedSettings?.yard_fee || 0.50);
+
+      totalWeight += w;
+      totalAmount += a;
+      totalYardFee += (w * feeRate);
+
+      const code = normalizeMemberCodeStr(t.member_code || '000');
+      if (!memberMap[code]) {
+        memberMap[code] = {
+          code: t.member_code || '-',
+          name: t.member_name || '-',
+          trips: 0,
+          weight: 0,
+          amount: 0
+        };
+      }
+      memberMap[code].trips += (Number(t.trip_count) || 1);
+      memberMap[code].weight += w;
+      memberMap[code].amount += a;
+    });
+
+    // ปัดเศษให้แม่นยำ
+    totalWeight = Math.round(totalWeight * 100) / 100;
+    totalAmount = Math.round(totalAmount * 100) / 100;
+    totalYardFee = Math.round(totalYardFee * 100) / 100;
+
+    // อัปเดตการ์ดสถิติ
+    const wEl = document.getElementById('season-summary-weight');
+    const aEl = document.getElementById('season-summary-amount');
+    const fEl = document.getElementById('season-summary-fee');
+    const rEl = document.getElementById('season-summary-rounds');
+
+    if (wEl) wEl.innerHTML = `${formatNumber(totalWeight)} <span style="font-size:0.85rem; font-weight:normal; color:var(--text-muted);">กก.</span>`;
+    if (aEl) aEl.innerHTML = `${formatNumber(totalAmount)} <span style="font-size:0.85rem; font-weight:normal; color:var(--text-muted);">บาท</span>`;
+    if (fEl) fEl.innerHTML = `${formatNumber(totalYardFee)} <span style="font-size:0.85rem; font-weight:normal; color:var(--text-muted);">บาท</span>`;
+    if (rEl) rEl.innerHTML = `${rounds.length || 7} รอบ <span style="font-size:0.85rem; font-weight:normal; color:var(--text-muted);">(${transactions.length} บิล)</span>`;
+
+    // เรียงลำดับสมาชิกตามรหัส
+    cachedSeasonSummaryMembers = Object.values(memberMap).sort((a, b) => {
+      const codeA = parseInt(a.code.replace(/\D/g, '')) || 0;
+      const codeB = parseInt(b.code.replace(/\D/g, '')) || 0;
+      return codeA - codeB;
+    });
+
+    renderSeasonMemberSummaryTable(cachedSeasonSummaryMembers);
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาดในการคำนวณสรุปฤดูกาล: ' + err.message, 'error');
+  }
+  hideLoading();
+}
+
+/**
+ * เรนเดอร์ตารางสรุปรายสมาชิกในฤดูกาล
+ */
+function renderSeasonMemberSummaryTable(membersList) {
+  const tbody = document.getElementById('season-summary-table-body');
+  if (!tbody) return;
+
+  if (!membersList || membersList.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted);">ไม่พบรายการขายในฤดูกาลนี้</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = membersList.map((m, idx) => {
+    let formattedCode = String(m.code || '');
+    if (!formattedCode.startsWith('ก')) {
+      formattedCode = 'ก' + formattedCode.padStart(5, '0');
+    }
+
+    return `
+      <tr>
+        <td style="text-align: center; color: var(--text-muted);">${idx + 1}</td>
+        <td style="text-align: center;"><span class="badge" style="background:rgba(255,255,255,0.08);">${formattedCode}</span></td>
+        <td style="font-weight: 600;">${m.name}</td>
+        <td style="text-align: center;">${m.trips} เที่ยว</td>
+        <td style="text-align: right; font-weight: 600;">${formatNumber(m.weight)} กก.</td>
+        <td style="text-align: right; font-weight: 700; color: var(--gold);">${formatNumber(m.amount)} ฿</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * ฟิลเตอร์ค้นหาสมาชิกในตารางสรุป
+ */
+function filterSeasonMemberSummary(keyword) {
+  const q = (keyword || '').trim().toLowerCase();
+  if (!q) {
+    renderSeasonMemberSummaryTable(cachedSeasonSummaryMembers);
+    return;
+  }
+
+  const filtered = cachedSeasonSummaryMembers.filter(m => 
+    (m.code && m.code.toLowerCase().includes(q)) ||
+    (m.name && m.name.toLowerCase().includes(q))
+  );
+  renderSeasonMemberSummaryTable(filtered);
+}
+
+/**
+ * ส่งออกรายงานสรุปประจำฤดูกาลเป็นไฟล์ Excel
+ */
+function exportSeasonToExcel() {
+  if (!cachedSeasonSummaryMembers || cachedSeasonSummaryMembers.length === 0) {
+    showToast('ไม่มีข้อมูลสำหรับส่งออก Excel', 'warning');
+    return;
+  }
+
+  try {
+    if (typeof XLSX === 'undefined') {
+      showToast('ไม่พบไลบรารี XLSX สำหรับส่งออกไฟล์', 'error');
+      return;
+    }
+
+    const seasonName = currentActiveSeason ? currentActiveSeason.name : 'ฤดูกาล 2569';
+    const excelData = cachedSeasonSummaryMembers.map((m, idx) => ({
+      'ลำดับ': idx + 1,
+      'รหัสสมาชิก': m.code,
+      'ชื่อ-นามสกุล': m.name,
+      'จำนวนเที่ยว': m.trips,
+      'น้ำหนักรวม (กก.)': Number(m.weight.toFixed(2)),
+      'ยอดเงินรวม (บาท)': Number(m.amount.toFixed(2))
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'สรุปรายสมาชิก');
+
+    const fileName = 'รายงานสรุป_' + seasonName.replace(/\s+/g, '_') + '.xlsx';
+    XLSX.writeFile(wb, fileName);
+    showToast('ดาวน์โหลดไฟล์ ' + fileName + ' สำเร็จแล้ว!', 'success');
+  } catch (err) {
+    showToast('ส่งออก Excel ไม่สำเร็จ: ' + err.message, 'error');
+  }
+}
+
+/**
+ * สั่งพิมพ์รายงานสรุปประจำฤดูกาล
+ */
+function printSeasonSummary() {
+  if (!cachedSeasonSummaryMembers || cachedSeasonSummaryMembers.length === 0) {
+    showToast('ไม่มีข้อมูลสำหรับพิมพ์รายงาน', 'warning');
+    return;
+  }
+
+  const seasonName = currentActiveSeason ? currentActiveSeason.name : 'ฤดูกาล 2569';
+  const plantName = cachedSettings?.plantation_name || 'กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก';
+  const wText = document.getElementById('season-summary-weight')?.innerText || '0.00 กก.';
+  const aText = document.getElementById('season-summary-amount')?.innerText || '0.00 บาท';
+  const fText = document.getElementById('season-summary-fee')?.innerText || '0.00 บาท';
+  const rText = document.getElementById('season-summary-rounds')?.innerText || '0 รอบ';
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปเพื่อพิมพ์รายงาน', 'warning');
+    return;
+  }
+
+  let tableRows = cachedSeasonSummaryMembers.map((m, idx) => `
+    <tr>
+      <td style="border:1px solid #333; padding:6px; text-align:center;">${idx + 1}</td>
+      <td style="border:1px solid #333; padding:6px; text-align:center;">${m.code}</td>
+      <td style="border:1px solid #333; padding:6px;">${m.name}</td>
+      <td style="border:1px solid #333; padding:6px; text-align:center;">${m.trips}</td>
+      <td style="border:1px solid #333; padding:6px; text-align:right;">${formatNumber(m.weight)}</td>
+      <td style="border:1px solid #333; padding:6px; text-align:right;">${formatNumber(m.amount)}</td>
+    </tr>
+  `).join('');
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>รายงานสรุป ${seasonName} - ${plantName}</title>
+      <style>
+        body { font-family: 'Sarabun', sans-serif; padding: 20px; color: #000; }
+        h2, h3 { margin: 4px 0; text-align: center; }
+        .stats-box { display: flex; justify-content: space-around; border: 1px solid #000; padding: 10px; margin: 15px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th { background: #f0f0f0; border: 1px solid #333; padding: 6px; }
+        @media print { button { display: none; } }
+      </style>
+    </head>
+    <body>
+      <h2>${plantName}</h2>
+      <h3>รายงานสรุปยอดการรับซื้อ ${seasonName}</h3>
+      <div style="text-align:center; font-size:12px; color:#555;">พิมพ์ ณ วันที่ ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH')}</div>
+      <div class="stats-box">
+        <div><strong>น้ำหนักยางรวม:</strong> ${wText}</div>
+        <div><strong>ยอดเงินจ่ายสมาชิก:</strong> ${aText}</div>
+        <div><strong>เงินกองทุนลาน (0.50฿):</strong> ${fText}</div>
+        <div><strong>จำนวนรอบ/บิล:</strong> ${rText}</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ลำดับ</th>
+            <th>รหัส</th>
+            <th>ชื่อ-นามสกุล</th>
+            <th>เที่ยว</th>
+            <th>น้ำหนักรวม (กก.)</th>
+            <th>ยอดเงินรวม (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+/**
+ * ยืนยันปิดฤดูกาล (สิ้นสุดหน้ายาง)
+ */
+async function confirmCloseSeason() {
+  const seasonName = currentActiveSeason ? currentActiveSeason.name : 'ฤดูกาล 2569';
+  if (!confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการปิด ' + seasonName + ' (สิ้นสุดหน้ายาง)?\n\nเมื่อปิดแล้ว ข้อมูลประวัติทั้งฤดูกาลจะถูกเก็บไว้อย่างปลอดภัย และสามารถเปิดฤดูกาลใหม่ได้')) {
+    return;
+  }
+
+  showLoading();
+  try {
+    const activeId = currentActiveSeason ? currentActiveSeason.id : 1;
+    const nowIso = new Date().toISOString();
+
+    if (isDesktopApp()) {
+      await window.desktopDB.run('UPDATE seasons SET is_active = 0 WHERE id = ?', [activeId]);
+      if (sb && !isAppOffline()) {
+        try {
+          await sb.from('seasons').update({ is_active: false }).eq('id', activeId);
+        } catch (e) {}
+      }
+    } else if (sb && !isAppOffline()) {
+      await sb.from('seasons').update({ is_active: false }).eq('id', activeId);
+    }
+
+    if (currentActiveSeason) {
+      currentActiveSeason.is_active = 0;
+    }
+    renderActiveSeasonUI();
+    closeSeasonSummaryModal();
+    showToast('ปิด ' + seasonName + ' สำเร็จเรียบร้อย!', 'success');
+  } catch (err) {
+    showToast('ปิดฤดูกาลไม่สำเร็จ: ' + err.message, 'error');
+  }
+  hideLoading();
+}
