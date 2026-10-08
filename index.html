@@ -144,6 +144,10 @@
         <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
           <span class="nav-icon">👥</span> สมาชิก
         </a>
+        <a class="sidebar-link" onclick="navigateTo('store-inventory')" id="nav-store-inventory">
+          <span class="nav-icon">🛒</span> ร้านค้า/เคมีภัณฑ์
+        </a>
+
         <a class="sidebar-link" onclick="navigateTo('announcements')" id="nav-announcements">
           <span class="nav-icon">📢</span> จัดการประกาศ
         </a>
@@ -1122,7 +1126,7 @@
                 <button type="button" class="btn btn-primary" id="btn-force-sync" onclick="forceSyncData()" style="padding:14px 28px; font-weight:600; display:inline-flex; align-items:center; gap:10px; font-size:0.95rem;">
                   ⚡ บังคับซิงค์ข้อมูลเดี๋ยวนี้ (Force Sync)
                 </button>
-                <button type="button" class="btn btn-secondary" onclick="updateSyncQueueCounts()" style="padding:14px 20px;">
+                <button type="button" class="btn btn-secondary" onclick="updateSyncQueueCounts(true)" style="padding:14px 20px;">
                   🔄 รีเฟรชสถานะคิว
                 </button>
               </div>
@@ -1166,6 +1170,292 @@
         </div>
 
       </div>
+
+    
+    <!-- ===== STORE & INVENTORY SECTION (POS PART 2) ===== -->
+    <div class="section" id="section-store-inventory">
+      <!-- Section Header -->
+      <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0; font-size:1.4rem; display:flex; align-items:center; gap:8px;">
+            <span>🛒</span> ร้านค้าลานยาง & เคมีภัณฑ์
+          </h2>
+          <p style="margin:4px 0 0 0; color:var(--text-muted); font-size:0.88rem;">
+            ระบบขายสินค้าหน้าร้าน (POS), จัดการคลังปุ๋ย/เคมีภัณฑ์ และประวัติการซื้อของสมาชิก
+          </p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="initStoreSection()" title="รีเฟรชข้อมูล">
+            🔄 รีเฟรช
+          </button>
+        </div>
+      </div>
+
+      <!-- Store Sub-Tabs Navigation -->
+      <div class="store-tabs-nav" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary store-tab-btn active" id="tab-btn-pos" onclick="switchStoreTab('pos')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>🏷️</span> ขายสินค้าหน้าร้าน (POS)
+        </button>
+        <button type="button" class="btn btn-secondary store-tab-btn" id="tab-btn-inventory" onclick="switchStoreTab('inventory')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>📦</span> คลังสินค้า & ราคาขาย
+        </button>
+        <button type="button" class="btn btn-secondary store-tab-btn" id="tab-btn-history" onclick="switchStoreTab('history')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>📜</span> ประวัติการขาย & สมาชิก
+        </button>
+      </div>
+
+      <!-- ===== TAB 1: POS FRONT-COUNTER SALE ===== -->
+      <div id="store-tab-pos" class="store-tab-content">
+        <div class="pos-container" style="display: grid; grid-template-columns: 1fr 430px; gap: 20px; align-items: start;">
+          <!-- Left Column: Products Catalog & Search -->
+          <div class="pos-catalog-column">
+            <div class="glass-card mb-3" style="padding: 14px 18px;">
+              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 220px; position: relative;">
+                  <input type="text" id="pos-product-search" class="form-input" placeholder="🔍 ค้นหาสินค้า เช่น ปุ๋ย, น้ำกรด, อุปกรณ์..." oninput="filterPosProducts(this.value)">
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="pos-products-count-badge">
+                  ทั้งหมด 0 รายการ
+                </div>
+              </div>
+            </div>
+
+            <!-- Product Grid Cards -->
+            <div id="pos-products-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
+              <!-- Dynamically populated product cards -->
+            </div>
+
+            <!-- Empty Product Catalog State -->
+            <div id="pos-products-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">📦</div>
+              <h4 style="margin: 0 0 6px 0; color: var(--text-primary);">ไม่พบรายการสินค้า</h4>
+              <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">ลองเปลี่ยนคำค้นหา หรือเพิ่มสินค้าในแท็บ "คลังสินค้า & ราคาขาย"</p>
+            </div>
+          </div>
+
+          <!-- Right Column: Cart, Member Selector, Cash & Change -->
+          <div class="pos-cart-column">
+            <div class="glass-card" style="padding: 18px 20px; border-left: 4px solid var(--accent);">
+              <!-- Cart Header -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);">
+                <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+                  <span>🛒</span> ตะกร้าสินค้า
+                </h3>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="clearPosCart()" style="font-size: 0.78rem; padding: 4px 8px; color: var(--text-muted);">
+                  🗑️ ล้างตะกร้า
+                </button>
+              </div>
+
+              <!-- Member / Customer Selection Box -->
+              <div class="form-group mb-3" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <label class="form-label" style="font-size: 0.85rem; font-weight: 600; margin: 0;">👤 ข้อมูลผู้ซื้อ / สมาชิก</label>
+                  <span id="pos-member-type-badge" class="badge badge-gray" style="font-size: 0.72rem;">ลูกค้าทั่วไป</span>
+                </div>
+
+                <!-- Member Search Container -->
+                <div id="pos-member-search-box" style="position: relative;">
+                  <input type="text" id="pos-member-search" class="form-input" style="font-size: 0.88rem;" placeholder="🔍 ค้นหารหัสหรือชื่อสมาชิก (เว้นว่าง = ลูกค้าทั่วไป)" oninput="searchPosMember(this.value)" onkeydown="handlePosMemberKeydown(event)" autocomplete="off">
+                  <div id="pos-member-list" class="member-search-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:220px; overflow-y:auto; z-index:100; box-shadow:var(--shadow-lg);"></div>
+                </div>
+
+                <!-- Selected Member Card -->
+                <div id="pos-selected-member-card" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 8px 12px; margin-top: 8px; align-items: center; justify-content: space-between;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span class="member-code-badge" id="pos-selected-member-code" style="font-size: 0.8rem;">ก00000</span>
+                      <strong id="pos-selected-member-name" style="font-size: 0.92rem; color: var(--text-primary);">-</strong>
+                    </div>
+                    <div id="pos-selected-member-phone" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">เบอร์โทร: -</div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="clearPosMember()" style="padding: 2px 8px; font-size: 0.75rem;">✕ ยกเลิก</button>
+                </div>
+
+                <!-- Custom Customer Name Input (Shown when no member is selected) -->
+                <div id="pos-custom-customer-box" style="margin-top: 8px;">
+                  <input type="text" id="pos-custom-customer-name" class="form-input" style="font-size: 0.85rem;" placeholder="ระบุชื่อลูกค้า (ถ้ามี) เช่น นายมานพ หรือ ลูกค้าทั่วไป" value="ลูกค้าทั่วไป">
+                </div>
+              </div>
+
+              <!-- Cart Items List Container -->
+              <div id="pos-cart-items-container" style="max-height: 240px; overflow-y: auto; margin-bottom: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgba(0, 0, 0, 0.15);">
+                <div id="pos-cart-items-list">
+                  <!-- Dynamically rendered cart rows -->
+                </div>
+                <div id="pos-cart-empty-message" style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.88rem;">
+                  🛒 ยังไม่มีสินค้าในตะกร้า<br>
+                  <span style="font-size: 0.78rem;">(คลิกเลือกสินค้าจากการ์ดด้านซ้ายมือ)</span>
+                </div>
+              </div>
+
+              <!-- Cart Summary & Calculation -->
+              <div class="calc-result" style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 14px;">
+                <div class="calc-row" style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                  <span class="label" style="font-size: 0.88rem; color: var(--text-secondary);">จำนวนสินค้า:</span>
+                  <span class="value" id="pos-total-items-count" style="font-weight: 600; color: var(--text-primary);">0 ชิ้น</span>
+                </div>
+                <div class="calc-row" style="display:flex; justify-content:space-between; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                  <span class="label" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">💰 ยอดรวมทั้งสิ้น:</span>
+                  <span class="value" id="pos-total-amount" style="font-size: 1.25rem; font-weight: 800; color: var(--gold);">0.00 บาท</span>
+                </div>
+
+                <!-- Cash Received Input -->
+                <div class="form-group mb-2">
+                  <label class="form-label" for="pos-cash-received" style="font-size: 0.85rem; font-weight: 600;">💵 รับเงินสด (บาท):</label>
+                  <input type="number" id="pos-cash-received" class="form-input" style="font-size: 1.15rem; font-weight: 700; text-align: right;" placeholder="0.00" min="0" step="any" oninput="calculatePosChange()">
+                </div>
+
+                <!-- Quick Cash Presets -->
+                <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash('exact')" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">พอดี</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(100)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">100</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(500)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">500</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(1000)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">1,000</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(2000)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">2,000</button>
+                </div>
+
+                <!-- Change Display Banner -->
+                <div id="pos-change-banner" style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.9rem; color: var(--text-secondary);">เงินทอน:</span>
+                  <span id="pos-change-amount" style="font-size: 1.15rem; font-weight: 700; color: var(--text-muted);">0.00 บาท</span>
+                </div>
+              </div>
+
+              <!-- Submit Sale & Print Receipt Button -->
+              <button type="button" class="btn btn-primary btn-block" id="btn-submit-pos-sale" onclick="submitPosSale()" style="padding: 14px; font-size: 1.05rem; font-weight: 700; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
+                💾 บันทึกการขาย & พิมพ์ใบเสร็จ (F9)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB 2: INVENTORY & PRICES ===== -->
+      <div id="store-tab-inventory" class="store-tab-content" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div style="max-width: 360px; flex: 1;">
+            <input type="text" id="store-search-input" class="form-input" placeholder="🔍 ค้นหาชื่อสินค้า หรือหน่วยนับ..." oninput="filterStoreProducts(this.value)">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="openProductModal()" style="display: flex; align-items: center; gap: 6px;">
+            <span>➕</span> เพิ่มสินค้าใหม่
+          </button>
+        </div>
+
+        <!-- Products Table -->
+        <div class="glass-card table-container" id="store-products-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 50px; text-align: center;">ลำดับ</th>
+                <th>ชื่อสินค้า</th>
+                <th style="text-align: right; width: 120px;">ราคาทุน</th>
+                <th style="text-align: right; width: 120px;">ราคาขาย</th>
+                <th style="text-align: right; width: 120px;">กำไร/หน่วย</th>
+                <th style="text-align: right; width: 140px;">สต๊อกคงเหลือ</th>
+                <th style="text-align: center; width: 130px; white-space: nowrap;">สถานะ</th>
+                <th style="text-align: center; width: 150px; white-space: nowrap;">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="store-products-table-body">
+              <!-- Dynamically populated by js/store.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div id="store-products-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">📦</div>
+          <h3 style="margin: 0 0 6px 0; color: var(--text-primary);">ยังไม่มีรายการสินค้า</h3>
+          <p style="margin: 0 0 16px 0; color: var(--text-muted); font-size: 0.9rem;">เริ่มต้นเพิ่มรายการปุ๋ย น้ำกรดยาง หรืออุปกรณ์ทำสวนยางได้เลย</p>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openProductModal()">
+            ➕ เพิ่มสินค้าชิ้นแรก
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== TAB 3: SALES HISTORY & MEMBER PURCHASES ===== -->
+      <div id="store-tab-history" class="store-tab-content" style="display: none;">
+        <!-- Filters & KPI Bar -->
+        <div class="glass-card mb-3" style="padding: 16px 18px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+            <!-- Filter by Member -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-member-filter">👤 กรองตามสมาชิก</label>
+              <select id="store-history-member-filter" class="form-select" onchange="filterStoreSalesHistory()">
+                <option value="">-- ทั้งหมด (ทุกสมาชิก / ลูกค้าทั่วไป) --</option>
+              </select>
+            </div>
+            <!-- Search Text -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-search">🔍 ค้นหาเลขที่บิล / ผู้ซื้อ</label>
+              <input type="text" id="store-history-search" class="form-input" placeholder="พิมพ์เลขบิล หรือชื่อ..." oninput="filterStoreSalesHistory()">
+            </div>
+            <!-- Date Filter -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-date-filter">📅 กรองตามวันที่</label>
+              <input type="date" id="store-history-date-filter" class="form-input" onchange="filterStoreSalesHistory()">
+            </div>
+          </div>
+
+          <!-- KPI Cards -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">💰 ยอดขายรวมตามตัวกรอง</div>
+              <div id="store-kpi-total-amount" style="font-size: 1.35rem; font-weight: 700; color: var(--gold); margin-top: 2px;">0.00 ฿</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">🧾 จำนวนบิลทั้งหมด</div>
+              <div id="store-kpi-total-bills" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin-top: 2px;">0 บิล</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">📦 จำนวนชิ้น/กระสอบที่ขาย</div>
+              <div id="store-kpi-total-items" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin-top: 2px;">0 ชิ้น</div>
+            </div>
+          </div>
+
+          <!-- Member Specific Banner (Active when member filter is selected) -->
+          <div id="store-history-member-banner" style="display: none; margin-top: 12px; background: rgba(212, 168, 67, 0.1); border: 1px solid rgba(212, 168, 67, 0.3); border-radius: var(--radius-sm); padding: 10px 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge badge-gold" id="store-history-member-banner-code">ก00000</span>
+                <strong id="store-history-member-banner-name" style="font-size: 1rem; color: var(--text-primary);">-</strong>
+              </div>
+              <div style="font-size: 0.88rem; color: var(--text-secondary);">
+                ยอดซื้อสะสม: <strong id="store-history-member-banner-total" style="color: var(--gold);">0.00 บาท</strong> (<span id="store-history-member-banner-count">0</span> บิล)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sales History Table -->
+        <div class="glass-card table-container" id="store-history-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 45px; text-align: center;">ลำดับ</th>
+                <th style="width: 140px;">วันที่-เวลา</th>
+                <th style="width: 140px;">เลขที่ใบเสร็จ</th>
+                <th>สมาชิก / ผู้ซื้อ</th>
+                <th>รายการสินค้า</th>
+                <th style="text-align: right; width: 110px;">ยอดรวม</th>
+                <th style="width: 110px;">ผู้บันทึก</th>
+                <th style="text-align: center; width: 100px;">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="store-history-table-body">
+              <!-- Dynamically populated by js/store.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty History State -->
+        <div id="store-history-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">📜</div>
+          <h4 style="margin: 0 0 6px 0; color: var(--text-primary);">ไม่พบประวัติการขาย</h4>
+          <p style="margin: 0; color: var(--text-muted); font-size: 0.88rem;">ยังไม่มีรายการขายตามเงื่อนไขที่เลือก</p>
+        </div>
+      </div>
+    </div>
 
     </main>
   </div>
@@ -1488,6 +1778,30 @@
         <div style="display:flex; gap:8px;">
           <button class="btn btn-secondary" onclick="closeReceiptModal()">ปิด</button>
           <button class="btn btn-primary" onclick="printReceipt()">🖨️ พิมพ์ใบเสร็จ (A4 แผ่นเดียว)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STORE RECEIPT MODAL (POS / FERTILIZER) ===== -->
+  <div class="modal-overlay" id="store-receipt-modal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          🧾 ใบเสร็จรับเงินร้านค้า / เคมีภัณฑ์
+        </h3>
+        <button class="modal-close" onclick="closeStoreReceiptModal()">✕</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <div class="receipt-content" id="store-receipt-content"></div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="font-size:0.82rem; color:var(--text-secondary);">
+          📄 สั่งพิมพ์ 2 สำเนา (ลูกค้า 1 ใบ / ร้านค้า 1 ใบ ใน A4 แผ่นเดียว พร้อมรอยปรุตัด)
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="closeStoreReceiptModal()">ปิด</button>
+          <button class="btn btn-primary" onclick="printStoreReceipt()">🖨️ พิมพ์ใบเสร็จ (A4 แผ่นเดียว)</button>
         </div>
       </div>
     </div>
@@ -2094,6 +2408,85 @@
   <!-- Local JS Libraries for 100% Offline Support -->
   <script src="libs/xlsx.full.min.js"></script>
   <script src="libs/supabase.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/db.js"></script>
+    <script src="js/auth.js"></script>
+  <script src="js/members.js"></script>
+    <script src="js/purchase.js"></script>
+  <script src="js/rounds.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/history.js"></script>
+    <script src="js/store.js"></script>
   <script src="app.js"></script>
+
+  <!-- ===== PRODUCT MODAL (ADD / EDIT) ===== -->
+  <div class="modal-overlay" id="product-modal">
+    <div class="modal-content" style="max-width: 480px; width: 95%;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <h3 id="product-modal-title" style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          ➕ เพิ่มสินค้าใหม่
+        </h3>
+        <button type="button" class="modal-close" onclick="closeProductModal()">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px 0;">
+        <div class="form-group mb-3">
+          <label class="form-label" for="product-name-input" style="font-weight:600;">ชื่อสินค้า <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="product-name-input" class="form-input" placeholder="เช่น ปุ๋ยอินทรีย์ 25-7-7 ตราดาว หรือ น้ำกรดยาง 99%" autocomplete="off">
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;" class="mb-2">
+          <div class="form-group">
+            <label class="form-label" for="product-cost-input" style="font-weight:600;">ราคาทุน (รับมา) <span style="font-size:0.8rem; color:var(--text-muted);">(บาท)</span></label>
+            <input type="number" id="product-cost-input" class="form-input" placeholder="0.00" step="0.5" min="0" oninput="calculateProductProfit()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="product-price-input" style="font-weight:600;">ราคาขาย (หน้าร้าน) <span style="color:var(--danger);">*</span> <span style="font-size:0.8rem; color:var(--text-muted);">(บาท)</span></label>
+            <input type="number" id="product-price-input" class="form-input" placeholder="0.00" step="0.5" min="0" oninput="calculateProductProfit()">
+          </div>
+        </div>
+
+        <!-- Profit Preview Banner -->
+        <div id="product-profit-preview" style="background: rgba(34, 197, 94, 0.1); border: 1px dashed rgba(34, 197, 94, 0.4); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 14px; font-size: 0.88rem; display: flex; align-items: center; justify-content: space-between;">
+          <span style="color: var(--text-secondary);">💰 กำไรส่วนต่างต่อหน่วย:</span>
+          <span id="product-profit-text" style="font-weight: 700; color: #22c55e;">+0.00 บาท (+0.0%)</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;" class="mb-3">
+          <div class="form-group">
+            <label class="form-label" for="product-stock-input" style="font-weight:600;">สต๊อกคงเหลือ <span style="color:var(--danger);">*</span></label>
+            <input type="number" id="product-stock-input" class="form-input" placeholder="0" step="1" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="product-unit-input" style="font-weight:600;">หน่วยนับ</label>
+            <input type="text" id="product-unit-input" class="form-input" placeholder="กระสอบ, แกลลอน, ขวด, ชิ้น" list="product-unit-presets" oninput="calculateProductProfit()">
+            <datalist id="product-unit-presets">
+              <option value="กระสอบ">
+              <option value="แกลลอน">
+              <option value="ขวด">
+              <option value="ชิ้น">
+              <option value="เล่ม">
+              <option value="มัด">
+              <option value="ถุง">
+            </datalist>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="product-active-select" style="font-weight:600;">สถานะการขาย</label>
+          <select id="product-active-select" class="form-select">
+            <option value="1">🟢 เปิดขายปกติ</option>
+            <option value="0">⚪ พักจำหน่าย</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--border); padding-top:14px;">
+        <button type="button" class="btn btn-secondary" onclick="closeProductModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="saveProduct()">💾 บันทึกสินค้า</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

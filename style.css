@@ -2109,3 +2109,97 @@ input:checked + .slider:before {
   border-color: #10b981 !important;
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
+
+/* ===== STORE POS & TABS STYLES ===== */
+.store-tab-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.store-tab-btn:hover {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.store-tab-btn.active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.pos-product-card {
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  user-select: none;
+}
+.pos-product-card:hover {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+}
+.pos-product-card:active {
+  transform: translateY(0);
+}
+.pos-product-card.out-of-stock {
+  opacity: 0.55;
+  border-color: rgba(239, 68, 68, 0.3);
+  cursor: not-allowed;
+}
+
+.pos-cart-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  transition: background 0.15s ease;
+}
+.pos-cart-row:last-child {
+  border-bottom: none;
+}
+.pos-cart-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pos-qty-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pos-qty-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .pos-container {
+    grid-template-columns: 1fr !important;
+  }
+}
+
