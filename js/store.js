@@ -958,7 +958,7 @@
         <div style="text-align:center; margin-bottom:4px; border-bottom:1.5px solid #000; padding-bottom:3px;">
           <div style="font-size:16px; font-weight:900; color:#000; letter-spacing:0.5px;">${plantName}</div>
           <div style="font-size:11px; color:#222; margin-top:1px;">${plantAddress}</div>
-          <div style="font-size:12.5px; font-weight:bold; color:#000; margin-top:2px; text-decoration:underline;">ใบเสร็จรับเงิน / ใบส่งสินค้า (ร้านค้าสหกรณ์ & เคมีภัณฑ์)</div>
+          <div style="font-size:12.5px; font-weight:bold; color:#000; margin-top:2px; text-decoration:underline;">ใบเสร็จรับเงิน / ใบส่งสินค้า</div>
         </div>
 
         <!-- Meta Info Table (2 Columns) -->
@@ -1158,8 +1158,8 @@
   // 9. SALES HISTORY & MEMBER PURCHASES
   // ==========================================
 
-  async function renderStoreSalesHistory() {
-    if (typeof showLoading === 'function') showLoading();
+  async function renderStoreSalesHistory(silent = false) {
+    if (!silent && typeof showLoading === 'function') showLoading();
 
     try {
       let sales = [];
@@ -1169,6 +1169,56 @@
       if (isDesktop) {
         sales = await window.desktopDB.select('store_transactions', ['*']);
         sales = sales || [];
+
+        // If online, sync down any new cloud store transactions
+        if (isOnline) {
+          try {
+            const { data: cloudTxs, error } = await sb.from('store_transactions').select('*').order('created_at', { ascending: false });
+            if (!error && cloudTxs && cloudTxs.length > 0) {
+              let hasNew = false;
+              for (const ctx of cloudTxs) {
+                const match = sales.find(s => 
+                  (s.supabase_id && String(s.supabase_id) === String(ctx.id)) || 
+                  (s.receipt_no && ctx.receipt_no && s.receipt_no === ctx.receipt_no)
+                );
+                const itemsStr = typeof ctx.items === 'string' ? ctx.items : JSON.stringify(ctx.items || []);
+                if (!match) {
+                  // Double check SQLite directly to prevent duplicates
+                  const existingDb = await window.desktopDB.query(
+                    'SELECT id FROM store_transactions WHERE supabase_id = ? OR receipt_no = ? LIMIT 1',
+                    [String(ctx.id), ctx.receipt_no || '']
+                  );
+                  if (!existingDb || existingDb.length === 0) {
+                    const ins = await window.desktopDB.insert('store_transactions', {
+                      receipt_no: ctx.receipt_no || '',
+                      member_code: ctx.member_code || '',
+                      customer_name: ctx.customer_name || '',
+                      total_amount: ctx.total_amount || 0,
+                      cash_received: ctx.cash_received || 0,
+                      change_amount: ctx.change_amount || 0,
+                      items: itemsStr,
+                      payment_method: ctx.payment_method || 'cash',
+                      created_by_name: ctx.created_by_name || '',
+                      created_at: ctx.created_at || new Date().toISOString(),
+                      synced: 1,
+                      supabase_id: String(ctx.id)
+                    });
+                    if (ins) {
+                      sales.unshift(ins);
+                      hasNew = true;
+                    }
+                  }
+                } else if (!match.supabase_id) {
+                  // Update supabase_id if missing in local row
+                  match.supabase_id = String(ctx.id);
+                  await window.desktopDB.update('store_transactions', { supabase_id: String(ctx.id), synced: 1 }, { id: match.id });
+                }
+              }
+            }
+          } catch (cloudErr) {
+            console.warn('Store sales cloud sync skipped:', cloudErr);
+          }
+        }
       } else if (isOnline) {
         const { data, error } = await sb.from('store_transactions').select('*').order('created_at', { ascending: false });
         if (!error && data) sales = data;
@@ -1187,7 +1237,7 @@
     } catch (err) {
       console.error('renderStoreSalesHistory error:', err);
     } finally {
-      if (typeof hideLoading === 'function') hideLoading();
+      if (!silent && typeof hideLoading === 'function') hideLoading();
     }
   }
 
@@ -2000,8 +2050,46 @@
   window.closeProductModal = closeProductModal;
   window.saveProduct = saveProduct;
   window.calculateProductProfit = calculateProductProfit;
-  window.toggleProductStatus = toggleProductStatus;
   window.confirmDeleteProduct = confirmDeleteProduct;
   window.deleteProduct = deleteProduct;
+
+  // Automatic background refresh for Store (History & Stock)
+  let storeAutoSyncTimer = null;
+  function startStoreAutoSync() {
+    if (storeAutoSyncTimer) return;
+    storeAutoSyncTimer = setInterval(async () => {
+      try {
+        const storeSection = document.getElementById('store-section');
+        const isVisible = storeSection && storeSection.classList.contains('active');
+        const isOnline = typeof sb !== 'undefined' && sb && (typeof isAppOffline !== 'function' || !isAppOffline());
+        if (isVisible && isOnline) {
+          if (activeStoreTab === 'history') {
+            await renderStoreSalesHistory(true);
+          } else if (activeStoreTab === 'inventory') {
+            await renderStoreProducts();
+          } else if (activeStoreTab === 'pos') {
+            await loadStoreProductsData();
+          }
+        }
+      } catch (e) {}
+    }, 8000);
+  }
+
+  window.addEventListener('focus', async () => {
+    try {
+      const storeSection = document.getElementById('store-section');
+      const isVisible = storeSection && storeSection.classList.contains('active');
+      const isOnline = typeof sb !== 'undefined' && sb && (typeof isAppOffline !== 'function' || !isAppOffline());
+      if (isVisible && isOnline) {
+        if (activeStoreTab === 'history') {
+          await renderStoreSalesHistory(true);
+        } else {
+          await loadStoreProductsData();
+        }
+      }
+    } catch (e) {}
+  });
+
+  startStoreAutoSync();
 
 })(window);
