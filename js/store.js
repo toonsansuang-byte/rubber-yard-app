@@ -1400,11 +1400,11 @@
           <td style="text-align: right; font-weight: 700; color: var(--gold); font-size: 0.95rem;">${totalAmtStr} ฿</td>
           <td style="font-size: 0.82rem; color: var(--text-muted);">${escapeHTML(tx.created_by_name || '-')}</td>
           <td style="text-align: center; white-space: nowrap;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="viewStoreReceiptFromHistory('${tx.id}')" style="padding: 4px 10px; font-size: 0.82rem; margin-right: 4px;" title="ดูใบเสร็จ / สั่งพิมพ์">
-              👁️ บิล
+            <button type="button" class="btn btn-secondary btn-sm btn-icon" onclick="viewStoreReceiptFromHistory('${tx.id}')" title="ใบเสร็จ" style="margin-right: 4px;">
+              🧾
             </button>
-            <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteStoreSale('${tx.id}')" style="padding: 4px 10px; font-size: 0.82rem;" title="ลบบิลขายและคืนสต็อกสินค้า">
-              🗑️ ลบ
+            <button type="button" class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteStoreSale('${tx.id}')" title="ลบบิลขาย">
+              🗑️
             </button>
           </td>
         </tr>

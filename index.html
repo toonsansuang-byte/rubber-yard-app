@@ -1092,22 +1092,35 @@
                 ตรวจสอบคิวข้อมูลที่รอการส่งขึ้น Cloud และบังคับซิงค์ข้อมูลระหว่างเครื่องท้องถิ่น (SQLite) กับเซิร์ฟเวอร์ (Supabase)
               </p>
 
-              <!-- Two Status Info Boxes -->
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:24px;">
+              <!-- Three Status Info Boxes -->
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">
                 <!-- Box 1: Transactions Queue -->
                 <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
                   <div style="width:48px; height:48px; border-radius:12px; background:rgba(16,185,129,0.12); color:#10b981; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
                     📝
                   </div>
                   <div>
-                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">รายการธุรกรรมรอซิงค์</div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">รายการรับซื้อยางรอซิงค์</div>
                     <div id="sync-queue-transactions-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
-                      รายการธุรกรรมรอซิงค์: 0 รายการ
+                      รับซื้อยางรอซิงค์: 0 รายการ
                     </div>
                   </div>
                 </div>
 
-                <!-- Box 2: Members Queue -->
+                <!-- Box 2: Store Sales Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(245,158,11,0.12); color:#f59e0b; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    🛒
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">บิลขายร้านค้ารอซิงค์</div>
+                    <div id="sync-queue-store-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      บิลขายรอซิงค์: 0 บิล
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Box 3: Members Queue -->
                 <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
                   <div style="width:48px; height:48px; border-radius:12px; background:rgba(59,130,246,0.12); color:#3b82f6; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
                     👥

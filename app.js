@@ -1661,6 +1661,7 @@ function switchSettingsTab(tabId) {
 async function updateSyncQueueCounts(showToastFeedback = false) {
   let txQueueCount = 0;
   let memberQueueCount = 0;
+  let storeQueueCount = 0;
 
   try {
     if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.query === 'function') {
@@ -1672,6 +1673,10 @@ async function updateSyncQueueCounts(showToastFeedback = false) {
       if (memRows && memRows[0]) {
         memberQueueCount = memRows[0].cnt ?? memRows[0].count ?? 0;
       }
+      const storeRows = await window.desktopDB.query("SELECT count(*) as cnt FROM sync_queue WHERE table_name = 'store_transactions'");
+      if (storeRows && storeRows[0]) {
+        storeQueueCount = storeRows[0].cnt ?? storeRows[0].count ?? 0;
+      }
     }
   } catch (err) {
     console.warn('Error querying sync_queue counts:', err);
@@ -1679,7 +1684,12 @@ async function updateSyncQueueCounts(showToastFeedback = false) {
 
   const txEl = document.getElementById('sync-queue-transactions-count');
   if (txEl) {
-    txEl.textContent = `รายการธุรกรรมรอซิงค์: ${txQueueCount} รายการ`;
+    txEl.textContent = `รับซื้อยางรอซิงค์: ${txQueueCount} รายการ`;
+  }
+
+  const storeEl = document.getElementById('sync-queue-store-count');
+  if (storeEl) {
+    storeEl.textContent = `บิลขายรอซิงค์: ${storeQueueCount} บิล`;
   }
 
   const memEl = document.getElementById('sync-queue-members-count');
@@ -1688,10 +1698,11 @@ async function updateSyncQueueCounts(showToastFeedback = false) {
   }
 
   if (showToastFeedback && typeof showToast === 'function') {
-    if (txQueueCount === 0 && memberQueueCount === 0) {
+    const totalPending = txQueueCount + memberQueueCount + storeQueueCount;
+    if (totalPending === 0) {
       showToast('🔄 คิวว่างเปล่า: ไม่มีข้อมูลค้างรอซิงค์ ข้อมูลตรงกับเซิร์ฟเวอร์เรียบร้อย', 'success');
     } else {
-      showToast(`🔄 อัปเดตสถานะคิวแล้ว: มีรายการรอซิงค์ ${txQueueCount} รายการ`, 'info');
+      showToast(`🔄 อัปเดตสถานะคิวแล้ว: มียาง ${txQueueCount} รายการ, บิลขาย ${storeQueueCount} บิล, สมาชิก ${memberQueueCount} รายการ รอซิงค์`, 'info');
     }
   }
 }
