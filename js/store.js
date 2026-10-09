@@ -1420,6 +1420,18 @@
     }
   }
 
+  window.updateDeleteConfirmButtonText = function() {
+    const cb = document.getElementById('confirm-restore-stock-checkbox');
+    const btn = document.getElementById('confirm-action-btn');
+    if (btn) {
+      if (cb && cb.checked) {
+        btn.innerHTML = '🗑️ ยืนยันการลบและคืนสต็อก';
+      } else {
+        btn.innerHTML = '🗑️ ยืนยันการลบ (ไม่คืนสต็อก)';
+      }
+    }
+  };
+
   function confirmDeleteStoreSale(txId) {
     if (!txId) return;
     const tx = (window.currentStoreSalesHistory || []).find(t => String(t.id) === String(txId));
@@ -1442,28 +1454,44 @@
     const msgHtml = `
       <span class="confirm-icon" style="color:var(--danger, #ef4444);">🗑️</span>
       <strong style="font-size:1.05rem;">ต้องการลบบิลขายเลขที่ ${escapeHTML(receiptNo)} ใช่หรือไม่?</strong><br><br>
-      <div style="text-align:left; background:var(--bg-input, #f3f4f6); padding:10px 14px; border-radius:8px; font-size:0.85rem; line-height:1.6; margin-bottom:8px;">
+      <div style="text-align:left; background:var(--bg-input, #f3f4f6); padding:10px 14px; border-radius:8px; font-size:0.85rem; line-height:1.6; margin-bottom:10px;">
         <div>👤 <strong>ลูกค้า:</strong> ${escapeHTML(custName)}</div>
         <div>💰 <strong>ยอดเงิน:</strong> <span style="color:var(--gold, #d97706); font-weight:700;">${totalAmt} ฿</span></div>
-        <div>📦 <strong>สินค้า:</strong> ${itemsCount} รายการ <small style="color:var(--text-muted);">(ระบบจะคืนสต็อกสินค้ากลับเข้าคลังให้อัตโนมัติ)</small></div>
+        <div>📦 <strong>สินค้า:</strong> ${itemsCount} รายการ</div>
       </div>
-      <span style="font-size:0.82rem; color:var(--danger, #ef4444);">⚠️ เมื่อลบแล้ว ยอดขายจะถูกหักออก และจำนวนสต็อกจะถูกเพิ่มกลับเข้าคลังทันที</span>
+      <div style="text-align:left; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.25); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-size:0.88rem; font-weight:600; color:var(--text, #1f2937); margin:0;">
+          <input type="checkbox" id="confirm-restore-stock-checkbox" checked style="width:18px; height:18px; margin-top:2px; cursor:pointer; accent-color:#2563eb;" onchange="window.updateDeleteConfirmButtonText && window.updateDeleteConfirmButtonText()">
+          <div>
+            <span>คืนจำนวนสินค้ากลับเข้าคลัง (${itemsCount} รายการ)</span>
+            <div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted, #6b7280); margin-top:2px;">
+              ติ๊กเลือกเมื่อคีย์บิลผิด หรือลูกค้ายกเลิก/คืนสินค้า (หากสินค้าส่งมอบไปแล้วจริง ให้เอาติ๊กออก)
+            </div>
+          </div>
+        </label>
+      </div>
+      <span style="font-size:0.82rem; color:var(--danger, #ef4444);">⚠️ เมื่อลบแล้ว ประวัติการขายบิลนี้จะถูกลบออกจากระบบทันที</span>
     `;
 
     if (confirmModal && confirmMessage && confirmActionBtn) {
       confirmMessage.innerHTML = msgHtml;
       confirmActionBtn.innerHTML = '🗑️ ยืนยันการลบและคืนสต็อก';
       confirmActionBtn.className = 'btn btn-danger';
-      confirmActionBtn.onclick = () => deleteStoreSale(txId);
+      confirmActionBtn.onclick = () => {
+        const cb = document.getElementById('confirm-restore-stock-checkbox');
+        const restoreStock = cb ? cb.checked : true;
+        deleteStoreSale(txId, restoreStock);
+      };
       confirmModal.classList.add('show');
     } else {
-      if (confirm(`ต้องการลบบิลขายเลขที่ ${receiptNo} ยอด ${totalAmt} บาท ใช่หรือไม่?\n(ระบบจะคืนสต็อกสินค้ากลับเข้าคลังให้อัตโนมัติ)`)) {
-        deleteStoreSale(txId);
+      const restoreStock = confirm(`ต้องการลบบิลขายเลขที่ ${receiptNo} ยอด ${totalAmt} บาท ใช่หรือไม่?\n\nกด [ตกลง] = ลบบิลและคืนสต็อก\nกด [ยกเลิก] = ยกเลิก`);
+      if (restoreStock) {
+        deleteStoreSale(txId, true);
       }
     }
   }
 
-  async function deleteStoreSale(txId) {
+  async function deleteStoreSale(txId, restoreStock = true) {
     if (!txId) return;
     const confirmModal = document.getElementById('confirm-modal');
     if (confirmModal) confirmModal.classList.remove('show');
@@ -1477,70 +1505,72 @@
       const isDesktop = typeof isDesktopApp === 'function' && isDesktopApp() && window.desktopDB;
       const isOnline = typeof sb !== 'undefined' && sb && (typeof isAppOffline !== 'function' || !isAppOffline());
 
-      // Parse items to restore stock
+      // Parse items to restore stock if requested
       let itemsArr = [];
       if (Array.isArray(tx.items)) itemsArr = tx.items;
       else if (typeof tx.items === 'string') {
         try { itemsArr = JSON.parse(tx.items); } catch(e){}
       }
 
-      // 1. Restore Stock for each product
-      for (const item of itemsArr) {
-        const qtyToRestore = parseFloat(item.quantity) || 0;
-        if (qtyToRestore <= 0) continue;
+      // 1. Restore Stock for each product (ONLY if restoreStock is true)
+      if (restoreStock) {
+        for (const item of itemsArr) {
+          const qtyToRestore = parseFloat(item.quantity) || 0;
+          if (qtyToRestore <= 0) continue;
 
-        let prod = (window.currentStoreProducts || []).find(p => 
-          (item.product_id && String(p.id) === String(item.product_id)) || 
-          (p.name && item.name && p.name.trim() === item.name.trim())
-        );
+          let prod = (window.currentStoreProducts || []).find(p => 
+            (item.product_id && String(p.id) === String(item.product_id)) || 
+            (p.name && item.name && p.name.trim() === item.name.trim())
+          );
 
-        if (isDesktop) {
-          let currentStock = prod ? parseFloat(prod.stock_quantity || 0) : 0;
-          let prodId = prod ? prod.id : null;
-          let prodSupabaseId = prod ? prod.supabase_id : null;
-          let prodName = prod ? prod.name : item.name;
+          if (isDesktop) {
+            let currentStock = prod ? parseFloat(prod.stock_quantity || 0) : 0;
+            let prodId = prod ? prod.id : null;
+            let prodSupabaseId = prod ? prod.supabase_id : null;
+            let prodName = prod ? prod.name : item.name;
 
-          if (!prodId) {
+            if (!prodId) {
+              try {
+                const dbProd = await window.desktopDB.get("SELECT id, name, stock_quantity, supabase_id FROM store_products WHERE name = ?", [item.name]);
+                if (dbProd) {
+                  prodId = dbProd.id;
+                  currentStock = parseFloat(dbProd.stock_quantity || 0);
+                  prodSupabaseId = dbProd.supabase_id;
+                  prodName = dbProd.name;
+                }
+              } catch (e) {}
+            }
+
+            if (prodId) {
+              const newStock = currentStock + qtyToRestore;
+              await window.desktopDB.update('store_products', { stock_quantity: newStock }, { id: prodId });
+              await window.desktopDB.insert('sync_queue', {
+                table_name: 'store_products',
+                action: 'UPDATE',
+                row_data: JSON.stringify({ name: prodName, stock_quantity: newStock }),
+                local_id: Number(prodId)
+              });
+              if (prod) prod.stock_quantity = newStock;
+
+              if (isOnline && prodSupabaseId) {
+                try {
+                  await sb.from('store_products').update({ stock_quantity: newStock }).eq('id', prodSupabaseId);
+                } catch (e) {}
+              }
+            }
+          } else if (isOnline) {
             try {
-              const dbProd = await window.desktopDB.get("SELECT id, name, stock_quantity, supabase_id FROM store_products WHERE name = ?", [item.name]);
-              if (dbProd) {
-                prodId = dbProd.id;
-                currentStock = parseFloat(dbProd.stock_quantity || 0);
-                prodSupabaseId = dbProd.supabase_id;
-                prodName = dbProd.name;
+              let prodQuery = sb.from('store_products').select('id, stock_quantity');
+              if (item.product_id) prodQuery = prodQuery.eq('id', item.product_id);
+              else prodQuery = prodQuery.eq('name', item.name);
+              const { data: dbProds } = await prodQuery.limit(1);
+              if (dbProds && dbProds.length > 0) {
+                const p = dbProds[0];
+                const newStock = (parseFloat(p.stock_quantity) || 0) + qtyToRestore;
+                await sb.from('store_products').update({ stock_quantity: newStock }).eq('id', p.id);
               }
             } catch (e) {}
           }
-
-          if (prodId) {
-            const newStock = currentStock + qtyToRestore;
-            await window.desktopDB.update('store_products', { stock_quantity: newStock }, { id: prodId });
-            await window.desktopDB.insert('sync_queue', {
-              table_name: 'store_products',
-              action: 'UPDATE',
-              row_data: JSON.stringify({ name: prodName, stock_quantity: newStock }),
-              local_id: Number(prodId)
-            });
-            if (prod) prod.stock_quantity = newStock;
-
-            if (isOnline && prodSupabaseId) {
-              try {
-                await sb.from('store_products').update({ stock_quantity: newStock }).eq('id', prodSupabaseId);
-              } catch (e) {}
-            }
-          }
-        } else if (isOnline) {
-          try {
-            let prodQuery = sb.from('store_products').select('id, stock_quantity');
-            if (item.product_id) prodQuery = prodQuery.eq('id', item.product_id);
-            else prodQuery = prodQuery.eq('name', item.name);
-            const { data: dbProds } = await prodQuery.limit(1);
-            if (dbProds && dbProds.length > 0) {
-              const p = dbProds[0];
-              const newStock = (parseFloat(p.stock_quantity) || 0) + qtyToRestore;
-              await sb.from('store_products').update({ stock_quantity: newStock }).eq('id', p.id);
-            }
-          } catch (e) {}
         }
       }
 
@@ -1573,7 +1603,11 @@
       if (typeof renderPosProducts === 'function') renderPosProducts();
 
       if (typeof showToast === 'function') {
-        showToast('🗑️ ลบบิลขายและคืนสต็อกสินค้าเรียบร้อยแล้ว!', 'success');
+        if (restoreStock) {
+          showToast(`🗑️ ลบบิลขายเลขที่ ${tx.receipt_no || ''} และคืนสต็อกสินค้าเรียบร้อยแล้ว!`, 'success');
+        } else {
+          showToast(`🗑️ ลบบิลขายเลขที่ ${tx.receipt_no || ''} เรียบร้อยแล้ว (สต็อกคงเดิม)`, 'info');
+        }
       }
 
     } catch (err) {
