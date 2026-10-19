@@ -1733,6 +1733,7 @@ async function updateSyncQueueCounts(showToastFeedback = false) {
 
 // ========== SYNC PROGRESS MODAL & SHIELD CONTROLS ==========
 window.isSyncingData = false;
+window.isManualSync = false;
 let syncAutoCloseTimer = null;
 
 function showSyncProgressModal(totalCount = 0) {
@@ -1859,6 +1860,7 @@ async function forceSyncData() {
   }
 
   window.isSyncingData = true;
+  window.isManualSync = true;
 
   try {
     let pendingCount = 0;
@@ -1902,6 +1904,7 @@ async function forceSyncData() {
       btn.innerHTML = originalText;
     }
     window.isSyncingData = false;
+    window.isManualSync = false;
     await updateSyncQueueCounts();
 
     // Silently and smoothly refresh current view ONCE
@@ -2462,22 +2465,32 @@ if (typeof window !== 'undefined' && window.desktopDB) {
       console.log('[SyncEvent]', data.type, data.message);
       if (data.type === 'upload_start') {
         window.isSyncingData = true;
-        showSyncProgressModal(data.total);
+        if (window.isManualSync) {
+          showSyncProgressModal(data.total);
+        }
       } else if (data.type === 'upload_progress') {
         window.isSyncingData = true;
-        updateSyncProgressModal(data.progress, data.total, data.detail || data.message, data.type);
+        if (window.isManualSync) {
+          updateSyncProgressModal(data.progress, data.total, data.detail || data.message, data.type);
+        }
       } else if (data.type === 'upload_complete') {
-        if (data.failedCount && data.failedCount > 0) {
-          finishSyncProgressModal(data.successCount, data.total, true, `ส่งสำเร็จ ${data.successCount} รายการ ติดขัด ${data.failedCount} รายการ`);
-        } else {
-          finishSyncProgressModal(data.successCount, data.total, false);
+        if (window.isManualSync) {
+          if (data.failedCount && data.failedCount > 0) {
+            finishSyncProgressModal(data.successCount, data.total, true, `ส่งสำเร็จ ${data.successCount} รายการ ติดขัด ${data.failedCount} รายการ`);
+          } else {
+            finishSyncProgressModal(data.successCount, data.total, false);
+          }
         }
       } else if (data.type === 'download_start') {
-        const itemEl = document.getElementById('sync-modal-current-item');
-        if (itemEl) itemEl.innerText = data.message || 'กำลังอัปเดตข้อมูลล่าสุดจากคลาวด์...';
+        if (window.isManualSync) {
+          const itemEl = document.getElementById('sync-modal-current-item');
+          if (itemEl) itemEl.innerText = data.message || 'กำลังอัปเดตข้อมูลล่าสุดจากคลาวด์...';
+        }
       } else if (data.type === 'download_complete') {
-        const itemEl = document.getElementById('sync-modal-current-item');
-        if (itemEl) itemEl.innerText = data.message || 'อัปเดตข้อมูลจากคลาวด์เรียบร้อยแล้ว';
+        if (window.isManualSync) {
+          const itemEl = document.getElementById('sync-modal-current-item');
+          if (itemEl) itemEl.innerText = data.message || 'อัปเดตข้อมูลจากคลาวด์เรียบร้อยแล้ว';
+        }
       }
     });
   }

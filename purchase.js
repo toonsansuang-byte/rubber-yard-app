@@ -89,12 +89,14 @@ async function initPurchase(forceReset = false) {
   clearSelectedMember();
   document.getElementById('purchase-member-search').value = '';
   document.getElementById('purchase-member-list').innerHTML = '';
-  selectRubberType('cup');
+
+  // Preserve previously selected rubber type (Sticky Rubber Type)
+  const preservedRubberType = document.getElementById('rubber-type')?.value || localStorage.getItem('last_selected_rubber_type') || 'cup';
 
   if (!cachedSettings) await loadSettings();
 
   document.getElementById('cart-weight').value = cachedSettings?.default_cart_weight || '';
-  document.getElementById('price-per-kg').value = cachedSettings?.price_cup || cachedSettings?.price_sheet || '';
+  selectRubberType(preservedRubberType);
 
   const truckSelect = document.getElementById('purchase-truck-number');
   const trailerSelect = document.getElementById('purchase-trailer-type');
@@ -541,6 +543,7 @@ function clearSelectedMember() {
 function selectRubberType(type) {
   const hiddenInput = document.getElementById('rubber-type');
   if (hiddenInput) hiddenInput.value = type;
+  try { localStorage.setItem('last_selected_rubber_type', type); } catch (e) {}
 
   const btnCup = document.getElementById('btn-type-cup');
   const btnOvernight = document.getElementById('btn-type-overnight');
@@ -1005,6 +1008,16 @@ async function saveTransaction(confirmedOverride = false) {
               if (cloudPayload.round_id && typeof cloudPayload.round_id === 'number') {
                 const r = await window.desktopDB.select('purchase_rounds', ['supabase_id'], { id: cloudPayload.round_id });
                 if (r && r[0] && r[0].supabase_id) cloudPayload.round_id = r[0].supabase_id;
+              }
+              delete cloudPayload.id;
+              delete cloudPayload.trips_detail;
+              delete cloudPayload.sequence_no;
+              delete cloudPayload.seq_no;
+              delete cloudPayload.queue_no;
+              delete cloudPayload.buyer_name;
+              delete cloudPayload.auction_buyer;
+              if (typeof cloudPayload.trips !== 'string') {
+                cloudPayload.trips = JSON.stringify(cloudPayload.trips || []);
               }
               const res = await sb.from('transactions').insert(cloudPayload).select().single();
               if (!res.error && res.data) {
