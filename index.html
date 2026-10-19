@@ -480,8 +480,18 @@
             <div class="glass-card">
               <h3 style="margin-bottom: 16px; font-size: 1rem;">⚖️ ข้อมูลยาง</h3>
               <div class="form-group">
-                <label class="form-label">ประเภทยาง</label>
-                <input type="text" class="form-input" value="ยางก้อนถ้วย" readonly disabled style="opacity: 0.9; font-weight: 600; color: var(--gold);">
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>ประเภทยาง</span>
+                  <span id="rubber-type-badge-indicator" class="badge badge-gold" style="font-size:0.8rem; padding:2px 8px;">ยางก้อนถ้วย</span>
+                </label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <button type="button" id="btn-type-cup" class="btn btn-primary" onclick="selectRubberType('cup')" style="font-weight:700; font-size:0.95rem; padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 0 10px rgba(245,158,11,0.25);">
+                    <span>🍃</span> ยางก้อนถ้วย
+                  </button>
+                  <button type="button" id="btn-type-overnight" class="btn btn-secondary" onclick="selectRubberType('overnight')" style="font-weight:700; font-size:0.95rem; padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <span>🌙</span> ยางพักคืน
+                  </button>
+                </div>
                 <input type="hidden" id="rubber-type" value="cup">
               </div>
               <div class="form-group">
@@ -739,6 +749,14 @@
               <option value="">สมาชิกทั้งหมด</option>
             </select>
           </div>
+          <div class="form-group" style="min-width: 150px;">
+            <label class="form-label">ประเภทยาง</label>
+            <select id="history-rubber-type-filter" class="form-input" onchange="filterHistory()">
+              <option value="">ประเภทยางทั้งหมด</option>
+              <option value="cup">🍃 ยางก้อนถ้วย</option>
+              <option value="overnight">🌙 ยางพักคืน</option>
+            </select>
+          </div>
           <button type="button" class="btn btn-secondary" id="history-unassigned-truck-btn" onclick="toggleHistoryOnlyUnassignedTruck()" style="align-self: flex-end; display:inline-flex; align-items:center; gap:6px;">
             <span>⚠️</span> เฉพาะยังไม่ระบุรถ (<span id="history-unassigned-truck-count">0</span>)
           </button>
@@ -981,23 +999,39 @@
             <!-- Prices & Deduction -->
             <div class="glass-card">
               <div class="settings-section-title">💰 ราคาตั้งต้น, ค่าธรรมเนียม & หัก %</div>
-              <div class="settings-row">
-                <div class="form-group">
-                  <label class="form-label" for="setting-price-cup">ราคาประมูลเริ่มต้น (บาท/กก.)</label>
+              <!-- แถวที่ 1: ราคาประมูลเริ่มต้น 2 ประเภทยาง (คู่กัน 50% / 50%) -->
+              <div class="settings-row" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label" for="setting-price-cup" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🍃 ราคาประมูลเริ่มต้น - ยางก้อนถ้วย (บาท/กก.)
+                  </label>
                   <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="setting-yard-fee">ค่าบริหารจัดการ (บาท/กก.)</label>
-                  <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label" for="setting-price-overnight" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🌙 ราคาประมูลเริ่มต้น - ยางพักคืน (บาท/กก.)
+                  </label>
+                  <input type="number" id="setting-price-overnight" class="form-input" step="0.01" min="0" placeholder="0.00">
                 </div>
               </div>
-              <div class="settings-row mt-3">
-                <div class="form-group">
-                  <label class="form-label" for="setting-cart-weight">น้ำหนักรถเข็นเริ่มต้น (กก.)</label>
+              <!-- แถวที่ 2: ค่าธรรมเนียมและการหักน้ำหนัก (3 ช่องสมดุล 33% / 33% / 33%) -->
+              <div class="settings-row mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-yard-fee" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🏢 ค่าบริหารจัดการลาน (บาท/กก.)
+                  </label>
+                  <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-cart-weight" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🛒 น้ำหนักรถเข็นเริ่มต้น (กก.)
+                  </label>
                   <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="setting-deduction-percent">หักสิ่งเจือปนเริ่มต้น (%)</label>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-deduction-percent" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    💧 หักสิ่งเจือปนเริ่มต้น (%)
+                  </label>
                   <input type="number" id="setting-deduction-percent" class="form-input" step="0.1" min="0" max="100" placeholder="0.0">
                 </div>
               </div>
@@ -2498,6 +2532,63 @@
         <button type="button" class="btn btn-secondary" onclick="closeProductModal()">ยกเลิก</button>
         <button type="button" class="btn btn-primary" onclick="saveProduct()">💾 บันทึกสินค้า</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== SYNC PROGRESS MODAL (Visual Live Counter & Zero Data Loss Shield) ===== -->
+  <div class="modal-overlay" id="sync-progress-modal" style="z-index: 2500;">
+    <div class="modal-content" style="max-width: 500px; text-align: center; padding: 32px 28px; border-radius: 20px; background: linear-gradient(145deg, #162032, #0d1522); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px);">
+      
+      <!-- Top Icon (Pulse & Spin during sync / Green Check on complete) -->
+      <div id="sync-modal-icon-container" style="margin-bottom: 18px; display: flex; justify-content: center;">
+        <div id="sync-modal-spinner" style="display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); border: 2px solid rgba(59, 130, 246, 0.4); font-size: 2.2rem; color: #60a5fa; animation: syncPulse 2s infinite ease-in-out;">
+          <span style="display: inline-block; animation: spin 2.5s infinite linear;">🔄</span>
+        </div>
+        <div id="sync-modal-success-icon" style="display: none; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); border: 2px solid rgba(16, 185, 129, 0.5); font-size: 2.4rem; color: #10b981;">
+          ✅
+        </div>
+      </div>
+
+      <!-- Title & Subtitle -->
+      <h3 id="sync-modal-title" style="font-size: 1.35rem; font-weight: 700; color: #ffffff; margin-bottom: 6px;">
+        กำลังซิงค์ข้อมูลขึ้นคลาวด์...
+      </h3>
+      <p id="sync-modal-subtitle" style="font-size: 0.88rem; color: #94a3b8; margin-bottom: 24px; line-height: 1.5;">
+        กรุณาอย่าเพิ่งปิดโปรแกรม ข้อมูลทุกบิลถูกบันทึกในเครื่องปลอดภัย 100%
+      </p>
+
+      <!-- Animated Progress Bar -->
+      <div style="background: rgba(255, 255, 255, 0.08); border-radius: 999px; height: 14px; overflow: hidden; margin-bottom: 12px; position: relative; border: 1px solid rgba(255, 255, 255, 0.06);">
+        <div id="sync-modal-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 999px; transition: width 0.35s ease; box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);"></div>
+      </div>
+
+      <!-- Status Counts & Percent -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; font-size: 0.92rem;">
+        <span id="sync-modal-counts" style="color: #cbd5e1; font-weight: 600;">
+          บิลทั้งหมดที่จะซิงค์: <strong id="sync-modal-total-count" style="color: var(--gold);">0</strong> รายการ
+        </span>
+        <span id="sync-modal-percent" style="font-size: 1.15rem; font-weight: 700; color: #10b981;">
+          0%
+        </span>
+      </div>
+
+      <!-- Live Details Card -->
+      <div id="sync-modal-details-card" style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 22px; text-align: left;">
+        <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin-bottom: 4px; font-weight: 600;">
+          สถานะสด (Live Status)
+        </div>
+        <div id="sync-modal-current-item" style="font-size: 0.92rem; color: #e2e8f0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          กำลังเตรียมความพร้อมของข้อมูล...
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div id="sync-modal-footer" style="display: flex; justify-content: center; gap: 12px;">
+        <button type="button" id="sync-modal-close-btn" class="btn btn-primary" onclick="closeSyncProgressModal()" style="display: none; padding: 10px 32px; font-weight: 600; border-radius: 10px; font-size: 0.95rem;">
+          ตกลง
+        </button>
+      </div>
+
     </div>
   </div>
 

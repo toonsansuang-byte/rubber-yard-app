@@ -267,18 +267,19 @@ async function renderHistory() {
 
 let currentFilteredHistory = [];
 
-async function filterHistory() {
-  showLoading();
+async function filterHistory(silent = false) {
+  if (!silent) showLoading();
   try {
     const roundId = document.getElementById('history-round-filter')?.value;
     const dateFrom = document.getElementById('history-date-from')?.value;
     const dateTo = document.getElementById('history-date-to')?.value;
     const memberCode = document.getElementById('history-member-filter')?.value;
+    const rubberTypeFilter = document.getElementById('history-rubber-type-filter')?.value;
 
     let filtered = [];
 
     if (isDesktopApp()) {
-      if (sb && !isAppOffline()) {
+      if (sb && !isAppOffline() && !window.isSyncingData) {
         try {
           // FIX C1: Download cloud transactions to merge locally WITHOUT destructive delete
           const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
@@ -335,6 +336,7 @@ async function filterHistory() {
       if (dateFrom) { sql += ' AND date >= ?'; params.push(dateFrom + 'T00:00:00'); }
       if (dateTo) { sql += ' AND date <= ?'; params.push(dateTo + 'T23:59:59'); }
       if (memberCode) { sql += ' AND member_code = ?'; params.push(memberCode); }
+      if (rubberTypeFilter) { sql += ' AND rubber_type = ?'; params.push(rubberTypeFilter); }
       sql += ' ORDER BY date DESC, id DESC';
       filtered = await window.desktopDB.query(sql, params);
     } else {
@@ -344,6 +346,7 @@ async function filterHistory() {
       if (dateFrom) query = query.gte('date', dateFrom + 'T00:00:00');
       if (dateTo) query = query.lte('date', dateTo + 'T23:59:59');
       if (memberCode) query = query.eq('member_code', memberCode);
+      if (rubberTypeFilter) query = query.eq('rubber_type', rubberTypeFilter);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -405,7 +408,7 @@ async function filterHistory() {
   } catch (err) {
     showToast('โหลดประวัติไม่สำเร็จ: ' + err.message, 'error');
   }
-  hideLoading();
+  if (!silent) hideLoading();
 }
 
 function toggleSelectAllHistory(isChecked) {
@@ -1163,6 +1166,8 @@ function clearHistoryFilter() {
   document.getElementById('history-date-from').value = '';
   document.getElementById('history-date-to').value = '';
   document.getElementById('history-member-filter').value = '';
+  const rubberTypeFilterEl = document.getElementById('history-rubber-type-filter');
+  if (rubberTypeFilterEl) rubberTypeFilterEl.value = '';
   historyFilterOnlyUnassigned = false;
   const unassignedBtn = document.getElementById('history-unassigned-truck-btn');
   if (unassignedBtn) {

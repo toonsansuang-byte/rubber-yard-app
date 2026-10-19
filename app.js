@@ -33,8 +33,9 @@ window.cachedSettings = window.cachedSettings || null;
 window.editingTransaction = window.editingTransaction || null;
 
 window.RUBBER_TYPES = window.RUBBER_TYPES || {
-  sheet: 'ยางแผ่นดิบ',
   cup: 'ยางก้อนถ้วย',
+  overnight: 'ยางพักคืน',
+  sheet: 'ยางแผ่นดิบ',
   latex: 'น้ำยางสด'
 };
 var RUBBER_TYPES = window.RUBBER_TYPES;
@@ -1076,6 +1077,16 @@ function initRealtimeSubscriptions() {
 
   const badgeEl = document.getElementById('realtime-status-badge');
 
+  let historyFilterTimeout = null;
+  function debounceHistoryFilter() {
+    if (historyFilterTimeout) clearTimeout(historyFilterTimeout);
+    historyFilterTimeout = setTimeout(() => {
+      if (currentSection === 'history' && !window.isSyncingData && typeof filterHistory === 'function') {
+        filterHistory(true);
+      }
+    }, 400);
+  }
+
   realtimeChannel = sb.channel('dashboard-realtime-changes')
     .on(
       'postgres_changes',
@@ -1084,6 +1095,7 @@ function initRealtimeSubscriptions() {
         console.log('Realtime transaction change detected:', payload);
         if (payload.eventType === 'INSERT') {
           const t = payload.new;
+          let isNewLocally = true;
           if (isDesktopApp()) {
             try {
               const existing = await window.desktopDB.query(
@@ -1100,29 +1112,37 @@ function initRealtimeSubscriptions() {
                 };
                 delete localTx.id;
                 await window.desktopDB.insert('transactions', localTx);
+              } else {
+                isNewLocally = false;
               }
             } catch (e) {
               console.warn('Realtime SQLite insert error:', e);
             }
           }
-          const weightStr = formatNumber(t.final_weight || t.net_weight);
-          const amountStr = formatNumber(t.total_price);
-          showToast(`⚡ มีรายการใหม่! รหัส ${t.member_code} (${t.member_name}) — ${weightStr} กก. [${amountStr} ฿]`, 'info');
+          if (!window.isSyncingData && isNewLocally) {
+            const weightStr = formatNumber(t.final_weight || t.net_weight);
+            const amountStr = formatNumber(t.total_price);
+            showToast(`⚡ มีรายการใหม่! รหัส ${t.member_code} (${t.member_name}) — ${weightStr} กก. [${amountStr} ฿]`, 'info');
+          }
         } else if (payload.eventType === 'DELETE') {
           if (isDesktopApp() && payload.old && payload.old.id) {
             try {
               await window.desktopDB.delete('transactions', { supabase_id: payload.old.id });
             } catch (e) {}
           }
-          showToast('ℹ️ มีการลบรายการรับซื้อในระบบ', 'info');
+          if (!window.isSyncingData) {
+            showToast('ℹ️ มีการลบรายการรับซื้อในระบบ', 'info');
+          }
         }
 
-        // Live update dashboard metrics silently without screen flicker
-        if (currentSection === 'dashboard') {
-          await renderDashboard(false, payload.eventType === 'INSERT' ? payload.new : null);
-        }
-        if (currentSection === 'history') {
-          filterHistory();
+        // Live update dashboard metrics silently without screen flicker (only when not syncing)
+        if (!window.isSyncingData) {
+          if (currentSection === 'dashboard') {
+            await renderDashboard(false, payload.eventType === 'INSERT' ? payload.new : null);
+          }
+          if (currentSection === 'history') {
+            debounceHistoryFilter();
+          }
         }
       }
     )
@@ -1388,6 +1408,7 @@ async function loadSettings() {
         auction_buyer: data.auction_buyer || 'เฮียต้อม ยางพารา',
         plantation_logo: data.plantation_logo || '',
         price_cup: Number(data.price_cup ?? 35),
+        price_overnight: Number(data.price_overnight ?? (localStorage.getItem('setting_price_overnight') || (data.price_cup ?? 35))),
         price_sheet: Number(data.price_sheet ?? 45),
         price_latex: Number(data.price_latex ?? 50),
         yard_fee: Number(data.yard_fee ?? 0.50),
@@ -1406,6 +1427,9 @@ async function loadSettings() {
         localStorage.setItem('setting_dual_station_mode', String(cachedSettings.dual_station_mode));
         localStorage.setItem('setting_show_payer_name', String(cachedSettings.show_payer_name));
         localStorage.setItem('setting_theme_mode', cachedSettings.theme_mode);
+        if (cachedSettings.price_overnight) {
+          localStorage.setItem('setting_price_overnight', String(cachedSettings.price_overnight));
+        }
         if (cachedSettings.plantation_logo) {
           localStorage.setItem('setting_plantation_logo', cachedSettings.plantation_logo);
         } else {
@@ -1427,7 +1451,7 @@ async function loadSettings() {
         plantation_address: localAddr || 'เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก',
         auction_buyer: localBuyer || 'เฮียต้อม ยางพารา',
         plantation_logo: localLogo || '',
-        price_cup: 35, price_sheet: 45, price_latex: 50,
+        price_cup: 35, price_overnight: Number(localStorage.getItem('setting_price_overnight') || 35), price_sheet: 45, price_latex: 50,
         default_cart_weight: 5, deduction_percent: 0,
         dual_station_mode: localDualMode !== null ? localDualMode === 'true' : false,
         show_payer_name: localShowPayer !== null ? localShowPayer === 'true' : true,
@@ -1587,8 +1611,8 @@ function formatDateTime(dateStr) {
 }
 
 function getRubberTypeBadge(type) {
-  const classes = { sheet: 'badge-green', cup: 'badge-gold', latex: 'badge-blue' };
-  return `<span class="badge ${classes[type] || 'badge-green'}">${RUBBER_TYPES[type] || type}</span>`;
+  const classes = { cup: 'badge-gold', overnight: 'badge-blue', sheet: 'badge-green', latex: 'badge-blue' };
+  return `<span class="badge ${classes[type] || 'badge-blue'}">${RUBBER_TYPES[type] || type}</span>`;
 }
 
 // ========== DASHBOARD & LEADERBOARD (MOVED TO js/dashboard.js) ==========
@@ -1707,6 +1731,125 @@ async function updateSyncQueueCounts(showToastFeedback = false) {
   }
 }
 
+// ========== SYNC PROGRESS MODAL & SHIELD CONTROLS ==========
+window.isSyncingData = false;
+let syncAutoCloseTimer = null;
+
+function showSyncProgressModal(totalCount = 0) {
+  const modal = document.getElementById('sync-progress-modal');
+  if (!modal) return;
+
+  if (syncAutoCloseTimer) {
+    clearTimeout(syncAutoCloseTimer);
+    syncAutoCloseTimer = null;
+  }
+
+  const spinner = document.getElementById('sync-modal-spinner');
+  const successIcon = document.getElementById('sync-modal-success-icon');
+  const title = document.getElementById('sync-modal-title');
+  const subtitle = document.getElementById('sync-modal-subtitle');
+  const progressBar = document.getElementById('sync-modal-progress-bar');
+  const totalEl = document.getElementById('sync-modal-total-count');
+  const countsEl = document.getElementById('sync-modal-counts');
+  const percentEl = document.getElementById('sync-modal-percent');
+  const currentItemEl = document.getElementById('sync-modal-current-item');
+  const closeBtn = document.getElementById('sync-modal-close-btn');
+
+  if (spinner) spinner.style.display = 'inline-flex';
+  if (successIcon) successIcon.style.display = 'none';
+  if (title) title.innerText = 'กำลังซิงค์ข้อมูลขึ้นคลาวด์...';
+  if (subtitle) subtitle.innerText = 'กรุณาอย่าเพิ่งปิดโปรแกรม ข้อมูลทุกบิลถูกบันทึกในเครื่องปลอดภัย 100%';
+  if (progressBar) progressBar.style.width = '0%';
+  if (totalEl) totalEl.innerText = totalCount || 0;
+  if (countsEl) countsEl.innerHTML = `บิลทั้งหมดที่จะซิงค์: <strong id="sync-modal-total-count" style="color:var(--gold);">${totalCount || 0}</strong> รายการ`;
+  if (percentEl) percentEl.innerText = '0%';
+  if (currentItemEl) currentItemEl.innerText = totalCount > 0 ? `พบข้อมูลรอส่ง ${totalCount} รายการ กำลังเริ่มการซิงค์...` : 'กำลังตรวจสอบและเตรียมความพร้อมของข้อมูล...';
+  if (closeBtn) closeBtn.style.display = 'none';
+
+  modal.classList.add('show');
+}
+
+function updateSyncProgressModal(current, total, detailText, type = 'upload_progress') {
+  const modal = document.getElementById('sync-progress-modal');
+  if (!modal || !modal.classList.contains('show')) return;
+
+  const progressBar = document.getElementById('sync-modal-progress-bar');
+  const countsEl = document.getElementById('sync-modal-counts');
+  const percentEl = document.getElementById('sync-modal-percent');
+  const currentItemEl = document.getElementById('sync-modal-current-item');
+
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  if (progressBar) progressBar.style.width = pct + '%';
+  if (percentEl) percentEl.innerText = pct + '%';
+
+  if (countsEl) {
+    countsEl.innerHTML = `กำลังส่งรายการที่: <strong style="color:var(--gold);">${current}</strong> / ${total} รายการ`;
+  }
+
+  if (currentItemEl && detailText) {
+    currentItemEl.innerText = detailText;
+  }
+}
+
+function finishSyncProgressModal(successCount, total, isError = false, errorMsg = '') {
+  const modal = document.getElementById('sync-progress-modal');
+  if (!modal) return;
+
+  const spinner = document.getElementById('sync-modal-spinner');
+  const successIcon = document.getElementById('sync-modal-success-icon');
+  const title = document.getElementById('sync-modal-title');
+  const subtitle = document.getElementById('sync-modal-subtitle');
+  const progressBar = document.getElementById('sync-modal-progress-bar');
+  const countsEl = document.getElementById('sync-modal-counts');
+  const percentEl = document.getElementById('sync-modal-percent');
+  const currentItemEl = document.getElementById('sync-modal-current-item');
+  const closeBtn = document.getElementById('sync-modal-close-btn');
+
+  if (spinner) spinner.style.display = 'none';
+  if (successIcon) {
+    successIcon.style.display = 'inline-flex';
+    successIcon.innerText = isError ? '⚠️' : '✅';
+    successIcon.style.borderColor = isError ? 'rgba(245,158,11,0.5)' : 'rgba(16,185,129,0.5)';
+    successIcon.style.color = isError ? '#f59e0b' : '#10b981';
+    successIcon.style.background = isError ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)';
+  }
+
+  if (isError) {
+    if (title) title.innerText = 'การซิงค์ข้อมูลบางส่วนติดขัด';
+    if (subtitle) subtitle.innerText = errorMsg || 'ระบบจะส่งรายการที่เหลือใหม่อัตโนมัติเมื่อเชื่อมต่อได้ — ข้อมูลในเครื่องยังคงปลอดภัย 100%';
+    if (countsEl) countsEl.innerHTML = `ส่งสำเร็จ <strong style="color:#10b981;">${successCount}</strong> จาก ${total} รายการ`;
+    if (currentItemEl) currentItemEl.innerText = `มีบางรายการรอดำเนินการส่งซ้ำในรอบถัดไป`;
+  } else {
+    if (title) title.innerText = 'ซิงค์ข้อมูลขึ้นคลาวด์สำเร็จครบถ้วน!';
+    if (subtitle) subtitle.innerText = `ส่งข้อมูลสมบูรณ์ ${successCount || total} รายการ ไม่มีข้อมูลสูญหาย`;
+    if (progressBar) progressBar.style.width = '100%';
+    if (percentEl) percentEl.innerText = '100%';
+    if (countsEl) countsEl.innerHTML = `ซิงค์สำเร็จครบถ้วน: <strong style="color:#10b981;">${successCount || total}</strong> รายการ`;
+    if (currentItemEl) currentItemEl.innerText = '✨ ข้อมูลบนคลาวด์ตรงกับในเครื่อง 100% เรียบร้อยแล้ว';
+  }
+
+  if (closeBtn) {
+    closeBtn.style.display = 'inline-block';
+    closeBtn.focus();
+  }
+
+  // If fully successful, auto-close gracefully after 2.5 seconds
+  if (!isError) {
+    syncAutoCloseTimer = setTimeout(() => {
+      closeSyncProgressModal();
+    }, 2500);
+  }
+}
+
+function closeSyncProgressModal() {
+  if (syncAutoCloseTimer) {
+    clearTimeout(syncAutoCloseTimer);
+    syncAutoCloseTimer = null;
+  }
+  const modal = document.getElementById('sync-progress-modal');
+  if (modal) modal.classList.remove('show');
+}
+
 async function forceSyncData() {
   const btn = document.getElementById('btn-force-sync');
   const originalText = btn ? btn.innerHTML : '';
@@ -1714,15 +1857,22 @@ async function forceSyncData() {
     btn.disabled = true;
     btn.innerHTML = '⏳ กำลังซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์...';
   }
-  showLoading();
+
+  window.isSyncingData = true;
 
   try {
+    let pendingCount = 0;
+    if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.syncStatus === 'function') {
+      pendingCount = await window.desktopDB.syncStatus();
+    }
+    showSyncProgressModal(pendingCount);
+
     if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.syncAll === 'function') {
-      const syncRes = await window.desktopDB.syncAll();
+      const syncRes = await window.desktopDB.syncAll({ forceRetry: true });
       if (syncRes && syncRes.success) {
-        showToast('⚡ ซิงค์ข้อมูลกับ Cloud สำเร็จครบถ้วนแล้ว! (' + (syncRes.uploadedCount || 0) + ' รายการ)', 'success');
+        finishSyncProgressModal(syncRes.uploadedCount || pendingCount, pendingCount, false);
       } else {
-        showToast(syncRes?.error || '⚠️ การซิงค์บางส่วนติดขัด (ข้อมูลในเครื่องยังคงปลอดภัย 100%)', 'warning');
+        finishSyncProgressModal(syncRes?.uploadedCount || 0, pendingCount, true, syncRes?.error);
       }
     } else if (typeof window !== 'undefined' && window.desktopDB && typeof window.desktopDB.syncUpload === 'function') {
       const upRes = await window.desktopDB.syncUpload();
@@ -1731,27 +1881,43 @@ async function forceSyncData() {
         if (typeof window.desktopDB.syncDownload === 'function') {
           await window.desktopDB.syncDownload();
         }
-        showToast('⚡ บังคับซิงค์ข้อมูลขึ้น Cloud เรียบร้อยแล้ว!', 'success');
+        finishSyncProgressModal(upRes.count || pendingCount, pendingCount, false);
       } else if (upRes && !upRes.success) {
-        showToast(upRes.error || '⚠️ ยังไม่สามารถเชื่อมต่อเซิร์ฟเวอร์คลาวด์ได้', 'warning');
+        finishSyncProgressModal(0, pendingCount, true, upRes.error);
       } else if (pending > 0) {
-        showToast('⚠️ ยังมีข้อมูลค้างส่ง ' + pending + ' รายการ — ระงับการดาวน์โหลดทับเพื่อความปลอดภัย', 'warning');
+        finishSyncProgressModal(upRes?.count || 0, pendingCount, true, 'ยังมีข้อมูลค้างส่งในคิวอีก ' + pending + ' รายการ');
       }
     } else if (typeof syncOfflineData === 'function') {
       await syncOfflineData();
+      finishSyncProgressModal(1, 1, false);
     } else {
-      showToast('ซิงค์ข้อมูลสำเร็จ', 'info');
+      finishSyncProgressModal(0, 0, false);
     }
   } catch (err) {
     console.error('forceSyncData error:', err);
-    showToast('เกิดข้อผิดพลาดในการซิงค์: ' + err.message, 'error');
+    finishSyncProgressModal(0, 0, true, 'เกิดข้อผิดพลาดในการซิงค์: ' + err.message);
   } finally {
-    hideLoading();
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = originalText;
     }
+    window.isSyncingData = false;
     await updateSyncQueueCounts();
+
+    // Silently and smoothly refresh current view ONCE
+    setTimeout(async () => {
+      try {
+        if (currentSection === 'history' && typeof filterHistory === 'function') {
+          await filterHistory(true);
+        } else if (currentSection === 'dashboard' && typeof renderDashboard === 'function') {
+          await renderDashboard(false);
+        } else if (currentSection === 'rounds' && typeof renderRounds === 'function') {
+          await renderRounds();
+        }
+      } catch (e) {
+        console.warn('Post-sync UI refresh error:', e);
+      }
+    }, 600);
   }
 }
 
@@ -1771,6 +1937,9 @@ async function renderSettings() {
 
   const priceCupEl = document.getElementById('setting-price-cup');
   if (priceCupEl) priceCupEl.value = s?.price_cup || '';
+
+  const priceOvernightEl = document.getElementById('setting-price-overnight');
+  if (priceOvernightEl) priceOvernightEl.value = s?.price_overnight || localStorage.getItem('setting_price_overnight') || '';
 
   const yardFeeEl = document.getElementById('setting-yard-fee');
   if (yardFeeEl) yardFeeEl.value = s?.yard_fee !== undefined ? s.yard_fee : '0.50';
@@ -1801,6 +1970,7 @@ async function saveSettings() {
   const auctionBuyer = document.getElementById('setting-auction-buyer')?.value?.trim() || 'เฮียต้อม ยางพารา';
 
   const priceCup = parseFloat(document.getElementById('setting-price-cup')?.value) || 0;
+  const priceOvernight = parseFloat(document.getElementById('setting-price-overnight')?.value) || 0;
   const yardFeeVal = parseFloat(document.getElementById('setting-yard-fee')?.value) ?? 0.50;
   const cartWeightVal = parseFloat(document.getElementById('setting-cart-weight')?.value) || 0;
   const deductionPercentVal = parseFloat(document.getElementById('setting-deduction-percent')?.value) || 0;
@@ -1817,6 +1987,7 @@ async function saveSettings() {
   localStorage.setItem('setting_plantation_address', plantationAddress);
   localStorage.setItem('setting_auction_buyer', auctionBuyer);
   localStorage.setItem('setting_theme_mode', themeMode);
+  localStorage.setItem('setting_price_overnight', String(priceOvernight));
   if (logoVal) {
     localStorage.setItem('setting_plantation_logo', logoVal);
   } else {
@@ -1830,6 +2001,7 @@ async function saveSettings() {
     auction_buyer: auctionBuyer,
     plantation_logo: logoVal,
     price_cup: priceCup,
+    price_overnight: priceOvernight,
     price_sheet: priceCup,
     price_latex: priceCup,
     yard_fee: yardFeeVal,
@@ -1847,6 +2019,7 @@ async function saveSettings() {
     auction_buyer: auctionBuyer,
     plantation_logo: logoVal,
     price_cup: priceCup,
+    price_overnight: priceOvernight,
     price_sheet: priceCup,
     price_latex: priceCup,
     yard_fee: yardFeeVal,
@@ -2281,12 +2454,30 @@ async function syncOfflineData() {
 
 // saveOfflineRound has moved to js/rounds.js
 
-// Hook Desktop DB Event Listeners
+// Hook Desktop DB Event Listeners (Sync Progress Modal & Zero Data Loss Shield)
 if (typeof window !== 'undefined' && window.desktopDB) {
   if (typeof window.desktopDB.onSyncEvent === 'function') {
     window.desktopDB.onSyncEvent((data) => {
-      if (data && data.message) {
-        console.log('[SyncEvent]', data.type, data.message);
+      if (!data) return;
+      console.log('[SyncEvent]', data.type, data.message);
+      if (data.type === 'upload_start') {
+        window.isSyncingData = true;
+        showSyncProgressModal(data.total);
+      } else if (data.type === 'upload_progress') {
+        window.isSyncingData = true;
+        updateSyncProgressModal(data.progress, data.total, data.detail || data.message, data.type);
+      } else if (data.type === 'upload_complete') {
+        if (data.failedCount && data.failedCount > 0) {
+          finishSyncProgressModal(data.successCount, data.total, true, `ส่งสำเร็จ ${data.successCount} รายการ ติดขัด ${data.failedCount} รายการ`);
+        } else {
+          finishSyncProgressModal(data.successCount, data.total, false);
+        }
+      } else if (data.type === 'download_start') {
+        const itemEl = document.getElementById('sync-modal-current-item');
+        if (itemEl) itemEl.innerText = data.message || 'กำลังอัปเดตข้อมูลล่าสุดจากคลาวด์...';
+      } else if (data.type === 'download_complete') {
+        const itemEl = document.getElementById('sync-modal-current-item');
+        if (itemEl) itemEl.innerText = data.message || 'อัปเดตข้อมูลจากคลาวด์เรียบร้อยแล้ว';
       }
     });
   }
@@ -2858,7 +3049,16 @@ async function loadAndRenderSeasonSummary() {
     } else if (sb && !isAppOffline()) {
       // Web App Supabase
       try {
-        const { data: rData } = await sb.from('purchase_rounds').select('id, title').eq('season_id', activeSeasonId);
+        let rData = null;
+        try {
+          const res = await sb.from('purchase_rounds').select('id, title').eq('season_id', activeSeasonId);
+          if (!res.error) rData = res.data;
+        } catch (e) {}
+
+        if (!rData) {
+          const { data } = await sb.from('purchase_rounds').select('id, title');
+          rData = data;
+        }
         rounds = rData || [];
         const roundIds = rounds.map(r => r.id);
         if (roundIds.length > 0) {

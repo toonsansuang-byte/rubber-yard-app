@@ -1,0 +1,18 @@
+# Node
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+
+# Server (ใช้แค่ตอน dev ไม่ต้อง push)
+server.js
+
+# Logs
+*.log

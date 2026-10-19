@@ -181,7 +181,17 @@ async function saveStartNewRound() {
         error = err;
       }
     } else {
-      const res = await sb.from('purchase_rounds').insert(payload).select().single();
+      const cloudPayload = { ...payload };
+      delete cloudPayload.season_id;
+
+      let res = await sb.from('purchase_rounds').insert(cloudPayload).select().single();
+      if (res && res.error && res.error.message && res.error.message.includes('column')) {
+        const match = res.error.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1] && cloudPayload[match[1]] !== undefined) {
+          delete cloudPayload[match[1]];
+          res = await sb.from('purchase_rounds').insert(cloudPayload).select().single();
+        }
+      }
       data = res.data;
       error = res.error;
       // FIX C6: Also insert the new round into local SQLite
@@ -703,6 +713,8 @@ function renderRoundReportContent(round, transactions, format) {
   });
 
   const memberRows = Object.values(memberSummary).sort((a, b) => a.code.localeCompare(b.code));
+  const cupWeight = sortedTxs.filter(t => t.rubber_type !== 'overnight').reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
+  const overnightWeight = sortedTxs.filter(t => t.rubber_type === 'overnight').reduce((s, t) => s + Number(t.final_weight || t.net_weight || 0), 0);
 
   // Determine Table HTML based on active view mode
   let tableHtml = '';
@@ -738,7 +750,7 @@ function renderRoundReportContent(round, transactions, format) {
                 <tr>
                   <td style="text-align:center; font-weight:bold; color:#0f172a; background:#f8fafc;">${seq}</td>
                   <td style="text-align:center;"><strong>${escapeHTML(t.member_code)}</strong></td>
-                  <td>${escapeHTML(t.member_name)}</td>
+                  <td>${escapeHTML(t.member_name)} ${t.rubber_type === 'overnight' ? '<span style="font-size:10px; background:#dbeafe; color:#1d4ed8; padding:2px 6px; border-radius:4px; margin-left:4px; font-weight:600;">🌙 ยางพักคืน</span>' : ''}</td>
                   <td style="text-align:right; font-weight:600;">${formatNumber(wt)}</td>
                   <td style="text-align:right;">${formatNumber(auctionRate)}</td>
                   <td style="text-align:right; font-weight:600;">${formatNumber(grossAmt)}</td>
@@ -835,6 +847,7 @@ function renderRoundReportContent(round, transactions, format) {
       <div class="report-meta-item">
         <div class="meta-label">น้ำหนักสุทธิรวม</div>
         <div class="meta-val" style="color:#0f172a;">${formatNumber(grandTotalWeight)} กก.</div>
+        ${overnightWeight > 0 ? `<div style="font-size:10.5px; color:#64748b; margin-top:2px;">(ก้อนถ้วย ${formatNumber(cupWeight)} / พักคืน ${formatNumber(overnightWeight)})</div>` : ''}
       </div>
       <div class="report-meta-item">
         <div class="meta-label">เงินคงเหลือเข้ากลุ่ม</div>
@@ -999,6 +1012,7 @@ async function exportRoundToExcel(roundId = null) {
           <th style="width: 55px;">คิวที่</th>
           <th style="width: 80px;">รหัสสมาชิก</th>
           <th style="width: 220px;">ชื่อ-นามสกุลสมาชิก</th>
+          <th style="width: 100px;">ประเภทยาง</th>
           <th style="width: 130px;">น้ำหนักยางสุทธิ (กก.)</th>
           <th style="width: 110px;">ราคาประมูล (บาท)</th>
           <th style="width: 150px;">ยอดรวมก่อนหัก (บาท)</th>
@@ -1023,6 +1037,7 @@ async function exportRoundToExcel(roundId = null) {
             <td class="text-center" style="font-weight:bold;">${seq}</td>
             <td class="member-code">${t.member_code}</td>
             <td class="text-left"><b>${t.member_name}</b></td>
+            <td class="text-center" style="font-weight:600; color:${t.rubber_type === 'overnight' ? '#1d4ed8' : '#b45309'};">${t.rubber_type === 'overnight' ? 'ยางพักคืน' : 'ยางก้อนถ้วย'}</td>
             <td class="num-format">${wt.toFixed(2)}</td>
             <td class="num-format">${auctionRate.toFixed(2)}</td>
             <td class="num-format" style="font-weight:600; color:#1e293b;">${grossAmt.toFixed(2)}</td>
@@ -1119,14 +1134,14 @@ async function exportRoundToExcel(roundId = null) {
               <b>จำนวนรายการ:</b> ${sortedTxs.length} คิว (${memberRows.length} คน)
             </td>
           </tr>
-          <tr><td colspan="${currentReportView === 'queue' ? 9 : 10}"></td></tr>
+          <tr><td colspan="10"></td></tr>
           <thead>
             ${tableHeaderHtml}
           </thead>
           <tbody>
             ${tableRowsHtml}
             <tr class="total-row">
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" class="text-right"><b>ยอดรวมสุทธิทั้งรอบ:</b></td>
+              <td colspan="4" class="text-right"><b>ยอดรวมสุทธิทั้งรอบ:</b></td>
               <td class="num-format" style="font-weight:bold;">${grandTotalWeight.toFixed(2)}</td>
               <td></td>
               <td class="num-format" style="font-weight:bold; color:#1e293b;">${grandTotalGross.toFixed(2)}</td>
@@ -1134,25 +1149,25 @@ async function exportRoundToExcel(roundId = null) {
               <td></td>
               <td class="num-format" style="font-weight:bold; color:#047857;">${grandTotalAmount.toFixed(2)}</td>
             </tr>
-            <tr><td colspan="${currentReportView === 'queue' ? 9 : 10}"></td></tr>
+            <tr><td colspan="10"></td></tr>
             <tr>
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="background:#f1f5f9; border:1px solid #94a3b8; padding:8px 12px; font-size:13px;"><b>สรุปภาพรวมการเงินประจำรอบ:</b></td>
+              <td colspan="4" style="background:#f1f5f9; border:1px solid #94a3b8; padding:8px 12px; font-size:13px;"><b>สรุปภาพรวมการเงินประจำรอบ:</b></td>
               <td colspan="6" style="background:#f8fafc; border:1px solid #94a3b8;"></td>
             </tr>
             <tr>
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px;">⚖️ น้ำหนักยางส่งมอบรวมทั้งรอบ:</td>
+              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px;">⚖️ น้ำหนักยางส่งมอบรวมทั้งรอบ:</td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#0f172a;">${grandTotalWeight.toFixed(2)} กิโลกรัม</td>
             </tr>
             <tr>
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px;">💰 ยอดเงินรวมก่อนหักค่าจัดการ (ยอดขายยางรวม):</td>
+              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px;">💰 ยอดเงินรวมก่อนหักค่าจัดการ (ยอดขายยางรวม):</td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#1e293b;">${grandTotalGross.toFixed(2)} บาท</td>
             </tr>
             <tr>
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px; background:#fef3c7;">🏢 <b>เงินค่าจัดการคงเหลือเข้ากลุ่ม (รายได้กลุ่มเกษตรกร):</b></td>
+              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px; background:#fef3c7;">🏢 <b>เงินค่าจัดการคงเหลือเข้ากลุ่ม (รายได้กลุ่มเกษตรกร):</b></td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#b45309; background:#fef3c7;">${grandTotalYardFee.toFixed(2)} บาท</td>
             </tr>
             <tr>
-              <td colspan="${currentReportView === 'queue' ? 3 : 4}" style="border:1px solid #cbd5e1; padding:6px 12px; background:#d1fae5;">💳 <b>ยอดเงินสุทธิจ่ายสมาชิกทุกคน:</b></td>
+              <td colspan="4" style="border:1px solid #cbd5e1; padding:6px 12px; background:#d1fae5;">💳 <b>ยอดเงินสุทธิจ่ายสมาชิกทุกคน:</b></td>
               <td colspan="6" class="num-format" style="border:1px solid #cbd5e1; font-weight:bold; color:#047857; background:#d1fae5;">${grandTotalAmount.toFixed(2)} บาท</td>
             </tr>
           </tbody>
@@ -1331,7 +1346,7 @@ async function printRoundReport(roundId = null) {
                 <tr>
                   <td style="text-align:center; font-weight:bold;">${seq}</td>
                   <td style="text-align:center;"><span class="code-badge">${escapeHTML(t.member_code)}</span></td>
-                  <td><strong>${escapeHTML(t.member_name)}</strong></td>
+                  <td><strong>${escapeHTML(t.member_name)}</strong> ${t.rubber_type === 'overnight' ? '<span style="font-size:10px; background:#dbeafe; color:#1d4ed8; padding:2px 5px; border-radius:3px; margin-left:4px; font-weight:600;">🌙 ยางพักคืน</span>' : ''}</td>
                   <td style="text-align:right; font-weight:600;">${formatNumber(wt)}</td>
                   <td style="text-align:right;">${formatNumber(auctionRate)}</td>
                   <td style="text-align:right; font-weight:600;">${formatNumber(grossAmt)}</td>
