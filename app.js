@@ -8402,7 +8402,13 @@ if (typeof window !== 'undefined' && window.desktopDB) {
 let isManualUpdateCheck = false;
 
 async function initAutoUpdater() {
-  if (typeof window.desktopUpdater === 'undefined') return;
+  if (typeof window.desktopUpdater === 'undefined') {
+    const verEl = document.getElementById('app-current-version-text');
+    if (verEl) {
+      verEl.textContent = 'เวอร์ชันปัจจุบัน: v1.3.11 (เว็บแอพ)';
+    }
+    return;
+  }
 
   try {
     const version = await window.desktopUpdater.getVersion();
