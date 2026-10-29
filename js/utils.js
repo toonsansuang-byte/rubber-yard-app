@@ -10,8 +10,9 @@ const APP_SECRET_SALT = 'RUBBER_YARD_SECURE_SALT_v1_2026';
 
 // Rubber Types Mapping
 const RUBBER_TYPES_MAP = {
-  sheet: 'ยางแผ่น',
   cup: 'ยางก้อนถ้วย',
+  overnight: 'ยางพักคืน',
+  sheet: 'ยางแผ่น',
   latex: 'น้ำยางสด'
 };
 
@@ -117,9 +118,9 @@ function formatDateTime(dateStr) {
  * สร้าง HTML Badge สำหรับประเภทยาง
  */
 function getRubberTypeBadge(type) {
-  const classes = { sheet: 'badge-green', cup: 'badge-gold', latex: 'badge-blue' };
+  const classes = { cup: 'badge-gold', overnight: 'badge-blue', sheet: 'badge-green', latex: 'badge-blue' };
   const label = RUBBER_TYPES_MAP[type] || type || 'ยางก้อนถ้วย';
-  return `<span class="badge ${classes[type] || 'badge-green'}">${label}</span>`;
+  return `<span class="badge ${classes[type] || 'badge-blue'}">${label}</span>`;
 }
 
 /**

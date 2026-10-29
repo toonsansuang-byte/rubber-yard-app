@@ -267,65 +267,18 @@ async function renderHistory() {
 
 let currentFilteredHistory = [];
 
-async function filterHistory() {
-  showLoading();
+async function filterHistory(silent = false) {
+  if (!silent) showLoading();
   try {
     const roundId = document.getElementById('history-round-filter')?.value;
     const dateFrom = document.getElementById('history-date-from')?.value;
     const dateTo = document.getElementById('history-date-to')?.value;
     const memberCode = document.getElementById('history-member-filter')?.value;
+    const rubberTypeFilter = document.getElementById('history-rubber-type-filter')?.value;
 
     let filtered = [];
 
     if (isDesktopApp()) {
-      if (sb && !isAppOffline()) {
-        try {
-          // FIX C1: Download cloud transactions to merge locally WITHOUT destructive delete
-          const { data: cloudTxs } = await sb.from('transactions').select('*').order('id', { ascending: false }).limit(500);
-          if (cloudTxs && cloudTxs.length > 0) {
-            for (const tx of cloudTxs) {
-              const existing = await window.desktopDB.query(
-                'SELECT id FROM transactions WHERE supabase_id = ? OR (member_code = ? AND (round_id = ? OR round_id = (SELECT id FROM purchase_rounds WHERE supabase_id = ?)) AND ABS(final_weight - ?) < 0.01) LIMIT 1',
-                [String(tx.id), tx.member_code, String(tx.round_id), String(tx.round_id), tx.final_weight || tx.net_weight || 0]
-              );
-              if (!existing || existing.length === 0) {
-                const localTx = {
-                  ...tx,
-                  supabase_id: tx.id,
-                  synced: 1,
-                  trips: typeof tx.trips === 'string' ? tx.trips : JSON.stringify(tx.trips || []),
-                  trips_detail: typeof tx.trips_detail === 'string' ? tx.trips_detail : JSON.stringify(tx.trips_detail || [])
-                };
-                delete localTx.id;
-                await window.desktopDB.insert('transactions', localTx);
-              } else {
-                // Merge cloud data without overwriting valid local values with 0
-                const updateData = {
-                  round_id: tx.round_id,
-                  supabase_id: tx.id,
-                  synced: 1,
-                  total_price: tx.total_price,
-                  final_weight: tx.final_weight,
-                  net_weight: tx.net_weight,
-                  truck_number: tx.truck_number,
-                  rubber_type: tx.rubber_type,
-                  price_per_kg: tx.price_per_kg
-                };
-                if (tx.gross_weight && Number(tx.gross_weight) > 0) updateData.gross_weight = tx.gross_weight;
-                if (tx.cart_weight && Number(tx.cart_weight) > 0) updateData.cart_weight = tx.cart_weight;
-                if (tx.auction_price) updateData.auction_price = tx.auction_price;
-                if (tx.yard_fee !== undefined && tx.yard_fee !== null) updateData.yard_fee = tx.yard_fee;
-                if (tx.buyer_name) updateData.buyer_name = tx.buyer_name;
-                if (tx.auction_buyer) updateData.auction_buyer = tx.auction_buyer;
-                await window.desktopDB.update('transactions', updateData, { id: existing[0].id });
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Sync cloud transactions in filterHistory error:', e);
-        }
-      }
-
       let sql = 'SELECT * FROM transactions WHERE 1=1';
       const params = [];
       if (roundId) {
@@ -335,6 +288,7 @@ async function filterHistory() {
       if (dateFrom) { sql += ' AND date >= ?'; params.push(dateFrom + 'T00:00:00'); }
       if (dateTo) { sql += ' AND date <= ?'; params.push(dateTo + 'T23:59:59'); }
       if (memberCode) { sql += ' AND member_code = ?'; params.push(memberCode); }
+      if (rubberTypeFilter) { sql += ' AND rubber_type = ?'; params.push(rubberTypeFilter); }
       sql += ' ORDER BY date DESC, id DESC';
       filtered = await window.desktopDB.query(sql, params);
     } else {
@@ -344,6 +298,7 @@ async function filterHistory() {
       if (dateFrom) query = query.gte('date', dateFrom + 'T00:00:00');
       if (dateTo) query = query.lte('date', dateTo + 'T23:59:59');
       if (memberCode) query = query.eq('member_code', memberCode);
+      if (rubberTypeFilter) query = query.eq('rubber_type', rubberTypeFilter);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -405,7 +360,7 @@ async function filterHistory() {
   } catch (err) {
     showToast('โหลดประวัติไม่สำเร็จ: ' + err.message, 'error');
   }
-  hideLoading();
+  if (!silent) hideLoading();
 }
 
 function toggleSelectAllHistory(isChecked) {
@@ -1163,6 +1118,8 @@ function clearHistoryFilter() {
   document.getElementById('history-date-from').value = '';
   document.getElementById('history-date-to').value = '';
   document.getElementById('history-member-filter').value = '';
+  const rubberTypeFilterEl = document.getElementById('history-rubber-type-filter');
+  if (rubberTypeFilterEl) rubberTypeFilterEl.value = '';
   historyFilterOnlyUnassigned = false;
   const unassignedBtn = document.getElementById('history-unassigned-truck-btn');
   if (unassignedBtn) {

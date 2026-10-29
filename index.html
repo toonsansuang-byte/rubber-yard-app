@@ -144,11 +144,15 @@
         <a class="sidebar-link" onclick="navigateTo('members')" id="nav-members">
           <span class="nav-icon">👥</span> สมาชิก
         </a>
+        <a class="sidebar-link" onclick="navigateTo('store-inventory')" id="nav-store-inventory">
+          <span class="nav-icon">🛒</span> ร้านค้า/เคมีภัณฑ์
+        </a>
+
         <a class="sidebar-link" onclick="navigateTo('announcements')" id="nav-announcements">
           <span class="nav-icon">📢</span> จัดการประกาศ
         </a>
 
-        <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
+                <div class="nav-label" style="margin-top: 12px;">บัญชี & ระบบ</div>
         <a class="sidebar-link" onclick="navigateTo('profile')" id="nav-profile">
           <span class="nav-icon">🔑</span> โปรไฟล์ส่วนตัว
         </a>
@@ -196,7 +200,7 @@
         <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
             <h2>📊 แดชบอร์ด</h2>
-            <p id="dashboard-subtitle">ภาพรวมของรอบส่งมอบยางปัจจุบัน</p>
+            <p id="dashboard-subtitle">สรุปภาพรวมสะสมทุกรอบการรับซื้อ</p>
           </div>
           <div id="realtime-status-badge" class="realtime-status-badge" title="ระบบเชื่อมต่อ Realtime เรียบร้อยแล้ว ข้อมูลจะอัปเดตอัตโนมัติ">
             <span class="live-dot"></span> <span class="live-text">Realtime เชื่อมต่อแล้ว</span>
@@ -206,22 +210,22 @@
         <div class="stats-grid">
           <div class="glass-card stat-card">
             <div class="stat-icon">📦</div>
-            <div class="card-title">ธุรกรรมในรอบนี้</div>
+            <div class="card-title">ธุรกรรมรวมทุกรอบ</div>
             <div class="card-value" id="stat-round-count">0 <span class="unit">รายการ</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">⚖️</div>
-            <div class="card-title">น้ำหนักรวมในรอบนี้</div>
+            <div class="card-title">น้ำหนักรวมทุกรอบ</div>
             <div class="card-value" id="stat-round-weight">0 <span class="unit">กก.</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💰</div>
-            <div class="card-title">ยอดเงินพ่อค้า (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(ก่อนหักค่าจัดการ)</span></div>
+            <div class="card-title">ยอดเงินพ่อค้ารวมทุกรอบ <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(ก่อนหักค่าจัดการ)</span></div>
             <div class="card-value" id="stat-round-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
             <div class="stat-icon">💵</div>
-            <div class="card-title">ยอดจ่ายสมาชิก (รอบนี้) <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(หักค่าจัดการแล้ว)</span></div>
+            <div class="card-title">ยอดจ่ายสมาชิกรวมทุกรอบ <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(หักค่าจัดการแล้ว)</span></div>
             <div class="card-value" id="stat-month-amount">0 <span class="unit">บาท</span></div>
           </div>
           <div class="glass-card stat-card">
@@ -476,8 +480,18 @@
             <div class="glass-card">
               <h3 style="margin-bottom: 16px; font-size: 1rem;">⚖️ ข้อมูลยาง</h3>
               <div class="form-group">
-                <label class="form-label">ประเภทยาง</label>
-                <input type="text" class="form-input" value="ยางก้อนถ้วย" readonly disabled style="opacity: 0.9; font-weight: 600; color: var(--gold);">
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>ประเภทยาง</span>
+                  <span id="rubber-type-badge-indicator" class="badge badge-gold" style="font-size:0.8rem; padding:2px 8px;">ยางก้อนถ้วย</span>
+                </label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <button type="button" id="btn-type-cup" class="btn btn-primary" onclick="selectRubberType('cup')" style="font-weight:700; font-size:0.95rem; padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 0 10px rgba(245,158,11,0.25);">
+                    <span>🍃</span> ยางก้อนถ้วย
+                  </button>
+                  <button type="button" id="btn-type-overnight" class="btn btn-secondary" onclick="selectRubberType('overnight')" style="font-weight:700; font-size:0.95rem; padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <span>🌙</span> ยางพักคืน
+                  </button>
+                </div>
                 <input type="hidden" id="rubber-type" value="cup">
               </div>
               <div class="form-group">
@@ -735,6 +749,14 @@
               <option value="">สมาชิกทั้งหมด</option>
             </select>
           </div>
+          <div class="form-group" style="min-width: 150px;">
+            <label class="form-label">ประเภทยาง</label>
+            <select id="history-rubber-type-filter" class="form-input" onchange="filterHistory()">
+              <option value="">ประเภทยางทั้งหมด</option>
+              <option value="cup">🍃 ยางก้อนถ้วย</option>
+              <option value="overnight">🌙 ยางพักคืน</option>
+            </select>
+          </div>
           <button type="button" class="btn btn-secondary" id="history-unassigned-truck-btn" onclick="toggleHistoryOnlyUnassignedTruck()" style="align-self: flex-end; display:inline-flex; align-items:center; gap:6px;">
             <span>⚠️</span> เฉพาะยังไม่ระบุรถ (<span id="history-unassigned-truck-count">0</span>)
           </button>
@@ -899,163 +921,594 @@
         </div>
       </div>
 
+            
       <!-- ===== SETTINGS ===== -->
       <div class="section" id="section-settings">
         <div class="section-header">
-          <h2>⚙️ ตั้งค่าลานยาง</h2>
-          <p>ตั้งค่าราคายาง ข้อมูลลานยาง และน้ำหนักรถเข็นเริ่มต้น</p>
+          <h2>⚙️ ตั้งค่าระบบ (Settings)</h2>
+          <p>จัดการการตั้งค่ารับซื้อ จอแสดงผล ระบบซิงค์ข้อมูล และข้อมูลระบบ</p>
         </div>
 
-        <div class="settings-grid">
-          <!-- Plantation Info -->
-          <div class="glass-card">
-            <div class="settings-section-title">🏠 ข้อมูลลานยาง & ชื่อผู้ประมูล (สำหรับใบเสร็จ)</div>
-            <div class="form-group mb-3">
-              <label class="form-label">🖼️ โลโก้ลานยาง (เปลี่ยนรูปหน้าล็อคอิน & เมนูแถบข้าง)</label>
-              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(255,255,255,0.02); padding:12px 14px; border-radius:var(--radius-md); border:1px solid var(--border);">
-                <div id="setting-logo-preview" style="width:54px; height:54px; border-radius:var(--radius-md); background:var(--primary-glow); display:flex; align-items:center; justify-content:center; font-size:1.8rem; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
-                  🌿
-                </div>
-                <div style="flex:1; min-width:200px;">
-                  <input type="file" id="setting-logo-file" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(event)">
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('setting-logo-file').click()">📁 เลือกรูปภาพจากเครื่อง...</button>
-                    <button type="button" class="btn btn-danger btn-sm" onclick="removeCustomLogo()">🗑️ คืนค่าโลโก้เริ่มต้น (🌿)</button>
-                  </div>
-                  <span style="font-size:0.78rem; color:var(--text-secondary);">รองรับรูปภาพ JPG, PNG, WebP (รูปสี่เหลี่ยมจัตุรัสจะสวยงามที่สุด)</span>
-                </div>
-              </div>
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label" for="setting-plantation-name">ชื่อกลุ่ม / ลานยาง</label>
-              <input type="text" id="setting-plantation-name" class="form-input" placeholder="กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก">
-            </div>
-            <div class="form-group mb-3">
-              <label class="form-label" for="setting-plantation-address">ที่อยู่ / เลขที่ หมู่ ตำบล อำเภอ จังหวัด</label>
-              <input type="text" id="setting-plantation-address" class="form-input" placeholder="เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก">
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" for="setting-auction-buyer">ชื่อผู้ประมูล / พ่อค้าปัจจุบัน (แสดงในใบเสร็จ)</label>
-              <input type="text" id="setting-auction-buyer" class="form-input" placeholder="เช่น เฮียต้อม ยางพารา">
-            </div>
-          </div>
+        <!-- Settings Tab Navigation -->
+        <div class="settings-tabs" style="display:flex; gap:8px; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:12px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary settings-tab-btn active" id="tab-btn-purchase" onclick="switchSettingsTab('purchase')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🛒 ตั้งค่ารับซื้อ
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-display" onclick="switchSettingsTab('display')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🖥️ จอแสดงผล
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-sync" onclick="switchSettingsTab('sync')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            🔄 ซิงค์ข้อมูล
+          </button>
+          <button type="button" class="btn btn-secondary settings-tab-btn" id="tab-btn-system" onclick="switchSettingsTab('system')" style="display:flex; align-items:center; gap:8px; padding:10px 18px; font-weight:600; border-radius:var(--radius-md);">
+            ℹ️ ข้อมูลระบบ
+          </button>
+        </div>
 
-          <!-- Prices -->
-          <div class="glass-card">
-            <div class="settings-section-title">💰 ราคายางก้อนถ้วย & ค่าบริหารจัดการ</div>
-            <div class="settings-row">
-              <div class="form-group">
-                <label class="form-label" for="setting-price-cup">ราคาประมูลเริ่มต้น (บาท/กก.)</label>
-                <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
+        <!-- TAB 1: Purchase Settings -->
+        <div id="settings-tab-purchase" class="settings-tab-content">
+          <div class="settings-grid">
+            <!-- Season Management -->
+            <div class="glass-card mb-4" id="season-settings-card">
+              <div class="settings-section-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>🌱 จัดการฤดูกาล (Season Management)</span>
+                <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">แยกข้อมูลการรับซื้อรายปี</span>
               </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-yard-fee">ค่าบริหารจัดการ (บาท/กก.)</label>
-                <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
-              </div>
-            </div>
-          </div>
-
-          <!-- Cart Weight -->
-          <div class="glass-card">
-            <div class="settings-section-title">🛒 น้ำหนักรถเข็นเริ่มต้น</div>
-            <div class="settings-row">
-              <div class="form-group" style="max-width: 320px;">
-                <label class="form-label" for="setting-cart-weight">น้ำหนักรถเข็นเริ่มต้น (กก.)</label>
-                <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
-              </div>
-            </div>
-          </div>
-
-          <!-- Multi-Station & Printing Options -->
-          <div class="glass-card">
-            <div class="settings-section-title">⚡ โหมดการทำงาน & ธีมการแสดงผล</div>
-            
-            <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label" style="font-weight:600;">ธีมการแสดงผลระบบ (Theme Mode)</label>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:6px;">
-                <label style="display:flex; align-items:center; gap:8px; background:var(--bg-input); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                  <input type="radio" name="setting-theme-mode" value="dark" checked onchange="previewThemeMode('dark')">
-                  <span>🌙 โหมดมืด (Dark Mode)</span>
-                </label>
-                <label style="display:flex; align-items:center; gap:8px; background:var(--bg-input); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                  <input type="radio" name="setting-theme-mode" value="light" onchange="previewThemeMode('light')">
-                  <span>☀️ โหมดสว่าง (Light Mode)</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:12px;">
-              <div>
-                <label class="form-label" style="margin:0; font-weight:600;">⚡ โหมดทำงาน 2 เครื่อง (สถานีชั่ง & สถานีออกใบเสร็จ)</label>
-                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อเปิด: เครื่อง 1 ส่งข้อมูลไปรอยืนยันที่เครื่อง 2 เพื่อตรวจสอบและพิมพ์ใบเสร็จ</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-dual-station-mode">
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <div>
-                <label class="form-label" style="margin:0; font-weight:600;">💳 แสดงชื่อผู้จ่ายเงินอัตโนมัติในใบเสร็จ</label>
-                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">เมื่อปิด: ช่องผู้จ่ายเงินจะเป็นช่องเซ็นเปล่า (สำหรับกรณีโอนตรงผ่านธนาคาร)</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-show-payer-name" checked>
-                <span class="slider round"></span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Cloud Sync Section -->
-          <div class="glass-card">
-            <div class="settings-section-title">☁️ การซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์</div>
-            
-            <div style="display:flex; flex-direction:column; gap:12px;">
-              <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
-                ซิงค์รายการรับซื้อและข้อมูลล่าสุดในเครื่องขึ้นระบบคลาวด์ เพื่อให้สมาชิกสามารถตรวจสอบข้อมูลผ่านมือถือได้แบบเรียลไทม์
-              </p>
               
-              <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="syncOfflineData()" id="settings-sync-btn" style="padding:12px 24px;">
-                  🔄 ซิงค์ข้อมูลขึ้นเซิร์ฟเวอร์
+              <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px;">สถานะฤดูกาลการรับซื้อ</div>
+                  <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    ฤดูกาลปัจจุบัน: 
+                    <span id="active-season-badge" class="badge badge-green" style="font-size: 0.95rem; padding: 4px 12px;">ฤดูกาล 2569</span>
+                  </div>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                    💡 เมื่อเปิดฤดูกาลใหม่ ระบบจะปิดฤดูกาลเดิม และรอบรับซื้อใหม่ทั้งหมดจะถูกผูกกับฤดูกาลใหม่โดยอัตโนมัติ
+                  </p>
+                </div>
+                
+                <div>
+                  <button type="button" class="btn btn-secondary" onclick="openSeasonSummaryModal()" style="display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 16px;">
+                    <span>📊</span> สรุปข้อมูลฤดูกาล
+                  </button>
+                  <button type="button" class="btn btn-primary" onclick="openCreateSeasonModal()" style="display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 18px;">
+                    <span>➕</span> เปิดฤดูกาลใหม่
+                  </button>
+                </div>
+              </div>
+            </div>
+
+
+            <!-- Yard Info & Auction Buyer -->
+            <div class="glass-card">
+              <div class="settings-section-title">🏠 ข้อมูลลานยาง & ผู้ประมูล</div>
+              <div class="form-group mb-3">
+                <label class="form-label" for="setting-plantation-name">ชื่อกลุ่ม / ลานยาง</label>
+                <input type="text" id="setting-plantation-name" class="form-input" placeholder="กลุ่มเกษตรกรชาวสวนยาง กยท.ท่าสะแก">
+              </div>
+              <div class="form-group mb-3">
+                <label class="form-label" for="setting-plantation-address">ที่อยู่ / เลขที่ หมู่ ตำบล อำเภอ จังหวัด</label>
+                <input type="text" id="setting-plantation-address" class="form-input" placeholder="เลขที่ 127 หมู่7 ต.ท่าสะแก อ.ชาติตระการ จ.พิษณุโลก">
+              </div>
+              <div class="form-group mb-0">
+                <label class="form-label" for="setting-auction-buyer">ชื่อผู้ประมูล / พ่อค้าปัจจุบัน (แสดงในใบเสร็จ)</label>
+                <input type="text" id="setting-auction-buyer" class="form-input" placeholder="เช่น เฮียต้อม ยางพารา">
+              </div>
+            </div>
+
+            <!-- Prices & Deduction -->
+            <div class="glass-card">
+              <div class="settings-section-title">💰 ราคาตั้งต้น, ค่าธรรมเนียม & หัก %</div>
+              <!-- แถวที่ 1: ราคาประมูลเริ่มต้น 2 ประเภทยาง (คู่กัน 50% / 50%) -->
+              <div class="settings-row" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label" for="setting-price-cup" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🍃 ราคาประมูลเริ่มต้น - ยางก้อนถ้วย (บาท/กก.)
+                  </label>
+                  <input type="number" id="setting-price-cup" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label" for="setting-price-overnight" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🌙 ราคาประมูลเริ่มต้น - ยางพักคืน (บาท/กก.)
+                  </label>
+                  <input type="number" id="setting-price-overnight" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+              </div>
+              <!-- แถวที่ 2: ค่าธรรมเนียมและการหักน้ำหนัก (3 ช่องสมดุล 33% / 33% / 33%) -->
+              <div class="settings-row mt-3" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-yard-fee" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🏢 ค่าบริหารจัดการลาน (บาท/กก.)
+                  </label>
+                  <input type="number" id="setting-yard-fee" class="form-input" step="0.01" min="0" placeholder="0.50">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-cart-weight" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    🛒 น้ำหนักรถเข็นเริ่มต้น (กก.)
+                  </label>
+                  <input type="number" id="setting-cart-weight" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="setting-deduction-percent" style="min-height: 2.6rem; display: flex; align-items: flex-end; margin-bottom: 6px; font-weight: 600;">
+                    💧 หักสิ่งเจือปนเริ่มต้น (%)
+                  </label>
+                  <input type="number" id="setting-deduction-percent" class="form-input" step="0.1" min="0" max="100" placeholder="0.0">
+                </div>
+              </div>
+            </div>
+
+            <!-- Dual Station Mode -->
+            <div class="glass-card">
+              <div class="settings-section-title">⚡ โหมดการทำงานรับซื้อ</div>
+              <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:14px 18px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:0;">
+                <div>
+                  <label class="form-label" style="margin:0; font-weight:600; font-size:0.95rem;">⚡ โหมดชั่ง 2 เครื่อง (สถานีชั่ง & สถานีออกใบเสร็จ)</label>
+                  <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:3px;">เมื่อเปิด: เครื่อง 1 ส่งข้อมูลไปรอยืนยันที่เครื่อง 2 เพื่อตรวจสอบและพิมพ์ใบเสร็จ</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setting-dual-station-mode">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveSettings()" style="justify-self:start; padding:14px 40px; font-weight:600;">
+              💾 บันทึกการตั้งค่ารับซื้อ
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 2: Display Settings -->
+        <div id="settings-tab-display" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <!-- Logo Settings -->
+            <div class="glass-card">
+              <div class="settings-section-title">🖼️ โลโก้ลานยาง</div>
+              <div class="form-group mb-0">
+                <label class="form-label">รูปภาพโลโก้ (แสดงที่หน้าจอหลัก, เมนูแถบข้าง และหน้าเข้าสู่ระบบ)</label>
+                <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:rgba(255,255,255,0.02); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border); margin-top:6px;">
+                  <div id="setting-logo-preview" style="width:64px; height:64px; border-radius:var(--radius-md); background:var(--primary-glow); display:flex; align-items:center; justify-content:center; font-size:2rem; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
+                    🌿
+                  </div>
+                  <div style="flex:1; min-width:220px;">
+                    <input type="file" id="setting-logo-file" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(event)">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('setting-logo-file').click()">📁 เลือกรูปภาพจากเครื่อง...</button>
+                      <button type="button" class="btn btn-danger btn-sm" onclick="removeCustomLogo()">🗑️ คืนค่าโลโก้เริ่มต้น (🌿)</button>
+                    </div>
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">รองรับรูปภาพ JPG, PNG, WebP (แนะนำรูปสี่เหลี่ยมจัตุรัสเพื่อความสวยงาม)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Theme Mode & Visual Options -->
+            <div class="glass-card">
+              <div class="settings-section-title">🎨 ธีมและหน้าจอแสดงผล</div>
+              <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label" style="font-weight:600;">ธีมการแสดงผลระบบ (Theme Mode)</label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px;">
+                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
+                    <input type="radio" name="setting-theme-mode" value="dark" checked onchange="previewThemeMode('dark')">
+                    <span>🌙 โหมดมืด (Dark Mode)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
+                    <input type="radio" name="setting-theme-mode" value="light" onchange="previewThemeMode('light')">
+                    <span>☀️ โหมดสว่าง (Light Mode)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:14px 18px; border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:0;">
+                <div>
+                  <label class="form-label" style="margin:0; font-weight:600; font-size:0.95rem;">💳 แสดงชื่อผู้จ่ายเงินอัตโนมัติในใบเสร็จ</label>
+                  <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:3px;">เมื่อปิด: ช่องผู้จ่ายเงินจะเป็นช่องเซ็นเปล่า (สำหรับกรณีโอนตรงผ่านธนาคาร)</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setting-show-payer-name" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveSettings()" style="justify-self:start; padding:14px 40px; font-weight:600;">
+              💾 บันทึกการตั้งค่าจอแสดงผล
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 3: Sync & Network -->
+        <div id="settings-tab-sync" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <div class="glass-card">
+              <div class="settings-section-title">🔄 สถานะการซิงค์ข้อมูล (Sync & Network)</div>
+              <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:18px;">
+                ตรวจสอบคิวข้อมูลที่รอการส่งขึ้น Cloud และบังคับซิงค์ข้อมูลระหว่างเครื่องท้องถิ่น (SQLite) กับเซิร์ฟเวอร์ (Supabase)
+              </p>
+
+              <!-- Three Status Info Boxes -->
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">
+                <!-- Box 1: Transactions Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(16,185,129,0.12); color:#10b981; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    📝
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">รายการรับซื้อยางรอซิงค์</div>
+                    <div id="sync-queue-transactions-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      รับซื้อยางรอซิงค์: 0 รายการ
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Box 2: Store Sales Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(245,158,11,0.12); color:#f59e0b; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    🛒
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">บิลขายร้านค้ารอซิงค์</div>
+                    <div id="sync-queue-store-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      บิลขายรอซิงค์: 0 บิล
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Box 3: Members Queue -->
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:var(--radius-md); padding:18px 20px; display:flex; align-items:center; gap:16px;">
+                  <div style="width:48px; height:48px; border-radius:12px; background:rgba(59,130,246,0.12); color:#3b82f6; display:flex; align-items:center; justify-content:center; font-size:1.6rem; flex-shrink:0;">
+                    👥
+                  </div>
+                  <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:2px;">ข้อมูลสมาชิกรอซิงค์</div>
+                    <div id="sync-queue-members-count" style="font-size:1.35rem; font-weight:700; color:var(--text-primary);">
+                      ข้อมูลสมาชิกรอซิงค์: 0 รายการ
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Force Sync Button -->
+              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                <button type="button" class="btn btn-primary" id="btn-force-sync" onclick="forceSyncData()" style="padding:14px 28px; font-weight:600; display:inline-flex; align-items:center; gap:10px; font-size:0.95rem;">
+                  ⚡ บังคับซิงค์ข้อมูลเดี๋ยวนี้ (Force Sync)
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="updateSyncQueueCounts(true)" style="padding:14px 20px;">
+                  🔄 รีเฟรชสถานะคิว
                 </button>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- App Version & Auto-Update -->
-          <div class="glass-card">
-            <div class="settings-section-title">📦 เวอร์ชันและการอัปเดตโปรแกรม</div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; background:rgba(255,255,255,0.02); padding:16px 20px; border-radius:var(--radius-md); border:1px solid var(--border);">
-              <div>
-                <div style="font-size:1.05rem; font-weight:700; color:var(--text-accent);" id="app-current-version-text">
-                  เวอร์ชันปัจจุบัน: v1.3.11
+        <!-- TAB 4: System Info -->
+        <div id="settings-tab-system" class="settings-tab-content" style="display:none;">
+          <div class="settings-grid">
+            <div class="glass-card">
+              <div class="settings-section-title">ℹ️ ข้อมูลระบบ (System Info)</div>
+              
+              <div style="display:flex; flex-direction:column; gap:14px; background:rgba(255,255,255,0.02); padding:20px; border-radius:var(--radius-md); border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px;">
+                  <span style="color:var(--text-secondary); font-size:0.9rem;">ระบบ / สถาปัตยกรรม:</span>
+                  <span style="font-size:1.05rem; font-weight:700; color:var(--text-accent);">
+                    เวอร์ชัน: v1.3.11 (Dual-Mode ERP)
+                  </span>
                 </div>
-                <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:4px;" id="app-update-status-detail">
-                  ระบบตรวจเช็คอัปเดตอัตโนมัติจาก GitHub Releases (เมื่อต่ออินเทอร์เน็ต)
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px;">
+                  <span style="color:var(--text-secondary); font-size:0.9rem;">แพ็กเกจโปรแกรม:</span>
+                  <span style="font-weight:600; color:var(--text-primary);" id="app-current-version-text">
+                    เวอร์ชันปัจจุบัน: v1.3.11
+                  </span>
                 </div>
-              </div>
-              <div style="display:flex; gap:10px; align-items:center;">
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-manual-check-update" onclick="manualCheckForUpdate()">
-                  🔍 ตรวจสอบการอัปเดต
-                </button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <div>
+                    <div style="font-weight:600; color:var(--text-primary);">การอัปเดตระบบอัตโนมัติ</div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:3px;" id="app-update-status-detail">
+                      ระบบตรวจเช็คอัปเดตอัตโนมัติจาก GitHub Releases (เมื่อต่ออินเทอร์เน็ต)
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-manual-check-update" onclick="manualCheckForUpdate()" style="padding:8px 16px;">
+                    🔍 ตรวจสอบการอัปเดต
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <button class="btn btn-primary" onclick="saveSettings()" style="justify-self: start; padding: 14px 40px;">
-            💾 บันทึกการตั้งค่า
+      </div>
+
+    
+    <!-- ===== STORE & INVENTORY SECTION (POS PART 2) ===== -->
+    <div class="section" id="section-store-inventory">
+      <!-- Section Header -->
+      <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0; font-size:1.4rem; display:flex; align-items:center; gap:8px;">
+            <span>🛒</span> ร้านค้าลานยาง & เคมีภัณฑ์
+          </h2>
+          <p style="margin:4px 0 0 0; color:var(--text-muted); font-size:0.88rem;">
+            ระบบขายสินค้าหน้าร้าน (POS), จัดการคลังปุ๋ย/เคมีภัณฑ์ และประวัติการซื้อของสมาชิก
+          </p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="initStoreSection()" title="รีเฟรชข้อมูล">
+            🔄 รีเฟรช
           </button>
         </div>
       </div>
+
+      <!-- Store Sub-Tabs Navigation -->
+      <div class="store-tabs-nav" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary store-tab-btn active" id="tab-btn-pos" onclick="switchStoreTab('pos')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>🏷️</span> ขายสินค้าหน้าร้าน (POS)
+        </button>
+        <button type="button" class="btn btn-secondary store-tab-btn" id="tab-btn-inventory" onclick="switchStoreTab('inventory')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>📦</span> คลังสินค้า & ราคาขาย
+        </button>
+        <button type="button" class="btn btn-secondary store-tab-btn" id="tab-btn-history" onclick="switchStoreTab('history')" style="display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 9px 18px;">
+          <span>📜</span> ประวัติการขาย & สมาชิก
+        </button>
+      </div>
+
+      <!-- ===== TAB 1: POS FRONT-COUNTER SALE ===== -->
+      <div id="store-tab-pos" class="store-tab-content">
+        <div class="pos-container" style="display: grid; grid-template-columns: 1fr 430px; gap: 20px; align-items: start;">
+          <!-- Left Column: Products Catalog & Search -->
+          <div class="pos-catalog-column">
+            <div class="glass-card mb-3" style="padding: 14px 18px;">
+              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 220px; position: relative;">
+                  <input type="text" id="pos-product-search" class="form-input" placeholder="🔍 ค้นหาสินค้า เช่น ปุ๋ย, น้ำกรด, อุปกรณ์..." oninput="filterPosProducts(this.value)">
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="pos-products-count-badge">
+                  ทั้งหมด 0 รายการ
+                </div>
+              </div>
+            </div>
+
+            <!-- Product Grid Cards -->
+            <div id="pos-products-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
+              <!-- Dynamically populated product cards -->
+            </div>
+
+            <!-- Empty Product Catalog State -->
+            <div id="pos-products-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">📦</div>
+              <h4 style="margin: 0 0 6px 0; color: var(--text-primary);">ไม่พบรายการสินค้า</h4>
+              <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">ลองเปลี่ยนคำค้นหา หรือเพิ่มสินค้าในแท็บ "คลังสินค้า & ราคาขาย"</p>
+            </div>
+          </div>
+
+          <!-- Right Column: Cart, Member Selector, Cash & Change -->
+          <div class="pos-cart-column">
+            <div class="glass-card" style="padding: 18px 20px; border-left: 4px solid var(--accent);">
+              <!-- Cart Header -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);">
+                <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+                  <span>🛒</span> ตะกร้าสินค้า
+                </h3>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="clearPosCart()" style="font-size: 0.78rem; padding: 4px 8px; color: var(--text-muted);">
+                  🗑️ ล้างตะกร้า
+                </button>
+              </div>
+
+              <!-- Member / Customer Selection Box -->
+              <div class="form-group mb-3" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <label class="form-label" style="font-size: 0.85rem; font-weight: 600; margin: 0;">👤 ข้อมูลผู้ซื้อ / สมาชิก</label>
+                  <span id="pos-member-type-badge" class="badge badge-gray" style="font-size: 0.72rem;">ลูกค้าทั่วไป</span>
+                </div>
+
+                <!-- Member Search Container -->
+                <div id="pos-member-search-box" style="position: relative;">
+                  <input type="text" id="pos-member-search" class="form-input" style="font-size: 0.88rem;" placeholder="🔍 ค้นหารหัสหรือชื่อสมาชิก (เว้นว่าง = ลูกค้าทั่วไป)" oninput="searchPosMember(this.value)" onkeydown="handlePosMemberKeydown(event)" autocomplete="off">
+                  <div id="pos-member-list" class="member-search-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:220px; overflow-y:auto; z-index:100; box-shadow:var(--shadow-lg);"></div>
+                </div>
+
+                <!-- Selected Member Card -->
+                <div id="pos-selected-member-card" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 8px 12px; margin-top: 8px; align-items: center; justify-content: space-between;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span class="member-code-badge" id="pos-selected-member-code" style="font-size: 0.8rem;">ก00000</span>
+                      <strong id="pos-selected-member-name" style="font-size: 0.92rem; color: var(--text-primary);">-</strong>
+                    </div>
+                    <div id="pos-selected-member-phone" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">เบอร์โทร: -</div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="clearPosMember()" style="padding: 2px 8px; font-size: 0.75rem;">✕ ยกเลิก</button>
+                </div>
+
+                <!-- Custom Customer Name Input (Shown when no member is selected) -->
+                <div id="pos-custom-customer-box" style="margin-top: 8px;">
+                  <input type="text" id="pos-custom-customer-name" class="form-input" style="font-size: 0.85rem;" placeholder="ระบุชื่อลูกค้า (ถ้ามี) เช่น นายมานพ หรือ ลูกค้าทั่วไป" value="ลูกค้าทั่วไป">
+                </div>
+              </div>
+
+              <!-- Cart Items List Container -->
+              <div id="pos-cart-items-container" style="max-height: 240px; overflow-y: auto; margin-bottom: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgba(0, 0, 0, 0.15);">
+                <div id="pos-cart-items-list">
+                  <!-- Dynamically rendered cart rows -->
+                </div>
+                <div id="pos-cart-empty-message" style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.88rem;">
+                  🛒 ยังไม่มีสินค้าในตะกร้า<br>
+                  <span style="font-size: 0.78rem;">(คลิกเลือกสินค้าจากการ์ดด้านซ้ายมือ)</span>
+                </div>
+              </div>
+
+              <!-- Cart Summary & Calculation -->
+              <div class="calc-result" style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 14px;">
+                <div class="calc-row" style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                  <span class="label" style="font-size: 0.88rem; color: var(--text-secondary);">จำนวนสินค้า:</span>
+                  <span class="value" id="pos-total-items-count" style="font-weight: 600; color: var(--text-primary);">0 ชิ้น</span>
+                </div>
+                <div class="calc-row" style="display:flex; justify-content:space-between; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                  <span class="label" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">💰 ยอดรวมทั้งสิ้น:</span>
+                  <span class="value" id="pos-total-amount" style="font-size: 1.25rem; font-weight: 800; color: var(--gold);">0.00 บาท</span>
+                </div>
+
+                <!-- Cash Received Input -->
+                <div class="form-group mb-2">
+                  <label class="form-label" for="pos-cash-received" style="font-size: 0.85rem; font-weight: 600;">💵 รับเงินสด (บาท):</label>
+                  <input type="number" id="pos-cash-received" class="form-input" style="font-size: 1.15rem; font-weight: 700; text-align: right;" placeholder="0.00" min="0" step="any" oninput="calculatePosChange()">
+                </div>
+
+                <!-- Quick Cash Presets -->
+                <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash('exact')" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">พอดี</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(100)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">100</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(500)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">500</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(1000)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">1,000</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickCash(2000)" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">2,000</button>
+                </div>
+
+                <!-- Change Display Banner -->
+                <div id="pos-change-banner" style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.9rem; color: var(--text-secondary);">เงินทอน:</span>
+                  <span id="pos-change-amount" style="font-size: 1.15rem; font-weight: 700; color: var(--text-muted);">0.00 บาท</span>
+                </div>
+              </div>
+
+              <!-- Submit Sale & Print Receipt Button -->
+              <button type="button" class="btn btn-primary btn-block" id="btn-submit-pos-sale" onclick="submitPosSale()" style="padding: 14px; font-size: 1.05rem; font-weight: 700; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
+                💾 บันทึกการขาย & พิมพ์ใบเสร็จ (F9)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB 2: INVENTORY & PRICES ===== -->
+      <div id="store-tab-inventory" class="store-tab-content" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div style="max-width: 360px; flex: 1;">
+            <input type="text" id="store-search-input" class="form-input" placeholder="🔍 ค้นหาชื่อสินค้า หรือหน่วยนับ..." oninput="filterStoreProducts(this.value)">
+          </div>
+          <button type="button" class="btn btn-primary" onclick="openProductModal()" style="display: flex; align-items: center; gap: 6px;">
+            <span>➕</span> เพิ่มสินค้าใหม่
+          </button>
+        </div>
+
+        <!-- Products Table -->
+        <div class="glass-card table-container" id="store-products-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 50px; text-align: center;">ลำดับ</th>
+                <th>ชื่อสินค้า</th>
+                <th style="text-align: right; width: 120px;">ราคาทุน</th>
+                <th style="text-align: right; width: 120px;">ราคาขาย</th>
+                <th style="text-align: right; width: 120px;">กำไร/หน่วย</th>
+                <th style="text-align: right; width: 140px;">สต๊อกคงเหลือ</th>
+                <th style="text-align: center; width: 130px; white-space: nowrap;">สถานะ</th>
+                <th style="text-align: center; width: 150px; white-space: nowrap;">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="store-products-table-body">
+              <!-- Dynamically populated by js/store.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div id="store-products-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">📦</div>
+          <h3 style="margin: 0 0 6px 0; color: var(--text-primary);">ยังไม่มีรายการสินค้า</h3>
+          <p style="margin: 0 0 16px 0; color: var(--text-muted); font-size: 0.9rem;">เริ่มต้นเพิ่มรายการปุ๋ย น้ำกรดยาง หรืออุปกรณ์ทำสวนยางได้เลย</p>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openProductModal()">
+            ➕ เพิ่มสินค้าชิ้นแรก
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== TAB 3: SALES HISTORY & MEMBER PURCHASES ===== -->
+      <div id="store-tab-history" class="store-tab-content" style="display: none;">
+        <!-- Filters & KPI Bar -->
+        <div class="glass-card mb-3" style="padding: 16px 18px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+            <!-- Filter by Member -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-member-filter">👤 กรองตามสมาชิก</label>
+              <select id="store-history-member-filter" class="form-select" onchange="filterStoreSalesHistory()">
+                <option value="">-- ทั้งหมด (ทุกสมาชิก / ลูกค้าทั่วไป) --</option>
+              </select>
+            </div>
+            <!-- Search Text -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-search">🔍 ค้นหาเลขที่บิล / ผู้ซื้อ</label>
+              <input type="text" id="store-history-search" class="form-input" placeholder="พิมพ์เลขบิล หรือชื่อ..." oninput="filterStoreSalesHistory()">
+            </div>
+            <!-- Date Filter -->
+            <div class="form-group mb-0">
+              <label class="form-label" style="font-size: 0.82rem;" for="store-history-date-filter">📅 กรองตามวันที่</label>
+              <input type="date" id="store-history-date-filter" class="form-input" onchange="filterStoreSalesHistory()">
+            </div>
+          </div>
+
+          <!-- KPI Cards -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">💰 ยอดขายรวมตามตัวกรอง</div>
+              <div id="store-kpi-total-amount" style="font-size: 1.35rem; font-weight: 700; color: var(--gold); margin-top: 2px;">0.00 ฿</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">🧾 จำนวนบิลทั้งหมด</div>
+              <div id="store-kpi-total-bills" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin-top: 2px;">0 บิล</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">📦 จำนวนชิ้น/กระสอบที่ขาย</div>
+              <div id="store-kpi-total-items" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin-top: 2px;">0 ชิ้น</div>
+            </div>
+          </div>
+
+          <!-- Member Specific Banner (Active when member filter is selected) -->
+          <div id="store-history-member-banner" style="display: none; margin-top: 12px; background: rgba(212, 168, 67, 0.1); border: 1px solid rgba(212, 168, 67, 0.3); border-radius: var(--radius-sm); padding: 10px 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge badge-gold" id="store-history-member-banner-code">ก00000</span>
+                <strong id="store-history-member-banner-name" style="font-size: 1rem; color: var(--text-primary);">-</strong>
+              </div>
+              <div style="font-size: 0.88rem; color: var(--text-secondary);">
+                ยอดซื้อสะสม: <strong id="store-history-member-banner-total" style="color: var(--gold);">0.00 บาท</strong> (<span id="store-history-member-banner-count">0</span> บิล)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sales History Table -->
+        <div class="glass-card table-container" id="store-history-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 45px; text-align: center;">ลำดับ</th>
+                <th style="width: 140px;">วันที่-เวลา</th>
+                <th style="width: 140px;">เลขที่ใบเสร็จ</th>
+                <th>สมาชิก / ผู้ซื้อ</th>
+                <th>รายการสินค้า</th>
+                <th style="text-align: right; width: 110px;">ยอดรวม</th>
+                <th style="width: 110px;">ผู้บันทึก</th>
+                <th style="text-align: center; width: 100px;">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="store-history-table-body">
+              <!-- Dynamically populated by js/store.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty History State -->
+        <div id="store-history-empty" class="glass-card" style="display: none; text-align: center; padding: 40px 20px;">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">📜</div>
+          <h4 style="margin: 0 0 6px 0; color: var(--text-primary);">ไม่พบประวัติการขาย</h4>
+          <p style="margin: 0; color: var(--text-muted); font-size: 0.88rem;">ยังไม่มีรายการขายตามเงื่อนไขที่เลือก</p>
+        </div>
+      </div>
+    </div>
 
     </main>
   </div>
 
   <!-- ===== MEMBER PORTAL PAGE ===== -->
-  <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-dark);">
+  <div id="member-portal-page" style="display:none; min-height: 100vh; background: var(--bg-primary);">
     <header class="member-header" style="background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px);">
       <div style="display: flex; align-items: center; gap: 12px;">
         <div style="font-size: 1.8rem; background: var(--gradient-green); width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">🌿</div>
@@ -1086,12 +1539,12 @@
               <span class="badge badge-green" id="mp-code-badge" style="font-size: 0.85rem; padding: 4px 10px;">ก00089</span>
               <span class="badge badge-gold" style="font-size: 0.8rem; padding: 3px 8px;">🌱 สมาชิกสวนยาง</span>
             </div>
-            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2px 0 8px 0;">-</h2>
+            <h2 id="mp-full-name" style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin: 2px 0 8px 0;">-</h2>
 
             <!-- Contact & Bank Info Rows -->
             <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; color: var(--text-secondary);">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: #fff; font-weight: 600;">ยังไม่ได้ระบุ</span></span>
+                <span>📱 <strong>เบอร์โทรศัพท์:</strong> <span id="mp-phone-no" style="color: var(--text-primary); font-weight: 600;">ยังไม่ได้ระบุ</span></span>
                 <button class="btn btn-secondary btn-sm" onclick="openMemberEditPhoneModal()" style="padding: 2px 8px; font-size: 0.75rem;">✏️ แก้ไขเบอร์โทร</button>
                 <button class="btn btn-secondary btn-sm" onclick="openMemberChangePasswordModal()" style="padding: 2px 8px; font-size: 0.75rem; border-color: rgba(255,255,255,0.2);">🔐 เปลี่ยนรหัสผ่าน</button>
               </div>
@@ -1126,11 +1579,11 @@
       <div class="glass-card">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
           <div>
-            <h3 style="font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0;">📜 ประวัติการขายยางของคุณ</h3>
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0;">📜 ประวัติการขายยางของคุณ</h3>
             <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 2px 0 0 0;">รายการขายยางทั้งหมดของคุณ เรียงลำดับจากล่าสุดไปเก่าสุด</p>
           </div>
           <!-- Period Filter Buttons -->
-          <div style="display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+          <div style="display: flex; gap: 6px; background: var(--bg-input); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border);">
             <button class="btn btn-sm mp-period-btn active" id="mp-btn-all" onclick="setMemberPortalPeriod('all')" style="padding: 6px 14px; font-size: 0.8rem;">ทั้งหมด</button>
             <button class="btn btn-sm mp-period-btn" id="mp-btn-month" onclick="setMemberPortalPeriod('month')" style="padding: 6px 14px; font-size: 0.8rem;">เดือนนี้</button>
             <button class="btn btn-sm mp-period-btn" id="mp-btn-round" onclick="setMemberPortalPeriod('round')" style="padding: 6px 14px; font-size: 0.8rem;">รอบปัจจุบัน</button>
@@ -1313,6 +1766,48 @@
     </div>
   </div>
 
+  <!-- ===== QUICK ASSIGN TRUCK MODAL (FOR HISTORY) ===== -->
+  <div class="modal-overlay" id="quick-assign-truck-modal" style="z-index: 1500;">
+    <div class="modal-content" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 style="font-size: 1.15rem; display:flex; align-items:center; gap:8px; margin:0; color:var(--text-main);">
+          <span>🚚</span> ระบุรถพ่วงส่งมอบ
+        </h3>
+        <button class="modal-close" onclick="closeQuickAssignTruckModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <div class="glass-card mb-3" style="padding:12px 16px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.25);">
+          <div style="font-size:0.85rem; color:var(--text-secondary);">รายการของสมาชิก:</div>
+          <div style="font-size:1.1rem; font-weight:bold; color:var(--text-main); margin-top:2px;" id="qat-member-name">-</div>
+          <div style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;" id="qat-tx-details">-</div>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" style="font-size:0.85rem;" for="qat-truck-number">รถคันที่ / ทะเบียน <span style="color:var(--danger);">*</span></label>
+          <select id="qat-truck-number" class="form-input" style="font-size:0.95rem; font-weight:500;">
+            <option value="คันที่ 1">คันที่ 1</option>
+            <option value="คันที่ 2">คันที่ 2</option>
+            <option value="คันที่ 3">คันที่ 3</option>
+            <option value="คันที่ 4">คันที่ 4</option>
+            <option value="คันที่ 5">คันที่ 5</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-2">
+          <label class="form-label" style="font-size:0.85rem;" for="qat-trailer-type">ลักษณะพ่วง</label>
+          <select id="qat-trailer-type" class="form-input" style="font-size:0.95rem;">
+            <option value="head">🚛 ตัวแม่</option>
+            <option value="trailer">🚚 ตัวลูก</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeQuickAssignTruckModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="confirmQuickAssignTruck()">💾 บันทึกระบุรถ</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== RECEIPT MODAL ===== -->
   <div class="modal-overlay" id="receipt-modal">
     <div class="modal-content" style="max-width: 540px;">
@@ -1335,9 +1830,33 @@
     </div>
   </div>
 
+  <!-- ===== STORE RECEIPT MODAL (POS / FERTILIZER) ===== -->
+  <div class="modal-overlay" id="store-receipt-modal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          🧾 ใบเสร็จรับเงินร้านค้า / เคมีภัณฑ์
+        </h3>
+        <button class="modal-close" onclick="closeStoreReceiptModal()">✕</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <div class="receipt-content" id="store-receipt-content"></div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="font-size:0.82rem; color:var(--text-secondary);">
+          📄 สั่งพิมพ์ 2 สำเนา (ลูกค้า 1 ใบ / ร้านค้า 1 ใบ ใน A4 แผ่นเดียว พร้อมรอยปรุตัด)
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="closeStoreReceiptModal()">ปิด</button>
+          <button class="btn btn-primary" onclick="printStoreReceipt()">🖨️ พิมพ์ใบเสร็จ (A4 แผ่นเดียว)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== ROUND SUMMARY REPORT MODAL ===== -->
   <div class="modal-overlay" id="round-report-modal">
-    <div class="modal-content" style="max-width: 750px;">
+    <div class="modal-content" style="max-width: 1020px; width: 95%;">
       <div class="modal-header">
         <h3>📊 เอกสารสรุปรอบส่งมอบยาง</h3>
         <button class="modal-close" onclick="closeRoundReportModal()">✕</button>
@@ -1349,7 +1868,7 @@
       </div>
       <div class="modal-footer" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div style="font-size:0.85rem; color:var(--text-secondary);">
-          📄 เอกสารสรุปสำหรับยื่นธนาคาร (ส่งโอนเงินเข้าบัญชีสมาชิก)
+          📄 เอกสารสรุปผลการส่งมอบยางพาราประจำรอบ
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="closeRoundReportModal()">ปิด</button>
@@ -1803,7 +2322,117 @@
     </div>
   </div>
 
-  <!-- ===== AUTO-UPDATE FLOATING NOTIFICATION BANNER ===== -->
+    <!-- ===== CREATE SEASON MODAL ===== -->
+    <!-- ===== SEASON SUMMARY MODAL ===== -->
+  <div class="modal-overlay" id="season-summary-modal" style="z-index: 1200;">
+    <div class="modal-content" style="max-width: 900px; width: 95%;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.5rem;">📊</span>
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem;">สรุปข้อมูลการรับซื้อประจำฤดูกาล</h3>
+            <div style="font-size: 0.85rem; color: var(--gold); font-weight: 600;" id="season-summary-title">ฤดูกาล 2569 (กำลังเปิดใช้งาน)</div>
+          </div>
+        </div>
+        <button type="button" class="modal-close" onclick="closeSeasonSummaryModal()">✕</button>
+      </div>
+      
+      <div class="modal-body" style="padding: 20px; max-height: 75vh; overflow-y: auto;">
+        <!-- Grand Stats Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">⚖️ น้ำหนักยางรวมทั้งสิ้น</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);" id="season-summary-weight">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">กก.</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">💰 ยอดเงินจ่ายสมาชิกรวม</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--gold);" id="season-summary-amount">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">บาท</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">🏛️ เงินกองทุนลานสะสม (0.50฿)</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--success);" id="season-summary-fee">0.00 <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">บาท</span></div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">📦 จำนวนรอบ / บิลทั้งหมด</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);" id="season-summary-rounds">0 รอบ <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">(0 บิล)</span></div>
+          </div>
+        </div>
+
+        <!-- Table Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 320px;">
+            <input type="text" id="season-summary-search" class="form-input" placeholder="🔍 ค้นหาสมาชิก (รหัส/ชื่อ)" oninput="filterSeasonMemberSummary(this.value)" style="padding: 8px 12px; font-size: 0.85rem;">
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="exportSeasonToExcel()" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.85rem;">
+              <span>📥</span> ส่งออก Excel
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="printSeasonSummary()" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.85rem;">
+              <span>🖨️</span> พิมพ์รายงาน
+            </button>
+          </div>
+        </div>
+
+        <!-- Member Summary Table -->
+        <div class="table-container" style="max-height: 420px; overflow-y: auto;">
+          <table class="data-table" style="font-size: 0.88rem; width: 100%;">
+            <thead style="position: sticky; top: 0; background: var(--bg-surface); z-index: 2;">
+              <tr>
+                <th style="width: 50px; text-align: center;">ลำดับ</th>
+                <th style="width: 90px; text-align: center;">รหัสสมาชิก</th>
+                <th>ชื่อ-นามสกุล</th>
+                <th style="width: 90px; text-align: center;">จำนวนเที่ยว</th>
+                <th style="width: 140px; text-align: right;">น้ำหนักรวม (กก.)</th>
+                <th style="width: 150px; text-align: right;">ยอดเงินรวม (บาท)</th>
+              </tr>
+            </thead>
+            <tbody id="season-summary-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <button type="button" class="btn btn-danger btn-sm" onclick="confirmCloseSeason()" style="display: flex; align-items: center; gap: 6px;">
+          <span>🔒</span> ปิดฤดูกาลนี้ (สิ้นสุดหน้ายาง)
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeSeasonSummaryModal()">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="create-season-modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem;">
+          <span>🌱</span> เปิดฤดูกาลรับซื้อใหม่
+        </h3>
+        <button type="button" class="modal-close" onclick="closeCreateSeasonModal()">✕</button>
+      </div>
+      
+      <div class="modal-body" style="padding: 20px;">
+        <div style="background: rgba(234, 179, 8, 0.1); border-left: 4px solid var(--warning); padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 0.85rem; color: var(--text-primary);">
+          ⚠️ <strong>คำแนะนำ:</strong> การเปิดฤดูกาลใหม่จะทำการ <span style="color: var(--warning); font-weight: bold;">ปิดสถานะของฤดูกาลเดิม</span> ทันที เพื่อเริ่มต้นบันทึกข้อมูลการรับซื้อของปี/ฤดูกาลใหม่
+        </div>
+        
+        <div class="form-group mb-2">
+          <label class="form-label" for="new-season-name-input" style="font-weight: 600;">ชื่อฤดูกาล <span style="color: var(--danger);">*</span></label>
+          <input type="text" id="new-season-name-input" class="form-input" placeholder="เช่น ฤดูกาล 2567 หรือ ฤดูกาล 2568" autocomplete="off" onkeydown="if(event.key === 'Enter') saveNewSeason()">
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeCreateSeasonModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" id="btn-save-season" onclick="saveNewSeason()">
+          ✅ ยืนยันเปิดฤดูกาล
+        </button>
+      </div>
+    </div>
+  </div>
+
+<!-- ===== AUTO-UPDATE FLOATING NOTIFICATION BANNER ===== -->
   <div id="auto-updater-banner" style="display:none; position:fixed; bottom:24px; right:24px; z-index:99999; background:rgba(15, 23, 42, 0.96); border:1px solid rgba(56, 189, 248, 0.4); box-shadow:0 12px 30px rgba(0,0,0,0.6); backdrop-filter:blur(14px); padding:16px 20px; border-radius:14px; max-width:440px; color:#f8fafc; font-family:inherit; animation: slideUpFade 0.3s ease-out;">
     <div style="display:flex; align-items:center; gap:14px;">
       <div id="updater-icon" style="font-size:1.6rem; flex-shrink:0;">🔔</div>
@@ -1819,6 +2448,89 @@
           🔄 รีสตาร์ทและอัปเดต
         </button>
         <button class="btn btn-secondary btn-sm btn-icon" style="padding:4px 8px; font-size:0.85rem;" onclick="dismissUpdaterBanner()" title="ปิดการแจ้งเตือน">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local JS Libraries for 100% Offline Support -->
+  <script src="libs/xlsx.full.min.js"></script>
+  <script src="libs/supabase.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/db.js"></script>
+    <script src="js/auth.js"></script>
+  <script src="js/members.js"></script>
+    <script src="js/purchase.js"></script>
+  <script src="js/rounds.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/history.js"></script>
+    <script src="js/store.js"></script>
+  <script src="app.js"></script>
+
+  <!-- ===== PRODUCT MODAL (ADD / EDIT) ===== -->
+  <div class="modal-overlay" id="product-modal">
+    <div class="modal-content" style="max-width: 480px; width: 95%;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <h3 id="product-modal-title" style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          ➕ เพิ่มสินค้าใหม่
+        </h3>
+        <button type="button" class="modal-close" onclick="closeProductModal()">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px 0;">
+        <div class="form-group mb-3">
+          <label class="form-label" for="product-name-input" style="font-weight:600;">ชื่อสินค้า <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="product-name-input" class="form-input" placeholder="เช่น ปุ๋ยอินทรีย์ 25-7-7 ตราดาว หรือ น้ำกรดยาง 99%" autocomplete="off">
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;" class="mb-2">
+          <div class="form-group">
+            <label class="form-label" for="product-cost-input" style="font-weight:600;">ราคาทุน (รับมา) <span style="font-size:0.8rem; color:var(--text-muted);">(บาท)</span></label>
+            <input type="number" id="product-cost-input" class="form-input" placeholder="0.00" step="0.5" min="0" oninput="calculateProductProfit()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="product-price-input" style="font-weight:600;">ราคาขาย (หน้าร้าน) <span style="color:var(--danger);">*</span> <span style="font-size:0.8rem; color:var(--text-muted);">(บาท)</span></label>
+            <input type="number" id="product-price-input" class="form-input" placeholder="0.00" step="0.5" min="0" oninput="calculateProductProfit()">
+          </div>
+        </div>
+
+        <!-- Profit Preview Banner -->
+        <div id="product-profit-preview" style="background: rgba(34, 197, 94, 0.1); border: 1px dashed rgba(34, 197, 94, 0.4); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 14px; font-size: 0.88rem; display: flex; align-items: center; justify-content: space-between;">
+          <span style="color: var(--text-secondary);">💰 กำไรส่วนต่างต่อหน่วย:</span>
+          <span id="product-profit-text" style="font-weight: 700; color: #22c55e;">+0.00 บาท (+0.0%)</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;" class="mb-3">
+          <div class="form-group">
+            <label class="form-label" for="product-stock-input" style="font-weight:600;">สต๊อกคงเหลือ <span style="color:var(--danger);">*</span></label>
+            <input type="number" id="product-stock-input" class="form-input" placeholder="0" step="1" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="product-unit-input" style="font-weight:600;">หน่วยนับ</label>
+            <input type="text" id="product-unit-input" class="form-input" placeholder="กระสอบ, แกลลอน, ขวด, ชิ้น" list="product-unit-presets" oninput="calculateProductProfit()">
+            <datalist id="product-unit-presets">
+              <option value="กระสอบ">
+              <option value="แกลลอน">
+              <option value="ขวด">
+              <option value="ชิ้น">
+              <option value="เล่ม">
+              <option value="มัด">
+              <option value="ถุง">
+            </datalist>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="product-active-select" style="font-weight:600;">สถานะการขาย</label>
+          <select id="product-active-select" class="form-select">
+            <option value="1">🟢 เปิดขายปกติ</option>
+            <option value="0">⚪ พักจำหน่าย</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--border); padding-top:14px;">
+        <button type="button" class="btn btn-secondary" onclick="closeProductModal()">ยกเลิก</button>
+        <button type="button" class="btn btn-primary" onclick="saveProduct()">💾 บันทึกสินค้า</button>
       </div>
     </div>
   </div>
@@ -1880,9 +2592,5 @@
     </div>
   </div>
 
-  <!-- Local JS Libraries for 100% Offline Support -->
-  <script src="libs/xlsx.full.min.js"></script>
-  <script src="libs/supabase.js"></script>
-  <script src="app.js"></script>
 </body>
 </html>

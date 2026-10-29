@@ -13,8 +13,9 @@
   window.editingTransaction = window.editingTransaction || null;
   window.cachedSettings = window.cachedSettings || null;
   window.RUBBER_TYPES = window.RUBBER_TYPES || {
-    sheet: 'ยางแผ่นดิบ',
     cup: 'ยางก้อนถ้วย',
+    overnight: 'ยางพักคืน',
+    sheet: 'ยางแผ่นดิบ',
     latex: 'น้ำยางสด'
   };
 
@@ -88,12 +89,14 @@ async function initPurchase(forceReset = false) {
   clearSelectedMember();
   document.getElementById('purchase-member-search').value = '';
   document.getElementById('purchase-member-list').innerHTML = '';
-  document.getElementById('rubber-type').value = 'cup';
+
+  // Preserve previously selected rubber type (Sticky Rubber Type)
+  const preservedRubberType = document.getElementById('rubber-type')?.value || localStorage.getItem('last_selected_rubber_type') || 'cup';
 
   if (!cachedSettings) await loadSettings();
 
   document.getElementById('cart-weight').value = cachedSettings?.default_cart_weight || '';
-  document.getElementById('price-per-kg').value = cachedSettings?.price_cup || cachedSettings?.price_sheet || '';
+  selectRubberType(preservedRubberType);
 
   const truckSelect = document.getElementById('purchase-truck-number');
   const trailerSelect = document.getElementById('purchase-trailer-type');
@@ -537,13 +540,75 @@ function clearSelectedMember() {
   document.getElementById('selected-member-info').classList.remove('show');
 }
 
-function onRubberTypeChange() {
-  const type = document.getElementById('rubber-type').value;
-  if (cachedSettings) {
-    const prices = { sheet: cachedSettings.price_sheet, cup: cachedSettings.price_cup, latex: cachedSettings.price_latex };
-    document.getElementById('price-per-kg').value = prices[type] || 0;
+function selectRubberType(type) {
+  const hiddenInput = document.getElementById('rubber-type');
+  if (hiddenInput) hiddenInput.value = type;
+  try { localStorage.setItem('last_selected_rubber_type', type); } catch (e) {}
+
+  const btnCup = document.getElementById('btn-type-cup');
+  const btnOvernight = document.getElementById('btn-type-overnight');
+  const indicator = document.getElementById('rubber-type-badge-indicator');
+
+  if (type === 'overnight') {
+    if (btnCup) {
+      btnCup.className = 'btn btn-secondary';
+      btnCup.style.boxShadow = '';
+      btnCup.style.background = '';
+      btnCup.style.borderColor = '';
+      btnCup.style.color = '';
+    }
+    if (btnOvernight) {
+      btnOvernight.className = 'btn btn-primary';
+      btnOvernight.style.background = '#2563eb';
+      btnOvernight.style.borderColor = '#1d4ed8';
+      btnOvernight.style.color = '#fff';
+      btnOvernight.style.boxShadow = '0 0 12px rgba(37,99,235,0.45)';
+    }
+    if (indicator) {
+      indicator.className = 'badge badge-blue';
+      indicator.textContent = 'ยางพักคืน';
+    }
+  } else {
+    // Default to cup lump
+    if (btnCup) {
+      btnCup.className = 'btn btn-primary';
+      btnCup.style.boxShadow = '0 0 10px rgba(245,158,11,0.25)';
+      btnCup.style.background = '';
+      btnCup.style.borderColor = '';
+      btnCup.style.color = '';
+    }
+    if (btnOvernight) {
+      btnOvernight.className = 'btn btn-secondary';
+      btnOvernight.style.boxShadow = '';
+      btnOvernight.style.background = '';
+      btnOvernight.style.borderColor = '';
+      btnOvernight.style.color = '';
+    }
+    if (indicator) {
+      indicator.className = 'badge badge-gold';
+      indicator.textContent = 'ยางก้อนถ้วย';
+    }
   }
+
+  // Update starting auction price if not editing an existing transaction
+  if (!window.editingTransaction && cachedSettings) {
+    const priceEl = document.getElementById('price-per-kg');
+    if (priceEl) {
+      if (type === 'overnight' && cachedSettings.price_overnight && Number(cachedSettings.price_overnight) > 0) {
+        priceEl.value = cachedSettings.price_overnight;
+      } else if (type === 'cup' && cachedSettings.price_cup && Number(cachedSettings.price_cup) > 0) {
+        priceEl.value = cachedSettings.price_cup;
+      }
+    }
+  }
+
   calculatePrice();
+}
+window.selectRubberType = selectRubberType;
+
+function onRubberTypeChange() {
+  const type = document.getElementById('rubber-type')?.value || 'cup';
+  selectRubberType(type);
 }
 
 function calculatePrice() {
@@ -944,6 +1009,16 @@ async function saveTransaction(confirmedOverride = false) {
                 const r = await window.desktopDB.select('purchase_rounds', ['supabase_id'], { id: cloudPayload.round_id });
                 if (r && r[0] && r[0].supabase_id) cloudPayload.round_id = r[0].supabase_id;
               }
+              delete cloudPayload.id;
+              delete cloudPayload.trips_detail;
+              delete cloudPayload.sequence_no;
+              delete cloudPayload.seq_no;
+              delete cloudPayload.queue_no;
+              delete cloudPayload.buyer_name;
+              delete cloudPayload.auction_buyer;
+              if (typeof cloudPayload.trips !== 'string') {
+                cloudPayload.trips = JSON.stringify(cloudPayload.trips || []);
+              }
               const res = await sb.from('transactions').insert(cloudPayload).select().single();
               if (!res.error && res.data) {
                 cloudSaved = true;
@@ -1180,7 +1255,7 @@ async function openPendingDetailModal(pendingId) {
           <div><strong>📅 วันเวลาที่ชั่ง:</strong> ${formatDateTime(p.date || p.created_at)}</div>
           <div><strong>👤 ผู้ชั่ง (เครื่อง 1):</strong> ${p.created_by_display_name || 'พนักงานชั่ง'}</div>
           <div><strong>💳 เลขบัญชี:</strong> ${p.member_account_no || 'ไม่มีเลขบัญชี'}</div>
-          <div><strong>🍃 ประเภทยาง:</strong> ยางก้อนถ้วย (100%)</div>
+          <div><strong>🍃 ประเภทยาง:</strong> ${(window.RUBBER_TYPES_MAP && window.RUBBER_TYPES_MAP[p.rubber_type]) || (p.rubber_type === 'overnight' ? 'ยางพักคืน' : 'ยางก้อนถ้วย')}</div>
         </div>
 
         ${tripsHtml}
@@ -1616,6 +1691,10 @@ function buildReceiptCopyHTML(tx, plantName) {
           <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${tx.member_name}</td>
         </tr>
         <tr>
+          <td style="font-weight:bold; padding:2px 0;">ประเภทยาง</td>
+          <td style="border-bottom:1px dotted #000; font-weight:bold; font-size:14px; text-align:center;">${(window.RUBBER_TYPES_MAP && window.RUBBER_TYPES_MAP[tx.rubber_type]) || (tx.rubber_type === 'overnight' ? 'ยางพักคืน' : 'ยางก้อนถ้วย')}</td>
+        </tr>
+        <tr>
           <td style="font-weight:bold; padding:3px 0; vertical-align:middle;">น้ำหนักชั่งแต่ละครั้ง</td>
           <td style="padding:2px 0;">
             <table style="width:100%; border-collapse:collapse;">
@@ -1886,11 +1965,8 @@ async function editTransactionOnPurchasePage(txId) {
     // Use tx.auction_price if available, otherwise reconstruct from price_per_kg + yard_fee
     if (priceEl) priceEl.value = tx.auction_price ? Number(tx.auction_price).toFixed(2) : (Number(tx.price_per_kg || 0) + yardFee).toFixed(2);
 
-    // FIX C5: Set rubber_type dropdown to match original transaction
-    const rubberTypeEl = document.getElementById('rubber-type');
-    if (rubberTypeEl && tx.rubber_type) {
-      rubberTypeEl.value = tx.rubber_type;
-    }
+    // Set rubber_type to match original transaction
+    selectRubberType(tx.rubber_type || 'cup');
 
     // FIX C5: Decode trips from truck_number FIRST (primary source of truth)
     let tripsArr = [];
