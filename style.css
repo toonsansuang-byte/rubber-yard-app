@@ -2214,3 +2214,623 @@ input:checked + .slider:before {
   }
 }
 
+/* ==========================================================================
+   ENTERPRISE MULTI-THEME SYSTEM (Rule-Compliant: No Blur, Solid, Crisp Borders)
+   Themes: minimal-pos, agro-fintech, industrial-dark
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   THEME 1: Minimal POS (Square POS / Paper-White & Dark Charcoal)
+   -------------------------------------------------------------------------- */
+body[data-theme="minimal-pos"] {
+  --bg-primary: #F4F4F0;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EAEAE4;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-modal: rgba(24, 24, 27, 0.65);
+
+  --accent: #18181B;
+  --accent-hover: #27272A;
+  --accent-light: #F4F4F5;
+  --accent-glow: transparent;
+  --gold: #0F172A;
+  --gold-light: #E4E4E7;
+
+  --text-primary: #18181B;
+  --text-secondary: #52525B;
+  --text-muted: #71717A;
+  --text-accent: #18181B;
+
+  --border: #E2E8F0;
+  --border-hover: #CBD5E1;
+
+  --danger: #DC2626;
+  --danger-bg: #FEF2F2;
+  --success: #16A34A;
+  --success-bg: #F0FDF4;
+  --warning: #D97706;
+  --warning-bg: #FFFBEB;
+
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-glow: none;
+  background-color: #F4F4F0 !important;
+  color: #18181B !important;
+}
+
+body[data-theme="minimal-pos"]::before {
+  display: none !important;
+}
+
+body[data-theme="minimal-pos"] .glass-card,
+body[data-theme="minimal-pos"] .stat-card,
+body[data-theme="minimal-pos"] .modal-content,
+body[data-theme="minimal-pos"] .active-round-banner,
+body[data-theme="minimal-pos"] .summary-card {
+  background: #FFFFFF !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #E2E8F0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+body[data-theme="minimal-pos"] .glass-card:hover {
+  border-color: #CBD5E1 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07) !important;
+}
+
+body[data-theme="minimal-pos"] #sidebar {
+  background: #FFFFFF !important;
+  border-right: 1px solid #E2E8F0 !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="minimal-pos"] .sidebar-header {
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+
+body[data-theme="minimal-pos"] .sidebar-footer {
+  border-top: 1px solid #E2E8F0 !important;
+  background: #FFFFFF !important;
+}
+
+body[data-theme="minimal-pos"] .sidebar-link {
+  color: #52525B !important;
+}
+
+body[data-theme="minimal-pos"] .sidebar-link:hover {
+  background: #F4F4F5 !important;
+  color: #18181B !important;
+}
+
+body[data-theme="minimal-pos"] .sidebar-link.active {
+  background: #18181B !important;
+  color: #FFFFFF !important;
+  border-color: #18181B !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="minimal-pos"] .form-input,
+body[data-theme="minimal-pos"] .form-select,
+body[data-theme="minimal-pos"] input[type="text"],
+body[data-theme="minimal-pos"] input[type="number"],
+body[data-theme="minimal-pos"] input[type="date"],
+body[data-theme="minimal-pos"] input[type="password"],
+body[data-theme="minimal-pos"] select,
+body[data-theme="minimal-pos"] textarea {
+  background: #FFFFFF !important;
+  border: 1px solid #D4D4D8 !important;
+  color: #18181B !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="minimal-pos"] .form-input:focus,
+body[data-theme="minimal-pos"] .form-select:focus,
+body[data-theme="minimal-pos"] input:focus,
+body[data-theme="minimal-pos"] select:focus,
+body[data-theme="minimal-pos"] textarea:focus {
+  border-color: #18181B !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.1) !important;
+}
+
+body[data-theme="minimal-pos"] select option {
+  background: #FFFFFF !important;
+  color: #18181B !important;
+}
+
+body[data-theme="minimal-pos"] .btn-primary {
+  background: #18181B !important;
+  color: #FFFFFF !important;
+  border: 1px solid #18181B !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="minimal-pos"] .btn-primary:hover {
+  background: #27272A !important;
+  border-color: #27272A !important;
+  transform: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
+}
+
+body[data-theme="minimal-pos"] .btn-secondary {
+  background: #F4F4F5 !important;
+  color: #18181B !important;
+  border: 1px solid #E4E4E7 !important;
+}
+
+body[data-theme="minimal-pos"] .btn-secondary:hover {
+  background: #E4E4E7 !important;
+}
+
+body[data-theme="minimal-pos"] .data-table {
+  background: #FFFFFF !important;
+}
+
+body[data-theme="minimal-pos"] .table-container {
+  background: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+}
+
+body[data-theme="minimal-pos"] .data-table th {
+  background: #F4F4F5 !important;
+  color: #18181B !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="minimal-pos"] .data-table td {
+  border-bottom: 1px solid #F1F5F9 !important;
+  color: #18181B !important;
+}
+
+body[data-theme="minimal-pos"] .data-table tr:hover td {
+  background: #FAFAFA !important;
+}
+
+body[data-theme="minimal-pos"] .modal-overlay {
+  background: rgba(24, 24, 27, 0.6) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-theme="minimal-pos"] .modal-header {
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+
+body[data-theme="minimal-pos"] .modal-footer {
+  border-top: 1px solid #E2E8F0 !important;
+}
+
+body[data-theme="minimal-pos"] .member-header {
+  background: #FFFFFF !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  backdrop-filter: none !important;
+}
+
+body[data-theme="minimal-pos"] .member-header #mp-header-name {
+  color: #18181B !important;
+}
+
+body[data-theme="minimal-pos"] .mp-stat-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  backdrop-filter: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   THEME 2: Agro FinTech (Bank App / Clean Slate & Emerald Green)
+   -------------------------------------------------------------------------- */
+body[data-theme="agro-fintech"] {
+  --bg-primary: #F1F5F9;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #E2E8F0;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-modal: rgba(15, 23, 42, 0.65);
+
+  --accent: #047857;
+  --accent-hover: #065F46;
+  --accent-light: rgba(4, 120, 87, 0.08);
+  --accent-glow: transparent;
+  --gold: #D97706;
+  --gold-light: rgba(217, 119, 6, 0.1);
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-accent: #047857;
+
+  --border: #CBD5E1;
+  --border-hover: #94A3B8;
+
+  --danger: #E11D48;
+  --danger-bg: #FFF1F2;
+  --success: #059669;
+  --success-bg: #ECFDF5;
+  --warning: #D97706;
+  --warning-bg: #FFFBEB;
+
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 4px 14px rgba(15, 23, 42, 0.08);
+  --shadow-glow: none;
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+body[data-theme="agro-fintech"]::before {
+  display: none !important;
+}
+
+body[data-theme="agro-fintech"] .glass-card,
+body[data-theme="agro-fintech"] .stat-card,
+body[data-theme="agro-fintech"] .modal-content,
+body[data-theme="agro-fintech"] .active-round-banner,
+body[data-theme="agro-fintech"] .summary-card {
+  background: #FFFFFF !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #CBD5E1 !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+}
+
+body[data-theme="agro-fintech"] .glass-card:hover {
+  border-color: #94A3B8 !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+}
+
+body[data-theme="agro-fintech"] #sidebar {
+  background: #FFFFFF !important;
+  border-right: 1px solid #CBD5E1 !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="agro-fintech"] .sidebar-header {
+  border-bottom: 1px solid #CBD5E1 !important;
+}
+
+body[data-theme="agro-fintech"] .sidebar-footer {
+  border-top: 1px solid #CBD5E1 !important;
+  background: #FFFFFF !important;
+}
+
+body[data-theme="agro-fintech"] .sidebar-link {
+  color: #334155 !important;
+}
+
+body[data-theme="agro-fintech"] .sidebar-link:hover {
+  background: #F1F5F9 !important;
+  color: #047857 !important;
+}
+
+body[data-theme="agro-fintech"] .sidebar-link.active {
+  background: rgba(4, 120, 87, 0.1) !important;
+  color: #047857 !important;
+  border-color: #047857 !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="agro-fintech"] .form-input,
+body[data-theme="agro-fintech"] .form-select,
+body[data-theme="agro-fintech"] input[type="text"],
+body[data-theme="agro-fintech"] input[type="number"],
+body[data-theme="agro-fintech"] input[type="date"],
+body[data-theme="agro-fintech"] input[type="password"],
+body[data-theme="agro-fintech"] select,
+body[data-theme="agro-fintech"] textarea {
+  background: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0F172A !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="agro-fintech"] .form-input:focus,
+body[data-theme="agro-fintech"] .form-select:focus,
+body[data-theme="agro-fintech"] input:focus,
+body[data-theme="agro-fintech"] select:focus,
+body[data-theme="agro-fintech"] textarea:focus {
+  border-color: #047857 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(4, 120, 87, 0.15) !important;
+}
+
+body[data-theme="agro-fintech"] select option {
+  background: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
+body[data-theme="agro-fintech"] .btn-primary {
+  background: #047857 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #047857 !important;
+  box-shadow: 0 2px 4px rgba(4, 120, 87, 0.2) !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="agro-fintech"] .btn-primary:hover {
+  background: #065F46 !important;
+  border-color: #065F46 !important;
+  transform: none !important;
+}
+
+body[data-theme="agro-fintech"] .btn-secondary {
+  background: #F8FAFC !important;
+  color: #0F172A !important;
+  border: 1px solid #CBD5E1 !important;
+}
+
+body[data-theme="agro-fintech"] .btn-secondary:hover {
+  background: #F1F5F9 !important;
+}
+
+body[data-theme="agro-fintech"] .table-container {
+  background: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+}
+
+body[data-theme="agro-fintech"] .data-table {
+  background: #FFFFFF !important;
+}
+
+body[data-theme="agro-fintech"] .data-table th {
+  background: #F8FAFC !important;
+  color: #334155 !important;
+  border-bottom: 1px solid #CBD5E1 !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="agro-fintech"] .data-table td {
+  border-bottom: 1px solid #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+body[data-theme="agro-fintech"] .data-table tr:hover td {
+  background: #F8FAFC !important;
+}
+
+body[data-theme="agro-fintech"] .modal-overlay {
+  background: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-theme="agro-fintech"] .modal-header {
+  border-bottom: 1px solid #CBD5E1 !important;
+}
+
+body[data-theme="agro-fintech"] .modal-footer {
+  border-top: 1px solid #CBD5E1 !important;
+}
+
+body[data-theme="agro-fintech"] .member-header {
+  background: #FFFFFF !important;
+  border-bottom: 1px solid #CBD5E1 !important;
+  backdrop-filter: none !important;
+}
+
+body[data-theme="agro-fintech"] .member-header #mp-header-name {
+  color: #0F172A !important;
+}
+
+body[data-theme="agro-fintech"] .mp-stat-card {
+  background: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  backdrop-filter: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   THEME 3: Industrial Dark (Engineering / Matte Dark Graphite & Cobalt)
+   -------------------------------------------------------------------------- */
+body[data-theme="industrial-dark"] {
+  --bg-primary: #121316;
+  --bg-secondary: #1E2024;
+  --bg-tertiary: #262930;
+  --bg-card: #1E2024;
+  --bg-card-hover: #262930;
+  --bg-sidebar: #16181D;
+  --bg-input: #16181D;
+  --bg-modal: rgba(0, 0, 0, 0.8);
+
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-light: rgba(37, 99, 235, 0.15);
+  --accent-glow: transparent;
+  --gold: #38BDF8;
+  --gold-light: rgba(56, 189, 248, 0.15);
+
+  --text-primary: #F3F4F6;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --text-accent: #38BDF8;
+
+  --border: #2E323B;
+  --border-hover: #3E434F;
+
+  --danger: #EF4444;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --success: #10B981;
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.6);
+  --shadow-glow: none;
+  background-color: #121316 !important;
+  color: #F3F4F6 !important;
+}
+
+body[data-theme="industrial-dark"]::before {
+  display: none !important;
+}
+
+body[data-theme="industrial-dark"] .glass-card,
+body[data-theme="industrial-dark"] .stat-card,
+body[data-theme="industrial-dark"] .modal-content,
+body[data-theme="industrial-dark"] .active-round-banner,
+body[data-theme="industrial-dark"] .summary-card {
+  background: #1E2024 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #2E323B !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+body[data-theme="industrial-dark"] .glass-card:hover {
+  border-color: #3E434F !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+
+body[data-theme="industrial-dark"] #sidebar {
+  background: #16181D !important;
+  border-right: 1px solid #2E323B !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="industrial-dark"] .sidebar-header {
+  border-bottom: 1px solid #2E323B !important;
+}
+
+body[data-theme="industrial-dark"] .sidebar-footer {
+  border-top: 1px solid #2E323B !important;
+  background: #16181D !important;
+}
+
+body[data-theme="industrial-dark"] .sidebar-link {
+  color: #9CA3AF !important;
+}
+
+body[data-theme="industrial-dark"] .sidebar-link:hover {
+  background: #22252C !important;
+  color: #F3F4F6 !important;
+}
+
+body[data-theme="industrial-dark"] .sidebar-link.active {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #38BDF8 !important;
+  border-color: #2563EB !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="industrial-dark"] .form-input,
+body[data-theme="industrial-dark"] .form-select,
+body[data-theme="industrial-dark"] input[type="text"],
+body[data-theme="industrial-dark"] input[type="number"],
+body[data-theme="industrial-dark"] input[type="date"],
+body[data-theme="industrial-dark"] input[type="password"],
+body[data-theme="industrial-dark"] select,
+body[data-theme="industrial-dark"] textarea {
+  background: #16181D !important;
+  border: 1px solid #2E323B !important;
+  color: #F3F4F6 !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="industrial-dark"] .form-input:focus,
+body[data-theme="industrial-dark"] .form-select:focus,
+body[data-theme="industrial-dark"] input:focus,
+body[data-theme="industrial-dark"] select:focus,
+body[data-theme="industrial-dark"] textarea:focus {
+  border-color: #2563EB !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25) !important;
+}
+
+body[data-theme="industrial-dark"] select option {
+  background: #1E2024 !important;
+  color: #F3F4F6 !important;
+}
+
+body[data-theme="industrial-dark"] .btn-primary {
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  border: 1px solid #2563EB !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="industrial-dark"] .btn-primary:hover {
+  background: #1D4ED8 !important;
+  border-color: #1D4ED8 !important;
+  transform: none !important;
+}
+
+body[data-theme="industrial-dark"] .btn-secondary {
+  background: #262930 !important;
+  color: #F3F4F6 !important;
+  border: 1px solid #373B45 !important;
+}
+
+body[data-theme="industrial-dark"] .btn-secondary:hover {
+  background: #323640 !important;
+}
+
+body[data-theme="industrial-dark"] .table-container {
+  background: #1E2024 !important;
+  border: 1px solid #2E323B !important;
+}
+
+body[data-theme="industrial-dark"] .data-table {
+  background: #1E2024 !important;
+}
+
+body[data-theme="industrial-dark"] .data-table th {
+  background: #181A1F !important;
+  color: #9CA3AF !important;
+  border-bottom: 1px solid #2E323B !important;
+  font-weight: 600 !important;
+}
+
+body[data-theme="industrial-dark"] .data-table td {
+  border-bottom: 1px solid #262930 !important;
+  color: #F3F4F6 !important;
+}
+
+body[data-theme="industrial-dark"] .data-table tr:hover td {
+  background: #25282F !important;
+}
+
+body[data-theme="industrial-dark"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-theme="industrial-dark"] .modal-header {
+  border-bottom: 1px solid #2E323B !important;
+}
+
+body[data-theme="industrial-dark"] .modal-footer {
+  border-top: 1px solid #2E323B !important;
+}
+
+body[data-theme="industrial-dark"] .member-header {
+  background: #16181D !important;
+  border-bottom: 1px solid #2E323B !important;
+  backdrop-filter: none !important;
+}
+
+body[data-theme="industrial-dark"] .member-header #mp-header-name {
+  color: #F3F4F6 !important;
+}
+
+body[data-theme="industrial-dark"] .mp-stat-card {
+  background: #1E2024 !important;
+  border: 1px solid #2E323B !important;
+  backdrop-filter: none !important;
+}
+
+/* Universal Print Immunity: Force white background & black text when printing regardless of active theme */
+@media print {
+  body, body[data-theme="minimal-pos"], body[data-theme="agro-fintech"], body[data-theme="industrial-dark"] {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+}
+

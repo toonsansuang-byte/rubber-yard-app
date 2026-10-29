@@ -7,6 +7,20 @@
   <meta name="theme-color" content="#060f0a">
   <title>ลานยางพาราชุมชน | ระบบจัดการรับซื้อยาง</title>
   <link rel="stylesheet" href="style.css?v=2.0">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('setting_theme_mode') || 'original';
+        if (t === 'light') t = 'minimal-pos';
+        if (t && t !== 'original') {
+          document.documentElement.setAttribute('data-theme', t);
+          document.addEventListener('DOMContentLoaded', function() {
+            if (document.body) document.body.setAttribute('data-theme', t);
+          });
+        }
+      } catch(e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -1084,18 +1098,91 @@
 
             <!-- Theme Mode & Visual Options -->
             <div class="glass-card">
-              <div class="settings-section-title">🎨 ธีมและหน้าจอแสดงผล</div>
-              <div class="form-group" style="margin-bottom:16px;">
-                <label class="form-label" style="font-weight:600;">ธีมการแสดงผลระบบ (Theme Mode)</label>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px;">
-                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                    <input type="radio" name="setting-theme-mode" value="dark" checked onchange="previewThemeMode('dark')">
-                    <span>🌙 โหมดมืด (Dark Mode)</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:10px; background:var(--bg-input); padding:12px 16px; border-radius:var(--radius-md); border:1px solid var(--border); cursor:pointer;">
-                    <input type="radio" name="setting-theme-mode" value="light" onchange="previewThemeMode('light')">
-                    <span>☀️ โหมดสว่าง (Light Mode)</span>
-                  </label>
+              <div class="settings-section-title">🎨 ธีมและหน้าจอแสดงผล (Theme Customization)</div>
+              <div class="form-group" style="margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <label class="form-label" style="font-weight:600; margin:0;">เลือกสไตล์ธีมที่เหมาะกับสภาพแสงหน้างาน:</label>
+                  <span id="current-theme-badge" style="font-size:0.82rem; font-weight:600; padding:4px 10px; border-radius:var(--radius-sm); background:var(--accent-light); color:var(--text-accent);">🎨 ดั้งเดิม</span>
+                </div>
+                
+                <div class="theme-picker-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:10px;">
+                  
+                  <!-- Option 1: Original -->
+                  <div class="theme-card-option" id="theme-card-original" onclick="applyThemeMode('original')" style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:var(--radius-md); border:2px solid var(--border); cursor:pointer; background:var(--bg-input); transition:var(--transition-fast);">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="setting-theme-mode" value="original" checked onchange="applyThemeMode('original')" style="accent-color:var(--accent); cursor:pointer;">
+                        <strong style="font-size:0.95rem; color:var(--text-primary);">🎨 ดั้งเดิม</strong>
+                      </div>
+                      <span style="font-size:0.75rem; color:var(--gold); font-weight:600;">Original</span>
+                    </div>
+                    <!-- Color Swatches Preview -->
+                    <div style="display:flex; gap:6px; height:22px; border-radius:4px; overflow:hidden; border:1px solid rgba(255,255,255,0.12);">
+                      <div style="flex:2; background:#060f0a;" title="พื้นหลัง"></div>
+                      <div style="flex:2; background:#0f2a1a;" title="การ์ด"></div>
+                      <div style="flex:1; background:#10b981;" title="ปุ่มหลัก"></div>
+                      <div style="flex:1; background:#d4a843;" title="สีทอง"></div>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.35;">Dark Green + Gold Glassmorphism เอกลักษณ์ดั้งเดิม</span>
+                  </div>
+
+                  <!-- Option 2: Minimal POS -->
+                  <div class="theme-card-option" id="theme-card-minimal-pos" onclick="applyThemeMode('minimal-pos')" style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:var(--radius-md); border:2px solid var(--border); cursor:pointer; background:var(--bg-input); transition:var(--transition-fast);">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="setting-theme-mode" value="minimal-pos" onchange="applyThemeMode('minimal-pos')" style="accent-color:#18181B; cursor:pointer;">
+                        <strong style="font-size:0.95rem; color:var(--text-primary);">☀️ Minimal POS</strong>
+                      </div>
+                      <span style="font-size:0.75rem; color:#71717A; font-weight:600;">Square POS</span>
+                    </div>
+                    <!-- Color Swatches Preview -->
+                    <div style="display:flex; gap:6px; height:22px; border-radius:4px; overflow:hidden; border:1px solid #D4D4D8;">
+                      <div style="flex:2; background:#F4F4F0;" title="ขาวกระดาษ"></div>
+                      <div style="flex:2; background:#FFFFFF;" title="การ์ดขาว"></div>
+                      <div style="flex:1; background:#18181B;" title="ดำชาร์โคล"></div>
+                      <div style="flex:1; background:#52525B;" title="เทาเข้ม"></div>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.35;">ขาวกระดาษ-ดำชาร์โคล คมชัดสู้แดดหน้าร้าน</span>
+                  </div>
+
+                  <!-- Option 3: Agro FinTech -->
+                  <div class="theme-card-option" id="theme-card-agro-fintech" onclick="applyThemeMode('agro-fintech')" style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:var(--radius-md); border:2px solid var(--border); cursor:pointer; background:var(--bg-input); transition:var(--transition-fast);">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="setting-theme-mode" value="agro-fintech" onchange="applyThemeMode('agro-fintech')" style="accent-color:#047857; cursor:pointer;">
+                        <strong style="font-size:0.95rem; color:var(--text-primary);">🌿 Agro FinTech</strong>
+                      </div>
+                      <span style="font-size:0.75rem; color:#047857; font-weight:600;">Bank App</span>
+                    </div>
+                    <!-- Color Swatches Preview -->
+                    <div style="display:flex; gap:6px; height:22px; border-radius:4px; overflow:hidden; border:1px solid #CBD5E1;">
+                      <div style="flex:2; background:#F1F5F9;" title="เทาอมฟ้าอ่อน"></div>
+                      <div style="flex:2; background:#FFFFFF;" title="การ์ดขาวทึบ"></div>
+                      <div style="flex:1; background:#047857;" title="เขียวมรกต"></div>
+                      <div style="flex:1; background:#D97706;" title="ส้มอำพัน"></div>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.35;">ขาวคลีน-เขียวมรกต สไตล์แอปธนาคารเกษตร</span>
+                  </div>
+
+                  <!-- Option 4: Industrial Dark -->
+                  <div class="theme-card-option" id="theme-card-industrial-dark" onclick="applyThemeMode('industrial-dark')" style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:var(--radius-md); border:2px solid var(--border); cursor:pointer; background:var(--bg-input); transition:var(--transition-fast);">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="setting-theme-mode" value="industrial-dark" onchange="applyThemeMode('industrial-dark')" style="accent-color:#2563EB; cursor:pointer;">
+                        <strong style="font-size:0.95rem; color:var(--text-primary);">🌙 Matte Dark</strong>
+                      </div>
+                      <span style="font-size:0.75rem; color:#38BDF8; font-weight:600;">Engineering</span>
+                    </div>
+                    <!-- Color Swatches Preview -->
+                    <div style="display:flex; gap:6px; height:22px; border-radius:4px; overflow:hidden; border:1px solid #2E323B;">
+                      <div style="flex:2; background:#121316;" title="เทาดำด้าน"></div>
+                      <div style="flex:2; background:#1E2024;" title="การ์ดเทาเข้ม"></div>
+                      <div style="flex:1; background:#2563EB;" title="น้ำเงินครามด้าน"></div>
+                      <div style="flex:1; background:#38BDF8;" title="ฟ้าสว่าง"></div>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.35;">โหมดมืดแบบด้าน ไร้แสงสะท้อน สบายตากลางคืน</span>
+                  </div>
+
                 </div>
               </div>
 

@@ -1392,8 +1392,22 @@ function updateUserSidebarUI() {
 }
 
 function applyThemeMode(theme) {
-  const targetTheme = (theme === 'light') ? 'light' : 'dark';
-  document.body.setAttribute('data-theme', targetTheme);
+  let targetTheme = theme;
+  if (!targetTheme || targetTheme === 'dark' || targetTheme === 'original') {
+    targetTheme = 'original';
+  } else if (targetTheme === 'light') {
+    targetTheme = 'minimal-pos';
+  }
+
+  // Set or remove data-theme on body and documentElement
+  if (targetTheme === 'original') {
+    document.body.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.body.setAttribute('data-theme', targetTheme);
+    document.documentElement.setAttribute('data-theme', targetTheme);
+  }
+
   try {
     localStorage.setItem('setting_theme_mode', targetTheme);
   } catch (e) {}
@@ -1404,12 +1418,43 @@ function applyThemeMode(theme) {
     metaThemeColor.name = 'theme-color';
     document.head.appendChild(metaThemeColor);
   }
-  metaThemeColor.content = (targetTheme === 'light') ? '#f0f4f2' : '#060f0a';
+  const themeColors = {
+    'original': '#060f0a',
+    'minimal-pos': '#F4F4F0',
+    'agro-fintech': '#F1F5F9',
+    'industrial-dark': '#121316'
+  };
+  metaThemeColor.content = themeColors[targetTheme] || '#060f0a';
 
+  // Sync radio buttons
   const radioEls = document.querySelectorAll('input[name="setting-theme-mode"]');
   radioEls.forEach(r => {
     r.checked = (r.value === targetTheme);
   });
+
+  // Sync visual card highlights
+  const cards = document.querySelectorAll('.theme-card-option');
+  cards.forEach(c => {
+    c.style.borderColor = 'var(--border)';
+    c.style.boxShadow = 'none';
+  });
+  const activeCard = document.getElementById(`theme-card-${targetTheme}`);
+  if (activeCard) {
+    activeCard.style.borderColor = 'var(--accent)';
+    activeCard.style.boxShadow = '0 0 0 2px var(--accent-light)';
+  }
+
+  // Update theme badge
+  const badge = document.getElementById('current-theme-badge');
+  if (badge) {
+    const names = {
+      'original': '🎨 ดั้งเดิม',
+      'minimal-pos': '☀️ Minimal POS',
+      'agro-fintech': '🌿 Agro FinTech',
+      'industrial-dark': '🌙 Matte Dark'
+    };
+    badge.textContent = names[targetTheme] || '🎨 ดั้งเดิม';
+  }
 }
 
 function previewThemeMode(theme) {
@@ -1445,7 +1490,7 @@ async function loadSettings() {
         deduction_percent: Number(data.deduction_percent ?? 0),
         dual_station_mode: data.dual_station_mode === true,
         show_payer_name: data.show_payer_name !== false,
-        theme_mode: data.theme_mode || localStorage.getItem('setting_theme_mode') || 'dark'
+        theme_mode: data.theme_mode || localStorage.getItem('setting_theme_mode') || 'original'
       };
 
       // Sync fetched database settings into local cache backup
@@ -1485,7 +1530,7 @@ async function loadSettings() {
         dual_station_mode: localDualMode !== null ? localDualMode === 'true' : false,
         show_payer_name: localShowPayer !== null ? localShowPayer === 'true' : true,
         yard_fee: localYardFee !== null ? parseFloat(localYardFee) : 0.50,
-        theme_mode: localTheme || 'dark'
+        theme_mode: localTheme || 'original'
       };
     }
 
@@ -1988,7 +2033,7 @@ async function renderSettings() {
   const showPayerEl = document.getElementById('setting-show-payer-name');
   if (showPayerEl) showPayerEl.checked = s?.show_payer_name !== false;
 
-  const themeMode = s?.theme_mode || localStorage.getItem('setting_theme_mode') || 'dark';
+  const themeMode = s?.theme_mode || localStorage.getItem('setting_theme_mode') || 'original';
   applyThemeMode(themeMode);
   updatePlantationLogo();
   initAutoUpdater();
@@ -2008,7 +2053,7 @@ async function saveSettings() {
   const deductionPercentVal = parseFloat(document.getElementById('setting-deduction-percent')?.value) || 0;
   const dualStationMode = document.getElementById('setting-dual-station-mode')?.checked || false;
   const showPayerName = document.getElementById('setting-show-payer-name')?.checked !== false;
-  const themeMode = document.querySelector('input[name="setting-theme-mode"]:checked')?.value || 'dark';
+  const themeMode = document.querySelector('input[name="setting-theme-mode"]:checked')?.value || 'original';
 
   const logoVal = currentCustomLogoBase64 !== null ? currentCustomLogoBase64 : (cachedSettings?.plantation_logo || localStorage.getItem('setting_plantation_logo') || '');
 
